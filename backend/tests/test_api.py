@@ -153,7 +153,7 @@ def test_openapi_describes_responses_and_all_frontend_paths(client):
     for path in ("/api/v1/auth/login", "/api/v1/auth/me", "/api/v1/auth/logout",
         "/api/v1/customers", "/api/v1/customers/{customer_id}", "/api/v1/analytics/summary",
         "/api/v1/model/settings", "/api/v1/model/settings/reset", "/api/v1/source/snapshot",
-        "/api/v1/analytics/events", "/metrics"):
+        "/api/v1/analytics/events", "/api/v1/priority", "/api/v1/whatif", "/metrics"):
         assert path in document["paths"]
     schema = document["paths"]["/api/v1/customers"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
     assert schema["$ref"].endswith("/CustomerPage")

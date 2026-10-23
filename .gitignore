@@ -50,3 +50,6 @@ frontend/tsconfig.tsbuildinfo
 .DS_Store
 .idea/
 .vscode/
+
+# Local-only compose overrides (published sandbox ports).
+docker-compose.override.yml
