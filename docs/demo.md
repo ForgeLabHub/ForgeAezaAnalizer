@@ -3,6 +3,24 @@
 Все шаги выполняются на **реальных данных кейса** — тех самых 10 аккаунтах, 30 услугах
 и 100 транзакциях из `dataset/data.json`. Синтетические данные не подмешиваются.
 
+## Готовый демонстрационный стенд
+
+Стек уже поднят, открывать ничего собирать не нужно:
+
+| Что | Адрес |
+| --- | --- |
+| Интерфейс (nginx, production-сборка) | <https://work-1-mxzlgbuemrxujutc.prod-runtime.all-hands.dev/> |
+| API (Swagger UI) | <https://work-2-mxzlgbuemrxujutc.prod-runtime.all-hands.dev/api/v1/docs> |
+| Метрики Prometheus | <https://work-2-mxzlgbuemrxujutc.prod-runtime.all-hands.dev/metrics> |
+
+Вход: `analyst@aeza.test` / `demo123`.
+
+Стенд собран из `docker-compose.yml` (Postgres + API + nginx) с временным override-файлом
+для портов 12000/12001; override не входит в репозиторий. Это демонстрационный контур:
+перед реальной эксплуатацией пароль Postgres и `AEZA_JWT_SECRET` нужно заменить.
+
+## Локальный запуск
+
 Подготовка:
 
 ```bash
@@ -18,6 +36,8 @@ cd frontend && npm run dev
 ```
 
 Открыть <http://127.0.0.1:5173>, войти как `analyst@aeza.test` / `demo123`.
+
+Либо сразу весь стек: `docker compose up -d --build` (интерфейс на `:8080`, API на `:8000`).
 
 Опорный момент зафиксирован (`2026-10-19T15:00Z`), поэтому все числа ниже
 воспроизводимы: на другой машине вы увидите те же значения.
