@@ -106,13 +106,25 @@ the analytics service and caused a 500.
 
 ---
 
-# FastAPI + React implementation (`backend/`, `frontend/`)
+# Implementations living in this repository
 
-The repository now carries **two** implementations of the same case. The section
-above documents `aeza_analyzer/` (Python package, vanilla-JS SPA, SQLite). This
-section documents the `backend/` + `frontend/` app, which is independent: it has
-its own scoring code, its own snapshot importer, its own Postgres/SQLite layer
-and its own React SPA. They do not import from each other.
+The repository carries **three** independently written bodies of work for the
+same case. None of them imports from the others, and each has its own storage
+layer, scoring code and entrypoint. Do not delete one to "clean up" another.
+
+| Area | What it is | Storage | Entrypoint |
+| --- | --- | --- | --- |
+| `aeza_analyzer/` | Python package, CLI, vanilla-JS SPA (documented above) | SQLite (`data/`) | `python -m aeza_analyzer.cli serve` |
+| `backend/app/` + `frontend/` | FastAPI app + React/TypeScript SPA (documented below) | Postgres via Compose, SQLite for tests | `docker compose up` |
+| `backend/auth/`, `backend/main.py` | Standalone auth module (JWT + RSA, own `db/schema.sql`) | SQLite (`db/auth.sqlite3`) | `backend/main.py` |
+
+Note the path collision: `backend/` holds two unrelated trees — `backend/app/`
+(below) and `backend/auth/` + `backend/main.py` + `backend/config.py`
+(the standalone auth module). `backend/__init__.py` is shared. Check which one
+you are editing before changing shared names.
+
+`db/auth.sqlite3` is committed but holds no user rows (verified: the `users`
+table is empty). It is the auth module's runtime store, not fixture data.
 
 ## Layout
 
