@@ -1,113 +1,39 @@
-"""Snapshot import and current-source inspection routes."""
+from typing import Annotated
 
-from __future__ import annotations
+from fastapi import APIRouter, Query, Response
 
-import datetime as dt
-from typing import Any
-
-from fastapi import APIRouter, Body, Depends, HTTPException, status
-from sqlalchemy import desc, select
-from sqlalchemy.orm import Session
-
-from app.api.deps import Principal, get_current_user, get_db
-from app.api.schemas import ImportReport, SnapshotAccepted, SourceSnapshotResponse
-from app.db import ImportRunRow, session_scope
-from app.domain.importer import (
-    SnapshotValidationError,
-    current_counts,
-    import_snapshot,
-    parse_snapshot,
-)
-from app.metrics import IMPORTS_TOTAL
+from backend.app.api.deps import RuntimeDep, UserDep, version_headers
+from backend.app.api.schemas import SourceAccepted, SourceInfo
+from backend.app.source import Snapshot
 
 router = APIRouter(prefix="/source", tags=["source"])
 
 
-@router.get("/snapshot", summary="Текущее состояние загруженного набора")
-def get_snapshot(
-    session: Session = Depends(get_db), principal: Principal = Depends(get_current_user)
-) -> dict:
-    counts = current_counts(session)
-    last_run = session.scalar(
-        select(ImportRunRow).order_by(desc(ImportRunRow.started_at)).limit(1)
-    )
-    return {
-        "counts": counts,
-        "lastImport": None
-        if last_run is None
-        else {
-            "startedAt": last_run.started_at.isoformat(),
-            "finishedAt": last_run.finished_at.isoformat() if last_run.finished_at else None,
-            "status": last_run.status,
-            "accounts": last_run.accounts,
-            "services": last_run.services,
-            "transactions": last_run.transactions,
-            "message": last_run.message,
-        },
-    }
+@router.get("/snapshot", response_model=SourceInfo)
+def source(runtime: RuntimeDep, user: UserDep, response: Response,
+           generation: Annotated[int | None, Query(ge=1)] = None):
+    return version_headers(response, runtime.storage.source(generation))
 
 
-@router.put(
-    "/snapshot",
-    response_model=SourceSnapshotResponse,
-    summary="Атомарно заменить набор данных",
-    responses={
-        200: {"description": "Snapshot применён"},
-        422: {"description": "Snapshot не прошёл валидацию; база не изменена"},
-    },
-)
-def put_snapshot(
-    payload: dict[str, Any] = Body(
-        ...,
-        description="Объект с массивами accounts, services и transactions в формате исходного data.json",
-    ),
-    session: Session = Depends(get_db),
-    principal: Principal = Depends(get_current_user),
-) -> SourceSnapshotResponse:
-    """Validate the entire snapshot, then replace the dataset in one transaction.
+@router.put("/snapshot", response_model=SourceAccepted)
+def import_source(payload: Snapshot, runtime: RuntimeDep, user: UserDep, response: Response,
+                  expected_generation: Annotated[int | None, Query(alias="expectedGeneration", ge=0)] = None):
+    before = runtime.storage.load()
+    state = runtime.core.update(source=payload.model_dump(mode="json", by_alias=True),
+        expected_generation=expected_generation, actor=user.email)
+    counts = {key: len(rows) for key, rows in state.source.items()}
+    if state.source_version == before.source_version:
+        previous = counts
+    else:
+        previous = runtime.storage.source(state.generation - 1)["counts"] if state.generation > 1 else dict.fromkeys(counts, 0)
+    return version_headers(response, {"snapshot": {"status": "accepted", **counts},
+        "report": {"status": "succeeded", "accepted": counts, "rejected": 0, "duplicates": 0,
+            "previous": previous, "message": "Снимок и расчёт опубликованы атомарно"}, **state.metadata()})
 
-    Validation completes before any write, and the write runs inside a single
-    transaction, so a rejected payload leaves the previous dataset untouched.
-    """
 
-    try:
-        snapshot = parse_snapshot(payload)
-    except SnapshotValidationError as exc:
-        IMPORTS_TOTAL.labels(status="rejected").inc()
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Snapshot отклонён: {exc}",
-        ) from exc
-
-    try:
-        result = import_snapshot(session, snapshot)
-        session.commit()
-    except Exception as exc:  # pragma: no cover - defensive
-        session.rollback()
-        IMPORTS_TOTAL.labels(status="failed").inc()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Импорт не выполнен, данные не изменены: {exc}",
-        ) from exc
-
-    IMPORTS_TOTAL.labels(status="succeeded").inc()
-    return SourceSnapshotResponse(
-        snapshot=SnapshotAccepted(
-            status="applied",
-            accounts=result.accounts,
-            services=result.services,
-            transactions=result.transactions,
-        ),
-        report=ImportReport(
-            status="succeeded",
-            accepted={
-                "accounts": result.accounts,
-                "services": result.services,
-                "transactions": result.transactions,
-            },
-            rejected=result.rejected,
-            duplicates=result.duplicate_ids,
-            previous=result.previous_counts,
-            message=result.message,
-        ),
-    )
+@router.get("/observations")
+def observations(runtime: RuntimeDep, user: UserDep,
+                 service_id: Annotated[int | None, Query(alias="serviceId", ge=1)] = None,
+                 limit: Annotated[int, Query(ge=1, le=200)] = 100):
+    return {"items": runtime.storage.observations(service_id=service_id, limit=limit),
+        "note": "observedAt — время наблюдения; время самого события неизвестно"}

@@ -7,7 +7,6 @@ services:
       POSTGRES_PASSWORD: aeza
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aeza -d aeza"]
       interval: 5s
@@ -28,7 +27,11 @@ services:
       AEZA_ADMIN_PASSWORD: ${AEZA_ADMIN_PASSWORD:-aeza-demo-password}
       AEZA_ALLOW_DEV_SECRET: "0"
       AEZA_SEED_DEMO_DATA: "1"
-      AEZA_SNAPSHOT_PATH: data/snapshot.json
+      AEZA_SNAPSHOT_PATH: backend/data/snapshot.json
+      AEZA_AS_OF: ${AEZA_AS_OF:-2026-10-19T15:00:00+00:00}
+      AEZA_ANALYTICS_FACTORY: ${AEZA_ANALYTICS_FACTORY:-}
+      AEZA_RECALCULATE_SECONDS: ${AEZA_RECALCULATE_SECONDS:-60}
+      AEZA_METRICS_TOKEN: ${AEZA_METRICS_TOKEN:-}
       AEZA_CORS_ORIGINS: "*"
     depends_on:
       db:
