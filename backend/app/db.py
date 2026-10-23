@@ -142,6 +142,10 @@ class AuthSessionRow(Base):
 ANALYTICS_TABLES = (
     CurrentRow.__table__, SourceRow.__table__, ModelRow.__table__, AnalysisRow.__table__,
     CustomerRow.__table__, ServiceIndexRow.__table__, ObservationRow.__table__, AuditRow.__table__,
+    # Workflow state for retention playbooks. Grouped with the analytics tables
+    # because it is created by the same initialise() call the runtime makes at
+    # startup; it holds no analytical data and is never versioned by generation.
+    RecommendationStatusRow.__table__,
 )
 AUTH_TABLES = (UserRow.__table__, AuthSessionRow.__table__)
 
