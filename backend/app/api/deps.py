@@ -1,61 +1,49 @@
-"""Shared FastAPI dependencies: database session and authenticated principal."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
-from app.auth.security import decode_access_token
-from app.db import UserRow, get_session_factory
+from core import Core
+from backend.app.auth.security import AuthService, Principal, Unauthorized
+from backend.app.config import Settings
+from backend.app.db import Database
+from backend.app.modules import CalculationAdapter
+from backend.app.storage import Storage
 
-_bearer = HTTPBearer(auto_error=False)
-
-
-@dataclass(frozen=True)
-class Principal:
-    email: str
+bearer = HTTPBearer(auto_error=False)
 
 
-def get_db() -> Session:
-    session = get_session_factory()()
-    try:
-        yield session
-    finally:
-        session.close()
+@dataclass
+class Runtime:
+    settings: Settings
+    database: Database
+    storage: Storage
+    auth: AuthService
+    calculation: CalculationAdapter
+    core: Core
 
 
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
-    session: Session = Depends(get_db),
-) -> Principal:
-    """Resolve the caller from a Bearer token.
+def get_runtime(request: Request) -> Runtime:
+    return request.app.state.runtime
 
-    Every protected route depends on this, so an unauthenticated request is
-    rejected before any business logic or personal data is touched.
-    """
 
-    if credentials is None or not credentials.credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Требуется авторизация",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    subject = decode_access_token(credentials.credentials)
-    if subject is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Недействительный или истёкший токен",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    user = session.scalar(select(UserRow).where(UserRow.email == subject))
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Пользователь не найден",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return Principal(email=user.email)
+RuntimeDep = Annotated[Runtime, Depends(get_runtime)]
+
+
+def current_user(runtime: RuntimeDep, credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]) -> Principal:
+    if credentials is None:
+        raise Unauthorized("Требуется авторизация")
+    return runtime.auth.authenticate(credentials.credentials)
+
+
+UserDep = Annotated[Principal, Depends(current_user)]
+
+
+def version_headers(response, payload: dict):
+    if "generation" in payload:
+        response.headers["X-Analysis-Generation"] = str(payload["generation"])
+    response.headers["Cache-Control"] = "no-store"
+    return payload

@@ -1,84 +1,64 @@
-"""Application configuration.
-
-Aéza - это быстрый хостинг
-"""
-
 from __future__ import annotations
 
 import os
 import secrets
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from functools import lru_cache
+from pathlib import Path
 
-# The Aéza snapshot documents this as its reference instant; see docs/data.md.
+ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_AS_OF = "2026-10-19T15:00:00+00:00"
 
 
-def _flag(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
+def flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
         return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    if value.lower() not in {"0", "1", "true", "false"}:
+        raise ValueError(f"{name}: expected 0/1/true/false")
+    return value.lower() in {"1", "true"}
 
 
+@dataclass(frozen=True)
 class Settings:
-    """Runtime configuration sourced from environment variables."""
+    database_url: str = field(default_factory=lambda: os.getenv(
+        "AEZA_DATABASE_URL", f"sqlite:///{(ROOT / 'data' / 'aeza.db').as_posix()}"))
+    jwt_secret: str = field(default_factory=lambda: os.getenv("AEZA_JWT_SECRET", ""))
+    allow_dev_secret: bool = field(default_factory=lambda: flag("AEZA_ALLOW_DEV_SECRET", True))
+    bootstrap_admin_email: str = field(default_factory=lambda: os.getenv("AEZA_ADMIN_EMAIL", "analyst@aeza.test"))
+    bootstrap_admin_password: str = field(default_factory=lambda: os.getenv("AEZA_ADMIN_PASSWORD", ""))
+    access_token_ttl_minutes: int = field(default_factory=lambda: int(os.getenv("AEZA_TOKEN_TTL_MINUTES", "720")))
+    seed_demo_data: bool = field(default_factory=lambda: flag("AEZA_SEED_DEMO_DATA", True))
+    snapshot_path: str = field(default_factory=lambda: os.getenv("AEZA_SNAPSHOT_PATH", str(ROOT / "backend/data/snapshot.json")))
+    as_of: str = field(default_factory=lambda: os.getenv("AEZA_AS_OF", DEFAULT_AS_OF))
+    recalculate_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_RECALCULATE_SECONDS", "60")))
+    metrics_token: str = field(default_factory=lambda: os.getenv("AEZA_METRICS_TOKEN", ""))
+    cors_origins: tuple[str, ...] = field(default_factory=lambda: tuple(
+        origin.strip() for origin in os.getenv("AEZA_CORS_ORIGINS", "http://localhost:8080,http://localhost:5173").split(",") if origin.strip()))
+    api_prefix: str = "/api/v1"
+    app_name: str = "Aéza Analyzer"
 
-    def __init__(self) -> None:
-        self.app_name = os.getenv("AEZA_APP_NAME", "Aéza Churn Risk Analyzer")
-        self.api_prefix = "/api/v1"
-        self.database_url = os.getenv(
-            "AEZA_DATABASE_URL", "sqlite:///./data/aeza.db"
-        )
-        self.jwt_secret = os.getenv("AEZA_JWT_SECRET") or ""
-        self.jwt_algorithm = "HS256"
-        self.access_token_ttl_minutes = int(os.getenv("AEZA_TOKEN_TTL_MINUTES", "720"))
-        self.bootstrap_admin_email = os.getenv("AEZA_ADMIN_EMAIL", "analyst@aeza.test")
-        self.bootstrap_admin_password = os.getenv("AEZA_ADMIN_PASSWORD", "")
-        self.allow_dev_secret = _flag("AEZA_ALLOW_DEV_SECRET", True)
+    def __post_init__(self):
         if not self.jwt_secret:
-            self.jwt_secret = self._dev_secret()
-        self.seed_demo_data = _flag("AEZA_SEED_DEMO_DATA", True)
-        self.snapshot_path = os.getenv("AEZA_SNAPSHOT_PATH", "data/snapshot.json")
-        # Reference instant for every analytic computation.
-        #
-        # The Aéza snapshot is a point-in-time extract: the dataset documents a
-        # fixed reference of 2026-10-19T15:00:00Z and states that service states
-        # do not advance on their own.  Defaulting to that instant keeps "days to
-        # expiry" meaningful and makes every score reproducible.  Set AEZA_AS_OF
-        # (ISO-8601) to move the reference, or set it to "now" for a live view.
-        self.as_of = os.getenv("AEZA_AS_OF", DEFAULT_AS_OF).strip()
-        self.cors_origins = [
-            o.strip()
-            for o in os.getenv("AEZA_CORS_ORIGINS", "*").split(",")
-            if o.strip()
-        ]
+            if not self.allow_dev_secret:
+                raise ValueError("AEZA_JWT_SECRET is required")
+            object.__setattr__(self, "jwt_secret", secrets.token_urlsafe(48))
+        if not self.allow_dev_secret and not self.bootstrap_admin_password:
+            raise ValueError("AEZA_ADMIN_PASSWORD is required")
+        if not 1 <= self.access_token_ttl_minutes <= 1440:
+            raise ValueError("AEZA_TOKEN_TTL_MINUTES must be between 1 and 1440")
+        if not 1 <= self.recalculate_seconds <= 3600:
+            raise ValueError("AEZA_RECALCULATE_SECONDS must be between 1 and 3600")
+        self.reference_now()
 
-    def _dev_secret(self) -> str:
-        # A stable-per-process fallback keeps local demos working without
-        # shipping a real secret in the image; production must set the env var.
-        if not self.allow_dev_secret:
-            raise RuntimeError("AEZA_JWT_SECRET must be set when dev secrets are disabled")
-        return secrets.token_urlsafe(48)
-
-    @property
-    def is_sqlite(self) -> bool:
-        return self.database_url.startswith("sqlite")
-
-    def reference_now(self) -> "dt.datetime":
-        """Return the instant analytics should be computed against."""
-
-        import datetime as _dt
-
-        if self.as_of and self.as_of.lower() != "now":
-            try:
-                parsed = _dt.datetime.fromisoformat(self.as_of.replace("Z", "+00:00"))
-            except ValueError:
-                parsed = None
-            if parsed is not None:
-                if parsed.tzinfo is None:
-                    return parsed.replace(tzinfo=_dt.timezone.utc)
-                return parsed.astimezone(_dt.timezone.utc)
-        return _dt.datetime.now(_dt.timezone.utc)
+    def reference_now(self) -> datetime:
+        if self.as_of.lower() == "now":
+            return datetime.now(timezone.utc)
+        parsed = datetime.fromisoformat(self.as_of.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            raise ValueError("AEZA_AS_OF must include a timezone")
+        return parsed.astimezone(timezone.utc)
 
 
 @lru_cache
