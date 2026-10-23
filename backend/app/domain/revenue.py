@@ -20,8 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from app.domain.money import cents_to_eur, scaled_cents
-from app.domain.risk import ServiceRisk
+from .money import cents_to_eur, scaled_cents
+from .risk import ServiceRisk
 
 
 @dataclass
