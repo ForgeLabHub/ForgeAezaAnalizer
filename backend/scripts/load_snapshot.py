@@ -1,40 +1,38 @@
-#!/usr/bin/env python3
-"""Load a source snapshot into the application database.
-
-Usage:
-    python scripts/load_snapshot.py [path/to/snapshot.json]
-
-Validates the whole file first and replaces the dataset atomically.
-"""
-
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from app.db import init_db, session_scope  # noqa: E402
-from app.domain.importer import import_snapshot, parse_snapshot  # noqa: E402
+from core import Core, NotReadyError
+from backend.app.config import get_settings
+from backend.app.db import Database
+from backend.app.modules import CalculationAdapter, load_module
+from backend.app.storage import Storage
 
 
 def main() -> int:
-    path = sys.argv[1] if len(sys.argv) > 1 else "data/snapshot.json"
-    if not os.path.exists(path):
-        print(f"snapshot not found: {path}", file=sys.stderr)
+    settings = get_settings()
+    parser = argparse.ArgumentParser(description="Атомарно загрузить снимок и опубликовать расчёт")
+    parser.add_argument("path", nargs="?", default=settings.snapshot_path)
+    arguments = parser.parse_args()
+    database = Database(settings.database_url)
+    try:
+        payload = json.loads(Path(arguments.path).read_text(encoding="utf-8"))
+        database.initialize()
+        calculation = CalculationAdapter(load_module(os.getenv("AEZA_ANALYTICS_FACTORY", "")))
+        state = Core(Storage(database), calculation, settings.reference_now).update(source=payload, actor="cli")
+        print(json.dumps(state.metadata(), ensure_ascii=False))
+        return 0
+    except (OSError, ValueError, NotReadyError) as error:
+        print(str(error), file=sys.stderr)
         return 2
-    with open(path, encoding="utf-8") as fh:
-        payload = json.load(fh)
-    snapshot = parse_snapshot(payload)
-    init_db()
-    with session_scope() as session:
-        result = import_snapshot(session, snapshot)
-    print(
-        f"imported accounts={result.accounts} services={result.services} "
-        f"transactions={result.transactions} (previous={result.previous_counts})"
-    )
-    return 0
+    finally:
+        database.engine.dispose()
 
 
 if __name__ == "__main__":
