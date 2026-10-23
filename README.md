@@ -202,6 +202,7 @@ revenue_at_risk = eligible_renewal_amount × risk_score / 100
 | [`docs/TESTING.md`](docs/TESTING.md) | тесты и проверки |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | запуск и развёртывание |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | безопасность и ограничения |
+| [`docs/AUTH_MODULE.md`](docs/AUTH_MODULE.md) | модуль аутентификации (OIDC, JWT) |
 
 
 ---
