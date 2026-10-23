@@ -68,7 +68,34 @@ never modified.
 - `level_for()` bands are low 0–34, medium 35–64, high 65–100; fractional
   scores in the gaps (e.g. 34.9) stay in the lower band.
 
-## Gotcha that already bit us
+## Pushing to GitHub — blocked by app installation scope
+
+`git push` to `Pixelminds-hub/aeza-analizer` fails with **403 "Permission to
+Pixelminds-hub/aeza-analizer.git denied to Pavel1778"**. This is not a code or
+credential-expiry problem; it is an access-scope problem. Do not retry it
+endlessly or try to work around it.
+
+Root cause (verified via the API):
+
+- the target repo is owned by the **user** `Pixelminds-hub`;
+- the OpenHands GitHub App (`app_slug=openhands-ai`, `contents: write`) is
+  installed only on `Pavel1778` (user) and `Pixel-Minds` (organization).
+- `Pixelminds-hub` and `Pixel-Minds` are **different accounts** despite the
+  similar names, so no installation grant covers the target repo.
+
+Because there is no grant, every write path returns
+`Resource not accessible by integration` (403): `git push`, `POST /forks`,
+`PUT /contents/...`, `POST /user/repos`, and branch-protection reads.
+
+The token itself is fine — a `git push --dry-run` to `Pavel1778/frog-coder`
+succeeds, and `permissions.push: true` in the repo payload reflects the
+**user's role**, not the token's granted scopes. Don't be misled by it.
+
+To publish, either install the app on `Pixelminds-hub`, or push manually with a
+token that has `contents: write` on that repo. Work is kept committed on local
+`main` (fast-forwarded) so it is ready for a single `git push` once access exists.
+
+## Gotchas that already bit us
 
 `from .config import settings` binds the `settings` object; `Settings` reads
 env vars lazily (properties) precisely so tests can repoint `AEZA_DATA_DIR`
