@@ -180,3 +180,29 @@ def test_source_rejects_a_broken_snapshot():
     source["services"][0]["ownerId"] = 999_999
     with pytest.raises(InvalidInput):
         adapter.source(source)
+
+
+def test_default_window_is_the_approved_ninety_days():
+    """A fresh database must use the approved 90-day window, not "everything".
+
+    Regression guard: ModelDefinition.defaults once omitted this field, so the
+    platform filled it with its own None and a fresh install silently scored
+    against the whole snapshot (4 medium / 2 high instead of 3 / 3).
+    """
+    definition = CalculationAdapter(create()).definition()
+    assert definition.defaults["failedRenewalWindowDays"] == 90
+
+    # And the default configuration reproduces the published figures.
+    result = CalculationAdapter(create()).calculate(_state(settings=definition.defaults))
+    categories = result.summary["customers"]["byCategory"]
+    assert categories["high"] == 3 and categories["medium"] == 3
+    assert result.summary["revenue"]["revenueAtRiskEur"] == "5.80"
+
+
+def test_null_window_differs_from_the_default():
+    """The two window modes must not collapse into one another."""
+    adapter = CalculationAdapter(create())
+    default = adapter.calculate(_state(settings=adapter.definition().defaults))
+    whole = adapter.calculate(_state(settings={**adapter.definition().defaults,
+                                              "failedRenewalWindowDays": None}))
+    assert default.summary["customers"]["byCategory"] != whole.summary["customers"]["byCategory"]
