@@ -1,225 +1,157 @@
-"""Database engine, session factory and ORM models.
-
-The schema mirrors the source snapshot: ``accounts``, ``services`` and
-``transactions``, plus operational tables for model settings, users and import
-reports.  Monetary columns keep the raw integer eurocent values from the
-snapshot so no lossy round-trip happens on import.
-"""
-
 from __future__ import annotations
 
-import datetime as dt
-import os
 from contextlib import contextmanager
+from datetime import datetime, timezone
 
-from sqlalchemy import (
-    Boolean,
-    DateTime,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-    TypeDecorator,
-    create_engine,
-)
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
-
-from app.config import get_settings
+from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Index, Integer, JSON, String, TypeDecorator, create_engine, event, insert
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
 class UTCDateTime(TypeDecorator):
-    """Timezone-aware datetime that survives SQLite round-trips.
-
-    SQLite has no native timezone support and returns naive datetimes, which
-    would make every horizon comparison fail.  This type normalises values to
-    UTC on the way in and re-attaches UTC on the way out.
-    """
-
     impl = DateTime(timezone=True)
     cache_ok = True
 
     def process_bind_param(self, value, dialect):
-        if value is None:
-            return None
-        if value.tzinfo is None:
-            return value.replace(tzinfo=dt.timezone.utc)
-        return value.astimezone(dt.timezone.utc)
+        return value.astimezone(timezone.utc) if value else None
 
     def process_result_value(self, value, dialect):
-        if value is None:
-            return None
-        if value.tzinfo is None:
-            return value.replace(tzinfo=dt.timezone.utc)
-        return value.astimezone(dt.timezone.utc)
+        return value.replace(tzinfo=timezone.utc) if value and value.tzinfo is None else value
 
 
 class Base(DeclarativeBase):
     pass
 
 
-class AccountRow(Base):
-    __tablename__ = "accounts"
+class CurrentRow(Base):
+    __tablename__ = "analyzer_current"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    generation: Mapped[int] = mapped_column(BigInteger, default=0)
+    source_version: Mapped[int] = mapped_column(BigInteger, default=0)
+    model_version: Mapped[int] = mapped_column(BigInteger, default=0)
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
-    email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
-    balance: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    withdraw_balance: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    total_replenished: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    bonus_balance: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    bonus_state: Mapped[str] = mapped_column(String(16), nullable=False, default="locked")
 
-    services: Mapped[list["ServiceRow"]] = relationship(
-        back_populates="owner", cascade="all, delete-orphan", lazy="selectin"
+class SourceRow(Base):
+    __tablename__ = "analyzer_sources"
+    version: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    captured_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    payload: Mapped[dict] = mapped_column(JSON)
+
+
+class ModelRow(Base):
+    __tablename__ = "analyzer_models"
+    version: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    payload: Mapped[dict] = mapped_column(JSON)
+
+
+class AnalysisRow(Base):
+    __tablename__ = "analyzer_analyses"
+    generation: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    source_version: Mapped[int] = mapped_column(ForeignKey("analyzer_sources.version"))
+    model_version: Mapped[int] = mapped_column(ForeignKey("analyzer_models.version"))
+    as_of: Mapped[datetime] = mapped_column(UTCDateTime)
+    calculated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    summary: Mapped[dict] = mapped_column(JSON)
+
+
+class CustomerRow(Base):
+    __tablename__ = "analyzer_customers"
+    generation: Mapped[int] = mapped_column(ForeignKey("analyzer_analyses.generation"), primary_key=True)
+    customer_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    email: Mapped[str] = mapped_column(String(320))
+    risk_score: Mapped[float | None] = mapped_column(Float)
+    risk_category: Mapped[str] = mapped_column(String(32))
+    balance: Mapped[int | None] = mapped_column(BigInteger)
+    total_replenished: Mapped[int | None] = mapped_column(BigInteger)
+    payload: Mapped[dict] = mapped_column(JSON)
+    __table_args__ = (
+        Index("analyzer_customers_risk_idx", "generation", "risk_score", "customer_id"),
+        Index("analyzer_customers_balance_idx", "generation", "balance", "customer_id"),
+        Index("analyzer_customers_replenished_idx", "generation", "total_replenished", "customer_id"),
+        Index("analyzer_customers_email_idx", "generation", "email", "customer_id"),
+        Index("analyzer_customers_category_idx", "generation", "risk_category"),
     )
 
 
-class ServiceRow(Base):
-    __tablename__ = "services"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
-    name: Mapped[str] = mapped_column(String(128), nullable=False)
-    owner_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), nullable=False, index=True)
-    payment_term: Mapped[str] = mapped_column(String(16), nullable=False)
-    auto_prolong: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    created_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
-    expires_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
-    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
-    price: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    owner: Mapped[AccountRow] = relationship(back_populates="services")
-    transactions: Mapped[list["TransactionRow"]] = relationship(
-        back_populates="service", cascade="all, delete-orphan", lazy="selectin"
-    )
+class ServiceIndexRow(Base):
+    __tablename__ = "analyzer_service_index"
+    generation: Mapped[int] = mapped_column(ForeignKey("analyzer_analyses.generation"), primary_key=True)
+    service_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    customer_id: Mapped[int] = mapped_column(BigInteger)
+    status: Mapped[str] = mapped_column(String(32))
+    __table_args__ = (Index("analyzer_service_status_idx", "generation", "status", "customer_id"),)
 
 
-class TransactionRow(Base):
-    __tablename__ = "transactions"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
-    amount: Mapped[int] = mapped_column(Integer, nullable=False)
-    status: Mapped[str] = mapped_column(String(16), nullable=False)
-    performed_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime, nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
-    type: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
-    service_id: Mapped[int] = mapped_column(ForeignKey("services.id"), nullable=False, index=True)
-
-    service: Mapped[ServiceRow] = relationship(back_populates="transactions")
+class ObservationRow(Base):
+    __tablename__ = "analyzer_observations"
+    source_version: Mapped[int] = mapped_column(ForeignKey("analyzer_sources.version"), primary_key=True)
+    service_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    previous_status: Mapped[str | None] = mapped_column(String(32))
+    status: Mapped[str | None] = mapped_column(String(32))
+    observed_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    previous_observed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
 
-class ModelSettingsRow(Base):
-    __tablename__ = "model_settings"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
-    horizon_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
-    low_max: Mapped[int] = mapped_column(Integer, nullable=False, default=34)
-    medium_max: Mapped[int] = mapped_column(Integer, nullable=False, default=64)
-    weights_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
-    #: Trailing window (days) for failed renewals.  ``NULL`` means the whole
-    #: snapshot, which is a valid configuration, so the column is nullable.
-    failed_renewal_window_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    updated_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
+class AuditRow(Base):
+    __tablename__ = "analyzer_audit"
+    generation: Mapped[int] = mapped_column(ForeignKey("analyzer_analyses.generation"), primary_key=True)
+    actor: Mapped[str] = mapped_column(String(320))
+    action: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
 
 
 class UserRow(Base):
-    __tablename__ = "users"
-
+    __tablename__ = "analyzer_users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
+    email: Mapped[str] = mapped_column(String(320), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
 
 
-class ImportRunRow(Base):
-    __tablename__ = "import_runs"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    started_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
-    finished_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime, nullable=True)
-    status: Mapped[str] = mapped_column(String(16), nullable=False)
-    accounts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    services: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    transactions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    rejected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+class AuthSessionRow(Base):
+    __tablename__ = "analyzer_sessions"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("analyzer_users.id"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
 
 
-_engine = None
-_SessionLocal: sessionmaker[Session] | None = None
+class Database:
+    def __init__(self, url: str):
+        parsed = make_url(url)
+        options = {"pool_pre_ping": True}
+        if parsed.get_backend_name() == "sqlite":
+            if parsed.database and parsed.database != ":memory:":
+                from pathlib import Path
+                Path(parsed.database).resolve().parent.mkdir(parents=True, exist_ok=True)
+            options["connect_args"] = {"check_same_thread": False, "timeout": 30}
+            if not parsed.database or parsed.database == ":memory:":
+                options["poolclass"] = StaticPool
+        self.engine = create_engine(url, **options)
+        if self.engine.dialect.name == "sqlite":
+            event.listen(self.engine, "connect", self._sqlite_connect)
+        self.sessions = sessionmaker(self.engine, expire_on_commit=False)
 
+    @staticmethod
+    def _sqlite_connect(connection, _):
+        cursor = connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
-def get_engine():
-    global _engine
-    if _engine is None:
-        url = get_settings().database_url
-        if url.startswith("sqlite"):
-            path = url.split("///", 1)[-1]
-            if path and path != ":memory:":
-                os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
-        connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-        _engine = create_engine(url, connect_args=connect_args, future=True)
-    return _engine
+    def initialize(self):
+        Base.metadata.create_all(self.engine)
+        try:
+            with self.transaction() as session:
+                if session.get(CurrentRow, 1) is None:
+                    session.execute(insert(CurrentRow).values(id=1, generation=0, source_version=0, model_version=0))
+        except IntegrityError:
+            with self.sessions() as session:
+                if session.get(CurrentRow, 1) is None:
+                    raise
 
-
-def get_session_factory() -> sessionmaker[Session]:
-    global _SessionLocal
-    if _SessionLocal is None:
-        _SessionLocal = sessionmaker(bind=get_engine(), expire_on_commit=False, future=True)
-    return _SessionLocal
-
-
-@contextmanager
-def session_scope() -> Session:
-    """Transactional session scope that commits on success and rolls back on error."""
-
-    session = get_session_factory()()
-    try:
-        yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
-
-
-def reset_engine_for_tests() -> None:
-    """Drop cached engine/session so tests can point at a fresh database."""
-
-    global _engine, _SessionLocal
-    if _engine is not None:
-        _engine.dispose()
-    _engine = None
-    _SessionLocal = None
-
-
-def _ensure_columns() -> None:
-    """Add columns introduced after a database was first created.
-
-    ``create_all`` only creates missing *tables*, so an existing SQLite file
-    would keep the old ``model_settings`` shape and every query would fail with
-    "no such column".  Adding the column when absent keeps old stores usable
-    instead of forcing a re-import.
-    """
-
-    engine = get_engine()
-    if engine.dialect.name != "sqlite":
-        return
-    with engine.connect() as connection:
-        existing = {
-            row[1]
-            for row in connection.exec_driver_sql(
-                "PRAGMA table_info(model_settings)"
-            ).fetchall()
-        }
-        if not existing:
-            return
-        if "failed_renewal_window_days" not in existing:
-            connection.exec_driver_sql(
-                "ALTER TABLE model_settings ADD COLUMN failed_renewal_window_days INTEGER"
-            )
-            connection.commit()
-
-
-def init_db() -> None:
-    Base.metadata.create_all(bind=get_engine())
-    _ensure_columns()
+    @contextmanager
+    def transaction(self):
+        with self.sessions.begin() as session:
+            yield session

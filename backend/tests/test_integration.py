@@ -1,151 +1,200 @@
-"""End-to-end integration test of the full analyst workflow.
-
-Walks the ten steps from the case brief: obtain data, validate, import, score,
-read the summary, open a customer, change weights, recompute, verify the
-settings were persisted, then re-import and confirm data integrity.
-"""
-
 from __future__ import annotations
 
+import asyncio
 import copy
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+from threading import Barrier, Lock
 
-from app.domain.importer import current_counts
+from fastapi.testclient import TestClient
+from sqlalchemy import event, func, select
+
+from core import Analysis
+from backend.app.api.routes_analytics import events
+from backend.app.db import AnalysisRow, CustomerRow, SourceRow
+from backend.app.main import create_app
+from backend.app.modules import ModuleContractError
 
 
-def test_full_workflow(client, auth_headers, snapshot_payload):
-    # 1. Source data is present in the snapshot file itself.
-    assert set(snapshot_payload) == {"accounts", "services", "transactions"}
-
-    # 2. Validation rejects a broken payload before anything is written.
+def test_import_idempotency_and_validation(client, auth_headers, snapshot_payload, analytics):
+    calls = analytics.calls
+    response = client.put("/api/v1/source/snapshot", json=snapshot_payload, headers=auth_headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["generation"] == 1 and analytics.calls == calls
     broken = copy.deepcopy(snapshot_payload)
-    broken["transactions"][0]["amount"] = 5000  # above the documented ceiling of 1000
-    assert (
-        client.put("/api/v1/source/snapshot", json=broken, headers=auth_headers).status_code == 422
-    )
-
-    # 3. Import the valid snapshot.
-    imported = client.put(
-        "/api/v1/source/snapshot", json=snapshot_payload, headers=auth_headers
-    )
-    assert imported.status_code == 200
-    assert imported.json()["report"]["accepted"]["accounts"] == 10
-
-    # 4. Risk is computed for every customer.
-    summary = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
-    assert summary["customers"]["total"] == 10
-    assert sum(summary["customers"]["byCategory"].values()) == 10
-    assert summary["customers"]["byCategory"]["high"] >= 1
-
-    # 5. Analytics summary carries the KPI block the dashboard needs.
-    for key in ("revenueAtRiskEur", "upcomingRenewalsEur", "historicalReplenishedEur"):
-        assert key in summary["revenue"]
-
-    # 6. A high-risk customer can be opened and explained.
-    ranked = client.get(
-        "/api/v1/customers?sortBy=riskScore&sortDir=desc&pageSize=5", headers=auth_headers
-    ).json()["items"]
-    top = ranked[0]
-    detail = client.get(f"/api/v1/customers/{top['id']}", headers=auth_headers).json()
-    assert detail["reasons"], "high-risk customer must expose reasons"
-    assert detail["services"]
-    scored = [s for s in detail["services"] if s["eligibleForForecast"]]
-    assert scored and all(s["reasons"] for s in scored)
-
-    # 7. Changing weights changes the score.
-    original_score = top["riskScore"]
-    all_factors = client.get("/api/v1/model/settings", headers=auth_headers).json()["factors"]
-    weights = {f["key"]: 0.0 for f in all_factors}
-    weights["expiry_proximity"] = 10.0
-    assert (
-        client.patch(
-            "/api/v1/model/settings", json={"weights": weights}, headers=auth_headers
-        ).status_code
-        == 200
-    )
-
-    # 8. Analytics recompute against the new configuration.
-    after = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
-    assert after["customers"]["byCategory"] != summary["customers"]["byCategory"]
-    new_detail = client.get(f"/api/v1/customers/{top['id']}", headers=auth_headers).json()
-    assert new_detail["riskScore"] != original_score
-
-    # 9. The change is persisted server-side, not just in the response.
-    persisted = client.get("/api/v1/model/settings", headers=auth_headers).json()
-    assert persisted["isDefault"] is False
-    assert persisted["settings"]["weights"]["expiry_proximity"] == 10.0
-    assert persisted["settings"]["weights"]["auto_prolong_disabled"] == 0.0
-
-    # 10. Re-import and verify integrity, then restore defaults.
-    assert (
-        client.put("/api/v1/source/snapshot", json=snapshot_payload, headers=auth_headers).status_code
-        == 200
-    )
-    counts = client.get("/api/v1/source/snapshot", headers=auth_headers).json()["counts"]
-    assert counts == {"accounts": 10, "services": 30, "transactions": 100}
-    assert (
-        client.post("/api/v1/model/settings/reset", headers=auth_headers).json()["isDefault"] is True
-    )
-    restored = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
-    assert restored["customers"]["byCategory"] == summary["customers"]["byCategory"]
+    broken["services"][0]["ownerId"] = 9999
+    assert client.put("/api/v1/source/snapshot", json=broken, headers=auth_headers).status_code == 422
+    broken = copy.deepcopy(snapshot_payload)
+    broken["accounts"][0]["balance"] = True
+    assert client.put("/api/v1/source/snapshot", json=broken, headers=auth_headers).status_code == 422
+    assert client.get("/api/v1/source/snapshot", headers=auth_headers).json()["generation"] == 1
 
 
-def test_import_is_atomic_on_failure(client, auth_headers, snapshot_payload):
-    """A rejected import must leave the previous dataset byte-identical."""
-
+def test_failed_calculation_retains_inputs_and_published_result(client, auth_headers, snapshot_payload, analytics):
     before = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
-
-    broken = copy.deepcopy(snapshot_payload)
-    # Valid structure, invalid semantics: the account violates a documented invariant.
-    broken["accounts"][0]["withdrawBalance"] = broken["accounts"][0]["balance"] + 1
-    assert (
-        client.put("/api/v1/source/snapshot", json=broken, headers=auth_headers).status_code == 422
-    )
-
-    after = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
-    assert after["customers"] == before["customers"]
-    assert after["revenue"] == before["revenue"]
-    assert (
-        client.get("/api/v1/source/snapshot", headers=auth_headers).json()["counts"]
-        == {"accounts": 10, "services": 30, "transactions": 100}
-    )
+    analytics.error = RuntimeError("fixture failure")
+    source = copy.deepcopy(snapshot_payload)
+    source["accounts"][0]["balance"] += 1
+    assert client.put("/api/v1/source/snapshot", json=source, headers=auth_headers).status_code == 500
+    assert client.patch("/api/v1/model/settings", json={"horizonDays": 7}, headers=auth_headers).status_code == 500
+    assert client.get("/api/v1/analytics/summary", headers=auth_headers).json() == before
+    assert client.get("/api/v1/model/settings", headers=auth_headers).json()["settings"]["horizonDays"] == 30
+    assert client.app.state.runtime.storage.load().source["accounts"][0]["balance"] == snapshot_payload["accounts"][0]["balance"]
 
 
-def test_analysis_is_deterministic_for_a_fixed_clock(client, auth_headers):
-    """With AEZA_AS_OF pinned, repeated runs must produce identical numbers."""
-
-    first = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
-    second = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
-    assert first["customers"] == second["customers"]
-    assert first["revenue"] == second["revenue"]
-    assert first["topRiskReasons"] == second["topRiskReasons"]
+def test_invalid_external_output_is_502_and_not_published(client, auth_headers, analytics):
+    analytics.transform = lambda result: Analysis(result.summary, [])
+    response = client.patch("/api/v1/model/settings", json={"horizonDays": 7}, headers=auth_headers)
+    assert response.status_code == 502
+    assert client.app.state.runtime.storage.load().generation == 1
 
 
-def test_scores_are_reproducible_across_processes(app_env, snapshot_payload):
-    """Recomputing from a clean database yields the same scores."""
+def test_module_cannot_mutate_published_inputs(client, analytics):
+    runtime = client.app.state.runtime
+    before = runtime.storage.load()
+    calculate = analytics.calculate
+    def mutate(state):
+        state.source["accounts"][0]["email"] = "changed@example.test"
+        return calculate(state)
+    analytics.calculate = mutate
+    import pytest
+    with pytest.raises(ModuleContractError):
+        runtime.core.update(patch={"horizonDays": 7})
+    assert runtime.storage.load() == before
 
-    from fastapi.testclient import TestClient
 
-    from app.main import create_app
+def test_live_clock_recalculates_without_source_change(settings, analytics, monkeypatch):
+    from threading import Event
+    completed = Event()
+    live = replace(settings, as_of="now", recalculate_seconds=1)
+    with TestClient(create_app(live, analytics)) as running:
+        storage = running.app.state.runtime.storage
+        publish = storage.publish
+        def observe(previous, candidate, result, actor):
+            published = publish(previous, candidate, result, actor)
+            if published and candidate.generation >= 2:
+                completed.set()
+            return published
+        monkeypatch.setattr(storage, "publish", observe)
+        assert completed.wait(timeout=5)
+        state = storage.load()
+        assert state.generation >= 2 and state.source_version == 1 and state.model_version == 1
 
-    with TestClient(create_app()) as first_client:
-        token = first_client.post(
-            "/api/v1/auth/login", json={"email": "analyst@aeza.test", "password": "demo123"}
-        ).json()["access_token"]
-        headers = {"Authorization": f"Bearer {token}"}
-        first = first_client.get("/api/v1/customers?pageSize=200", headers=headers).json()["items"]
 
-    from app.db import get_session_factory
+def test_metrics_support_dedicated_collector_token(settings, analytics):
+    configured = replace(settings, metrics_token="collector-token")
+    with TestClient(create_app(configured, analytics)) as client:
+        assert client.get("/metrics").status_code == 401
+        assert client.get("/metrics", headers={"Authorization": "Bearer collector-token"}).status_code == 200
 
-    with get_session_factory()() as session:
-        assert current_counts(session) == {"accounts": 10, "services": 30, "transactions": 100}
 
-    with TestClient(create_app()) as second_client:
-        token = second_client.post(
-            "/api/v1/auth/login", json={"email": "analyst@aeza.test", "password": "demo123"}
-        ).json()["access_token"]
-        headers = {"Authorization": f"Bearer {token}"}
-        second = second_client.get("/api/v1/customers?pageSize=200", headers=headers).json()["items"]
+def test_write_failure_rolls_back_entire_publication(client, auth_headers, snapshot_payload):
+    def fail(*args):
+        raise RuntimeError("fixture storage failure")
+    event.listen(CustomerRow, "before_insert", fail)
+    try:
+        source = copy.deepcopy(snapshot_payload)
+        source["accounts"][0]["balance"] += 1
+        assert client.put("/api/v1/source/snapshot", json=source, headers=auth_headers).status_code == 500
+    finally:
+        event.remove(CustomerRow, "before_insert", fail)
+    runtime = client.app.state.runtime
+    assert runtime.storage.load().generation == 1
+    with runtime.database.sessions() as session:
+        assert session.scalar(select(func.count()).select_from(SourceRow)) == 1
+        assert session.scalar(select(func.count()).select_from(AnalysisRow)) == 1
 
-    assert [(i["id"], i["riskScore"]) for i in first] == [
-        (i["id"], i["riskScore"]) for i in second
-    ]
+
+def test_concurrent_patches_recalculate_after_cas_conflict(client, analytics):
+    runtime = client.app.state.runtime
+    barrier = Barrier(2)
+    lock = Lock()
+    calculate = analytics.calculate
+    calls = 0
+    def simultaneous(state):
+        nonlocal calls
+        with lock:
+            calls += 1
+            number = calls
+        if number <= 2:
+            barrier.wait(timeout=5)
+        return calculate(state)
+    analytics.calculate = simultaneous
+    with ThreadPoolExecutor(2) as executor:
+        first = executor.submit(runtime.core.update, patch={"horizonDays": 7})
+        second = executor.submit(runtime.core.update, patch={"weights": {"fixture": 2.0}})
+        first.result(timeout=10)
+        second.result(timeout=10)
+    state = runtime.storage.load()
+    assert state.generation == 3
+    assert state.settings["horizonDays"] == 7
+    assert state.settings["weights"]["fixture"] == 2
+    assert calls == 3
+
+
+def test_stale_result_cannot_replace_newer_result(client):
+    runtime = client.app.state.runtime
+    old = runtime.storage.load()
+    stale = replace(old, generation=old.generation + 1)
+    result = runtime.calculation.calculate(stale)
+    new = runtime.core.update(patch={"horizonDays": 7})
+    assert runtime.storage.publish(old, stale, result, "stale") is False
+    assert runtime.storage.load() == new
+
+
+def test_settings_sessions_and_saved_reads_survive_restart(client, auth_headers, settings, analytics):
+    client.patch("/api/v1/model/settings", json={"horizonDays": 7}, headers=auth_headers)
+    calls = analytics.calls
+    with TestClient(create_app(settings, analytics)) as restarted:
+        assert restarted.get("/api/v1/auth/me", headers=auth_headers).status_code == 200
+        body = restarted.get("/api/v1/model/settings", headers=auth_headers).json()
+        assert body["settings"]["horizonDays"] == 7 and body["generation"] == 2
+        assert analytics.calls == calls
+    with TestClient(create_app(settings)) as without_module:
+        assert without_module.get("/ready").status_code == 503
+        assert without_module.get("/api/v1/customers", headers=auth_headers).status_code == 200
+        assert without_module.get("/api/v1/model/settings", headers=auth_headers).status_code == 200
+        assert without_module.patch("/api/v1/model/settings", json={"horizonDays": 8}, headers=auth_headers).status_code == 503
+
+
+def test_observations_do_not_invent_event_times(client, auth_headers, snapshot_payload):
+    source = copy.deepcopy(snapshot_payload)
+    first = source["services"][0]
+    first["status"] = "deleted" if first["status"] != "deleted" else "active"
+    response = client.put("/api/v1/source/snapshot", json=source, headers=auth_headers)
+    assert response.status_code == 200, response.text
+    history = client.get(f"/api/v1/source/observations?serviceId={first['id']}", headers=auth_headers).json()["items"]
+    assert len(history) == 2
+    assert history[0]["sourceVersion"] == 2
+    assert history[0]["status"] == first["status"]
+    assert history[0]["previousObservedAt"] is not None and history[0]["eventAt"] is None
+
+
+def test_disappearance_is_observation_and_not_deleted_status(client, auth_headers, snapshot_payload):
+    source = copy.deepcopy(snapshot_payload)
+    service_id = source["services"].pop(0)["id"]
+    source["transactions"] = [item for item in source["transactions"] if item["serviceId"] != service_id]
+    assert client.put("/api/v1/source/snapshot", json=source, headers=auth_headers).status_code == 200
+    item = client.get(f"/api/v1/source/observations?serviceId={service_id}", headers=auth_headers).json()["items"][0]
+    assert item["status"] is None
+
+
+def test_sse_sends_current_version_on_reconnect_and_stops_after_logout(client, auth_headers):
+    class Connected:
+        async def is_disconnected(self):
+            return False
+    runtime = client.app.state.runtime
+    token = auth_headers["Authorization"].split(" ", 1)[1]
+    async def read():
+        stream = events(runtime, token, Connected(), 999)
+        chunk = await anext(stream)
+        assert "id: 1" in chunk and "analysis.updated" in chunk
+        await stream.aclose()
+        runtime.auth.logout(runtime.auth.authenticate(token))
+        stream = events(runtime, token, Connected(), 1)
+        try:
+            await anext(stream)
+            assert False
+        except StopAsyncIteration:
+            pass
+    asyncio.run(read())

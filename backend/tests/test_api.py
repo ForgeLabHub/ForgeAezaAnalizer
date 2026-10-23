@@ -1,411 +1,157 @@
-"""API tests: auth, customers, analytics, settings, import, metrics, OpenAPI."""
-
 from __future__ import annotations
 
-import copy
-
 import pytest
+from fastapi.testclient import TestClient
+
+from backend.app.main import create_app
 
 
-# --------------------------------------------------------------------------- auth
+def test_stub_starts_auth_and_reports_missing_module(settings):
+    with TestClient(create_app(settings)) as client:
+        assert client.get("/health").json() == {"status": "ok"}
+        assert client.get("/ready").status_code == 503
+        assert client.get("/api/v1/docs").status_code == 200
+        login = client.post("/api/v1/auth/login", json={"email": "analyst@aeza.test", "password": "demo123"})
+        assert login.status_code == 200
+        headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        assert client.get("/api/v1/analytics/summary", headers=headers).status_code == 503
+        assert client.patch("/api/v1/model/settings", json={"horizonDays": 7}, headers=headers).status_code == 503
+        assert client.post("/api/v1/auth/logout", headers=headers).status_code == 204
+        assert client.get("/api/v1/auth/me", headers=headers).status_code == 401
 
 
-def test_login_success_returns_token(client):
-    response = client.post(
-        "/api/v1/auth/login", json={"email": "analyst@aeza.test", "password": "demo123"}
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["token_type"] == "bearer"
-    assert body["access_token"]
-    assert body["expires_in"] > 0
+@pytest.mark.parametrize("method,path,payload", [
+    ("GET", "/api/v1/customers", None), ("GET", "/api/v1/customers/1", None),
+    ("GET", "/api/v1/analytics/summary", None), ("GET", "/api/v1/analytics/events", None),
+    ("GET", "/api/v1/model/settings", None), ("GET", "/api/v1/source/snapshot", None),
+    ("GET", "/api/v1/source/observations", None), ("POST", "/api/v1/auth/logout", None),
+    ("PATCH", "/api/v1/model/settings", {"horizonDays": 7}),
+    ("POST", "/api/v1/model/settings/reset", None), ("GET", "/metrics", None),
+    ("PUT", "/api/v1/source/snapshot", {"accounts": [], "services": [], "transactions": []}),
+])
+def test_private_endpoints_require_auth(client, method, path, payload):
+    assert client.request(method, path, json=payload).status_code == 401
 
 
-def test_login_wrong_password_is_401(client):
-    response = client.post(
-        "/api/v1/auth/login", json={"email": "analyst@aeza.test", "password": "nope"}
-    )
-    assert response.status_code == 401
+def test_login_errors_do_not_enumerate_users(client):
+    bodies = [client.post("/api/v1/auth/login", json={"email": email, "password": "bad"}).json()
+        for email in ("analyst@aeza.test", "unknown@example.test")]
+    assert bodies[0] == bodies[1]
 
 
-def test_login_unknown_user_is_401_without_enumeration(client):
-    response = client.post(
-        "/api/v1/auth/login", json={"email": "ghost@aeza.test", "password": "nope"}
-    )
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Неверный email или пароль"
+def test_secret_not_echoed_on_validation_failure(client):
+    response = client.post("/api/v1/auth/login", json={"email": "a", "password": "private-password", "extra": "private-password"})
+    assert response.status_code == 422
+    assert "private-password" not in response.text
 
 
-def test_protected_routes_require_auth(client):
-    for path in (
-        "/api/v1/customers",
-        "/api/v1/customers/1",
-        "/api/v1/analytics/summary",
-        "/api/v1/model/settings",
-        "/api/v1/source/snapshot",
-    ):
-        assert client.get(path).status_code == 401, path
-
-
-def test_me_returns_current_user(client, auth_headers):
-    response = client.get("/api/v1/auth/me", headers=auth_headers)
-    assert response.status_code == 200
-    assert response.json()["email"] == "analyst@aeza.test"
-
-
-def test_invalid_token_is_401(client):
-    response = client.get("/api/v1/auth/me", headers={"Authorization": "Bearer garbage"})
-    assert response.status_code == 401
-
-
-def test_logout_is_authenticated_and_204(client, auth_headers):
+def test_logout_revokes_only_current_session(client, auth_headers):
+    other = client.post("/api/v1/auth/login", json={"email": "analyst@aeza.test", "password": "demo123"}).json()
     assert client.post("/api/v1/auth/logout", headers=auth_headers).status_code == 204
-    assert client.post("/api/v1/auth/logout").status_code == 401
-
-
-# --------------------------------------------------------------------------- customers
-
-
-def test_customer_list_paginates(client, auth_headers):
-    response = client.get("/api/v1/customers?page=1&pageSize=3", headers=auth_headers)
-    assert response.status_code == 200
-    body = response.json()
-    assert body["total"] == 10
-    assert len(body["items"]) == 3
-    assert body["pages"] == 4
-
-
-def test_customer_list_search_by_email(client, auth_headers):
-    response = client.get("/api/v1/customers?search=user-0004", headers=auth_headers)
-    assert response.status_code == 200
-    items = response.json()["items"]
-    assert len(items) == 1
-    assert items[0]["id"] == 4
-
-
-def test_customer_list_search_by_id(client, auth_headers):
-    response = client.get("/api/v1/customers?search=7", headers=auth_headers)
-    assert any(item["id"] == 7 for item in response.json()["items"])
-
-
-@pytest.mark.parametrize("field", ["id", "email", "riskScore", "balance", "totalReplenished"])
-@pytest.mark.parametrize("direction", ["asc", "desc"])
-def test_customer_sorting_changes_order(client, auth_headers, field, direction):
-    response = client.get(
-        f"/api/v1/customers?sortBy={field}&sortDir={direction}&pageSize=200", headers=auth_headers
-    )
-    assert response.status_code == 200
-    items = response.json()["items"]
-    assert len(items) == 10
-
-    if field == "riskScore":
-        values = [(i["riskScore"] is None, -(i["riskScore"] or 0)) for i in items]
-    elif field == "email":
-        values = [i["email"].lower() for i in items]
-    elif field == "balance":
-        values = [i["balance"]["cents"] for i in items]
-    elif field == "totalReplenished":
-        values = [i["totalReplenished"]["cents"] for i in items]
-    else:
-        values = [i["id"] for i in items]
-
-    expected = sorted(values, reverse=(direction == "desc"))
-    if field == "riskScore":
-        expected = sorted(values, reverse=(direction == "asc"))
-    assert values == expected, f"{field} {direction}"
-
-
-def test_numeric_sorting_is_not_lexicographic(client, auth_headers):
-    # Balance 91506 cents vs 3478 cents: string sort would put "91506" first for
-    # descending but would mis-order values of different digit lengths ascending.
-    asc = client.get(
-        "/api/v1/customers?sortBy=balance&sortDir=asc&pageSize=200", headers=auth_headers
-    ).json()["items"]
-    cents = [i["balance"]["cents"] for i in asc]
-    assert cents == sorted(cents)
-    assert cents[0] < 10_000 < cents[-1]
-
-
-def test_risk_category_filter(client, auth_headers):
-    response = client.get("/api/v1/customers?riskCategory=high&pageSize=200", headers=auth_headers)
-    assert response.status_code == 200
-    items = response.json()["items"]
-    assert items
-    assert all(i["riskCategory"] == "high" for i in items)
-
-
-def test_service_status_filter(client, auth_headers):
-    response = client.get(
-        "/api/v1/customers?serviceStatus=prolong_wait&pageSize=200", headers=auth_headers
-    )
-    assert response.status_code == 200
-    assert response.json()["items"]
-
-
-def test_invalid_sort_field_is_400(client, auth_headers):
-    assert client.get("/api/v1/customers?sortBy=secret", headers=auth_headers).status_code == 400
-
-
-def test_invalid_risk_category_is_400(client, auth_headers):
-    assert (
-        client.get("/api/v1/customers?riskCategory=bogus", headers=auth_headers).status_code == 400
-    )
-
-
-def test_customer_detail_shape(client, auth_headers):
-    response = client.get("/api/v1/customers/1", headers=auth_headers)
-    assert response.status_code == 200
-    body = response.json()
-    assert body["id"] == 1
-    assert len(body["services"]) == 3
-    for service in body["services"]:
-        assert "riskScore" in service
-        assert "reasons" in service
-        assert "factors" in service
-        assert service["price"]["cents"] >= 0
-        assert service["price"]["eur"]
-
-
-def test_customer_detail_unknown_id_is_404(client, auth_headers):
-    assert client.get("/api/v1/customers/9999", headers=auth_headers).status_code == 404
-
-
-def test_customer_detail_separates_current_state_from_forecast(client, auth_headers):
-    body = client.get("/api/v1/customers/3", headers=auth_headers).json()
-    # Customer 3 owns a deleted service; it must be reported as concluded, not forecast.
-    deleted = [s for s in body["services"] if s["status"] == "deleted"]
-    assert deleted
-    assert all(s["eligibleForForecast"] is False for s in deleted)
-    assert all(s["riskScore"] is None for s in deleted)
-    assert deleted[0]["stateNote"]
-
-
-# --------------------------------------------------------------------------- analytics
-
-
-def test_summary_reports_honest_metadata(client, auth_headers):
-    body = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
-    assert body["customers"]["total"] == 10
-    assert body["services"]["total"] == 30
-    assert body["services"]["open"] == 18
-    assert body["services"]["concluded"] == 12
-    assert body["historyAvailable"] is False
-    assert body["model"]["calibrated"] is False
-    assert "не является" in body["model"]["note"] or "не откалиброван" in body["model"]["note"]
-
-
-def test_summary_revenue_is_separate_from_balances(client, auth_headers):
-    body = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
-    assert body["revenue"]["revenueAtRiskCents"] <= body["revenue"]["upcomingRenewalsCents"]
-    assert body["revenue"]["historicalReplenishedCents"] > 0
-    # Historical top-ups must never be folded into revenue at risk.
-    assert body["revenue"]["revenueAtRiskCents"] != body["revenue"]["historicalReplenishedCents"]
-
-
-def test_summary_risk_distribution_sums_to_customer_total(client, auth_headers):
-    body = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
-    assert sum(body["customers"]["byCategory"].values()) == body["customers"]["total"]
-
-
-def test_summary_reasons_are_labelled(client, auth_headers):
-    body = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
-    assert body["topRiskReasons"]
-    assert all(r["label"] and r["count"] > 0 for r in body["topRiskReasons"])
-
-
-# --------------------------------------------------------------------------- settings
-
-
-def test_settings_default_and_reset(client, auth_headers):
-    body = client.get("/api/v1/model/settings", headers=auth_headers).json()
-    assert body["isDefault"] is True
-    assert body["settings"]["horizonDays"] == 30
-    assert len(body["factors"]) >= 5
-    assert all(f["normalization"] for f in body["factors"])
-
-
-def test_patch_settings_persists(client, auth_headers):
-    response = client.patch(
-        "/api/v1/model/settings",
-        json={"horizonDays": 60, "weights": {"expiry_proximity": 9.0}},
-        headers=auth_headers,
-    )
-    assert response.status_code == 200
-    assert response.json()["isDefault"] is False
-
-    reread = client.get("/api/v1/model/settings", headers=auth_headers).json()
-    assert reread["settings"]["horizonDays"] == 60
-    assert reread["settings"]["weights"]["expiry_proximity"] == 9.0
-
-
-def test_patch_settings_rejects_negative_weight(client, auth_headers):
-    response = client.patch(
-        "/api/v1/model/settings", json={"weights": {"expiry_proximity": -1}}, headers=auth_headers
-    )
-    assert response.status_code == 422
-
-
-def test_patch_settings_rejects_unknown_factor(client, auth_headers):
-    response = client.patch(
-        "/api/v1/model/settings", json={"weights": {"not_a_factor": 1}}, headers=auth_headers
-    )
-    assert response.status_code == 422
-
-
-def test_patch_settings_rejects_inverted_thresholds(client, auth_headers):
-    response = client.patch(
-        "/api/v1/model/settings", json={"lowMax": 80, "mediumMax": 50}, headers=auth_headers
-    )
-    assert response.status_code == 422
-
-
-def test_weight_change_really_changes_results(client, auth_headers):
-    before = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
-    factors = client.get("/api/v1/model/settings", headers=auth_headers).json()["factors"]
-
-    # Concentrate all weight on autoprolong, which many services have disabled.
-    zeroed = {f["key"]: 0.0 for f in factors}
-    zeroed["auto_prolong_disabled"] = 10.0
-    assert client.patch(
-        "/api/v1/model/settings", json={"weights": zeroed}, headers=auth_headers
-    ).status_code == 200
-
-    after = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
-    assert after["customers"]["byCategory"] != before["customers"]["byCategory"]
-
-    client.post("/api/v1/model/settings/reset", headers=auth_headers)
-
-
-def test_horizon_change_changes_revenue(client, auth_headers):
-    client.post("/api/v1/model/settings/reset", headers=auth_headers)
-    short = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
-    client.patch("/api/v1/model/settings", json={"horizonDays": 365}, headers=auth_headers)
-    long = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
-    assert long["revenue"]["upcomingRenewalsCents"] >= short["revenue"]["upcomingRenewalsCents"]
-    assert long["revenue"]["upcomingRenewalsCents"] > short["revenue"]["upcomingRenewalsCents"]
-    client.post("/api/v1/model/settings/reset", headers=auth_headers)
-
-
-# --------------------------------------------------------------------------- source / import
-
-
-def test_snapshot_status(client, auth_headers):
-    body = client.get("/api/v1/source/snapshot", headers=auth_headers).json()
-    assert body["counts"] == {"accounts": 10, "services": 30, "transactions": 100}
-    assert body["lastImport"] is not None
-
-
-def test_import_valid_snapshot_is_idempotent(client, auth_headers, snapshot_payload):
-    for _ in range(2):
-        response = client.put(
-            "/api/v1/source/snapshot", json=snapshot_payload, headers=auth_headers
-        )
+    assert client.get("/api/v1/auth/me", headers=auth_headers).status_code == 401
+    assert client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {other['access_token']}"}).status_code == 200
+
+
+def test_reads_share_published_generation_without_calculation(client, auth_headers, analytics):
+    calls = analytics.calls
+    for path in ("/api/v1/customers?pageSize=3", "/api/v1/customers/1", "/api/v1/analytics/summary",
+                 "/api/v1/model/settings", "/api/v1/source/snapshot"):
+        response = client.get(path, headers=auth_headers)
         assert response.status_code == 200, response.text
-        report = response.json()["report"]
-        assert report["accepted"] == {"accounts": 10, "services": 30, "transactions": 100}
-        assert report["rejected"] == 0
-
-    counts = client.get("/api/v1/source/snapshot", headers=auth_headers).json()["counts"]
-    assert counts == {"accounts": 10, "services": 30, "transactions": 100}
+        assert response.json()["generation"] == 1
+        assert response.headers["X-Analysis-Generation"] == "1"
+    assert analytics.calls == calls
 
 
-def test_import_rejects_negative_money_and_keeps_previous_data(
-    client, auth_headers, snapshot_payload
-):
-    broken = copy.deepcopy(snapshot_payload)
-    broken["accounts"][0]["balance"] = -1
-    response = client.put("/api/v1/source/snapshot", json=broken, headers=auth_headers)
+@pytest.mark.parametrize("field", ["id", "email", "balance", "totalReplenished", "riskScore"])
+@pytest.mark.parametrize("direction", ["asc", "desc"])
+def test_sql_sorting_with_stable_ties_and_nulls_last(client, auth_headers, field, direction):
+    body = client.get(f"/api/v1/customers?sortBy={field}&sortDir={direction}&pageSize=200", headers=auth_headers).json()
+    items = body["items"]
+    def value(item):
+        raw = item[field]
+        if field in {"balance", "totalReplenished"}:
+            raw = raw["cents"]
+        return raw.lower() if isinstance(raw, str) else raw
+    values = [value(item) for item in items if value(item) is not None]
+    assert values == sorted(values, reverse=direction == "desc")
+    for left, right in zip(items, items[1:]):
+        if value(left) == value(right):
+            assert left["id"] < right["id"]
+    nulls = [value(item) is None for item in items]
+    assert nulls == sorted(nulls)
+
+
+def test_sql_search_filters_and_pagination(client, auth_headers):
+    page = client.get("/api/v1/customers?pageSize=3", headers=auth_headers).json()
+    assert page["total"] == 10 and page["pages"] == 4 and len(page["items"]) == 3
+    found = client.get("/api/v1/customers?search=user-0004", headers=auth_headers).json()["items"]
+    assert [item["id"] for item in found] == [4]
+    assert client.get("/api/v1/customers?search=%", headers=auth_headers).json()["items"] == []
+    items = client.get("/api/v1/customers?riskCategory=high", headers=auth_headers).json()["items"]
+    assert items and all(item["riskCategory"] == "high" for item in items)
+    assert client.get("/api/v1/customers?serviceStatus=prolong_wait", headers=auth_headers).json()["items"]
+
+
+@pytest.mark.parametrize("query", ["sortBy=unknown", "riskCategory=unknown", "serviceStatus=unknown", "page=0", "pageSize=10000"])
+def test_invalid_queries_are_422(client, auth_headers, query):
+    assert client.get(f"/api/v1/customers?{query}", headers=auth_headers).status_code == 422
+
+
+def test_missing_resources_are_404(client, auth_headers):
+    assert client.get("/api/v1/customers/99999", headers=auth_headers).status_code == 404
+    assert client.get("/api/v1/analytics/summary?generation=999", headers=auth_headers).status_code == 404
+
+
+@pytest.mark.parametrize("patch", [{"weights": {"unknown": 1}}, {"weights": {"fixture": -1}},
+    {"weights": {"fixture": True}}, {"horizonDays": None}, {"lowMax": 80, "mediumMax": 10}])
+def test_invalid_model_settings_never_publish(client, auth_headers, analytics, patch):
+    calls = analytics.calls
+    assert client.patch("/api/v1/model/settings", json=patch, headers=auth_headers).status_code == 422
+    assert analytics.calls == calls
+    assert client.get("/api/v1/analytics/summary", headers=auth_headers).json()["generation"] == 1
+
+
+def test_non_finite_weight_is_rejected_without_serialization_error(client, auth_headers):
+    response = client.patch("/api/v1/model/settings", content='{"weights":{"fixture":NaN}}',
+        headers={**auth_headers, "Content-Type": "application/json"})
     assert response.status_code == 422
 
-    # Atomicity: the previous dataset must still be intact.
-    counts = client.get("/api/v1/source/snapshot", headers=auth_headers).json()["counts"]
-    assert counts == {"accounts": 10, "services": 30, "transactions": 100}
+
+def test_model_update_reset_and_generation_pinning(client, auth_headers):
+    response = client.patch("/api/v1/model/settings", json={"horizonDays": 7, "expectedGeneration": 1}, headers=auth_headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["generation"] == 2
+    assert response.json()["settings"]["horizonDays"] == 7
+    old = client.get("/api/v1/model/settings?generation=1", headers=auth_headers).json()
+    assert old["settings"]["horizonDays"] == 30
+    assert client.get("/api/v1/customers?generation=1", headers=auth_headers).json()["generation"] == 1
+    assert client.patch("/api/v1/model/settings", json={"horizonDays": 8, "expectedGeneration": 1}, headers=auth_headers).status_code == 409
+    assert client.post("/api/v1/model/settings/reset", headers=auth_headers).json()["settings"]["horizonDays"] == 30
 
 
-def test_import_rejects_dangling_foreign_key(client, auth_headers, snapshot_payload):
-    broken = copy.deepcopy(snapshot_payload)
-    broken["services"][0]["ownerId"] = 999
-    response = client.put("/api/v1/source/snapshot", json=broken, headers=auth_headers)
-    assert response.status_code == 422
-    counts = client.get("/api/v1/source/snapshot", headers=auth_headers).json()["counts"]
-    assert counts["accounts"] == 10
+def test_metrics_read_published_result_without_summary_request(client, auth_headers):
+    body = client.get("/metrics", headers=auth_headers).text
+    assert "aeza_analysis_generation 1.0" in body
+    assert "aeza_customers_total 10.0" in body
+    assert "@example.test" not in body
+    client.patch("/api/v1/model/settings", json={"horizonDays": 7}, headers=auth_headers)
+    assert "aeza_analysis_generation 2.0" in client.get("/metrics", headers=auth_headers).text
 
 
-def test_import_rejects_duplicate_ids(client, auth_headers, snapshot_payload):
-    broken = copy.deepcopy(snapshot_payload)
-    broken["accounts"][1]["id"] = broken["accounts"][0]["id"]
-    response = client.put("/api/v1/source/snapshot", json=broken, headers=auth_headers)
-    assert response.status_code == 422
+def test_unmatched_route_metrics_do_not_store_requested_paths(client, auth_headers):
+    client.get("/random-private-id")
+    body = client.get("/metrics", headers=auth_headers).text
+    assert 'route="unmatched"' in body
+    assert "random-private-id" not in body
 
 
-def test_import_rejects_wrong_type(client, auth_headers):
-    response = client.put("/api/v1/source/snapshot", json=[], headers=auth_headers)
-    assert response.status_code == 422
-
-
-def test_import_then_analytics_reflects_new_data(client, auth_headers, snapshot_payload):
-    reduced = copy.deepcopy(snapshot_payload)
-    keep = {1, 2, 3}
-    reduced["services"] = [s for s in reduced["services"] if s["id"] in keep]
-    reduced["transactions"] = [t for t in reduced["transactions"] if t["serviceId"] in keep]
-    reduced["accounts"] = [a for a in reduced["accounts"] if a["id"] in {1, 2, 3}]
-
-    assert (
-        client.put("/api/v1/source/snapshot", json=reduced, headers=auth_headers).status_code == 200
-    )
-    summary = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
-    assert summary["customers"]["total"] == 3
-    assert summary["services"]["total"] == 3
-
-    # Restore the full dataset for subsequent tests.
-    client.put("/api/v1/source/snapshot", json=snapshot_payload, headers=auth_headers)
-    assert (
-        client.get("/api/v1/analytics/summary", headers=auth_headers).json()["customers"]["total"]
-        == 10
-    )
-
-
-# --------------------------------------------------------------------------- metrics / openapi
-
-
-def test_metrics_endpoint_exposes_expected_series(client, auth_headers):
-    client.get("/api/v1/analytics/summary", headers=auth_headers)
-    response = client.get("/metrics")
-    assert response.status_code == 200
-    text = response.text
-    assert "aeza_customers_total" in text
-    assert "aeza_services_total" in text
-    assert "aeza_customers_by_risk_category" in text
-    assert "aeza_revenue_at_risk_eur" in text
-
-
-def test_metrics_contain_no_personal_data(client, auth_headers):
-    client.get("/api/v1/customers", headers=auth_headers)
-    text = client.get("/metrics").text
-    assert "example.test" not in text
-    assert "user-000" not in text
-
-
-def test_openapi_matches_implemented_routes(client):
-    spec = client.get("/api/v1/openapi.json").json()
-    paths = set(spec["paths"])
-    expected = {
-        "/api/v1/auth/login",
-        "/api/v1/auth/me",
-        "/api/v1/auth/logout",
-        "/api/v1/customers",
-        "/api/v1/customers/{customer_id}",
-        "/api/v1/analytics/summary",
-        "/api/v1/model/settings",
-        "/api/v1/source/snapshot",
-        "/metrics",
-        "/api/v1/docs",
-    }
-    # /api/v1/docs is the Swagger UI itself; the spec covers the data routes.
-    missing = expected - paths - {"/api/v1/docs"}
-    assert not missing, f"missing from OpenAPI: {missing}"
-
-
-def test_openapi_documents_bearer_auth(client):
-    spec = client.get("/api/v1/openapi.json").json()
-    assert "securitySchemes" in spec["components"]
+def test_openapi_describes_responses_and_all_frontend_paths(client):
+    document = client.get("/api/v1/openapi.json").json()
+    for path in ("/api/v1/auth/login", "/api/v1/auth/me", "/api/v1/auth/logout",
+        "/api/v1/customers", "/api/v1/customers/{customer_id}", "/api/v1/analytics/summary",
+        "/api/v1/model/settings", "/api/v1/model/settings/reset", "/api/v1/source/snapshot",
+        "/api/v1/analytics/events", "/metrics"):
+        assert path in document["paths"]
+    schema = document["paths"]["/api/v1/customers"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    assert schema["$ref"].endswith("/CustomerPage")

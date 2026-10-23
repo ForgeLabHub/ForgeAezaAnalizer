@@ -1,174 +1,175 @@
-"""FastAPI application factory.
-
-Aéza - это быстрый хостинг
-"""
-
 from __future__ import annotations
 
-import datetime as dt
+import asyncio
+import hmac
 import json
 import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from sqlalchemy import func, select
+from prometheus_client import CONTENT_TYPE_LATEST
+from sqlalchemy import text
+from starlette.concurrency import run_in_threadpool
 
-from app.api import (
-    routes_analytics,
-    routes_auth,
-    routes_customers,
-    routes_model,
-    routes_source,
-)
-from app.auth.security import hash_password
-from app.config import get_settings
-from app.db import UserRow, init_db, session_scope
-from app.domain.importer import import_snapshot, parse_snapshot
-from app.metrics import API_ERRORS_TOTAL, API_REQUESTS_TOTAL, render_metrics
+from core import ConflictError, Core, InvalidInput, NotReadyError, ResourceNotFoundError
+from backend.app.api import routes_analytics, routes_auth, routes_customers, routes_model, routes_source
+from backend.app.api.deps import Runtime, RuntimeDep
+from backend.app.api.schemas import ErrorResponse
+from backend.app.auth.security import AuthService, Unauthorized
+from backend.app.config import Settings, get_settings
+from backend.app.db import Database
+from backend.app.metrics import Metrics
+from backend.app.modules import AnalyticsModule, CalculationAdapter, ModuleContractError, UnavailableAnalytics, load_module
+from backend.app.storage import Storage
 
 logger = logging.getLogger("aeza")
 
-DESCRIPTION = """
-API анализа риска оттока клиентов Aéza.
 
-Модель риска — прозрачный взвешенный rule-based скоринг. Балл риска (0–100) **не является
-откалиброванной вероятностью**: в исходном снимке нет исторических исходов оттока, поэтому
-модель не обучалась и не валидировалась на исторических событиях.
-
-Все денежные величины хранятся в евроцентах (целые числа, как в источнике). В ответах
-денежные поля отдаются парой `{cents, eur}`, где `eur` — десятичная строка.
-"""
-
-
-def _bootstrap_user() -> None:
-    """Create the bootstrap analyst account if it does not exist yet."""
-
-    settings = get_settings()
-    email = settings.bootstrap_admin_email
-    password = settings.bootstrap_admin_password
-    if not password:
-        # A deterministic dev default keeps local/demo runs usable; README
-        # instructs setting AEZA_ADMIN_PASSWORD for anything shared.
-        password = "aeza-demo-password"
-    with session_scope() as session:
-        existing = session.scalar(select(UserRow).where(UserRow.email == email))
-        if existing is None:
-            session.add(
-                UserRow(
-                    email=email,
-                    password_hash=hash_password(password),
-                    created_at=dt.datetime.now(dt.timezone.utc),
-                )
-            )
-            logger.info("bootstrap analyst account created")
-
-
-def _bootstrap_snapshot() -> None:
-    """Load the bundled snapshot when the dataset is empty and seeding is on."""
-
-    settings = get_settings()
-    if not settings.seed_demo_data:
-        return
-    path = settings.snapshot_path
-    if not os.path.exists(path):
-        logger.warning("snapshot file %s not found; skipping seed", path)
-        return
-    with session_scope() as session:
-        from app.db import AccountRow
-
-        count = session.scalar(select(func.count()).select_from(AccountRow)) or 0
-        if count:
+async def recalculate(runtime: Runtime, stop: asyncio.Event):
+    while True:
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=runtime.settings.recalculate_seconds)
             return
-        with open(path, encoding="utf-8") as fh:
-            payload = json.load(fh)
-        snapshot = parse_snapshot(payload)
-        import_snapshot(session, snapshot)
-        logger.info(
-            "seeded snapshot: %d accounts, %d services, %d transactions",
-            len(snapshot.accounts),
-            len(snapshot.services),
-            len(snapshot.transactions),
-        )
+        except asyncio.TimeoutError:
+            try:
+                await run_in_threadpool(runtime.core.update, actor="clock", recalculate=True)
+            except Exception:
+                logger.exception("scheduled calculation failed; previous result retained")
 
 
-def create_app() -> FastAPI:
-    settings = get_settings()
+def create_app(settings: Settings | None = None, analytics: AnalyticsModule | None = None) -> FastAPI:
+    settings = settings or get_settings()
+    module = analytics if analytics is not None else load_module(os.getenv("AEZA_ANALYTICS_FACTORY", ""))
 
     @asynccontextmanager
-    async def lifespan(_app: FastAPI):
-        init_db()
-        _bootstrap_user()
-        _bootstrap_snapshot()
-        yield
+    async def lifespan(application: FastAPI):
+        database = Database(settings.database_url)
+        storage = Storage(database)
+        calculation = CalculationAdapter(module)
+        auth = AuthService(database, settings)
+        runtime = Runtime(settings, database, storage, auth, calculation,
+            Core(storage, calculation, settings.reference_now))
+        stop = asyncio.Event()
+        task = None
 
-    app = FastAPI(
-        title=settings.app_name,
-        description=DESCRIPTION,
-        version="1.0.0",
-        docs_url=f"{settings.api_prefix}/docs",
-        openapi_url=f"{settings.api_prefix}/openapi.json",
-        redoc_url=None,
-        lifespan=lifespan,
-    )
+        def initialize():
+            database.initialize()
+            auth.bootstrap()
+            if isinstance(module, UnavailableAnalytics):
+                return
+            state = storage.load()
+            if not state.generation:
+                source = json.loads(Path(settings.snapshot_path).read_text(encoding="utf-8")) if settings.seed_demo_data else {
+                    "accounts": [], "services": [], "transactions": []}
+                runtime.core.update(source=source)
+            else:
+                changed_engine = storage.summary()["engineVersion"] != calculation.definition().version
+                runtime.core.update(recalculate=changed_engine)
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=False,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+        try:
+            await run_in_threadpool(initialize)
+            application.state.runtime = runtime
+            application.state.metrics = Metrics(storage)
+            if settings.as_of.lower() == "now" and not isinstance(module, UnavailableAnalytics):
+                task = asyncio.create_task(recalculate(runtime, stop))
+            yield
+        finally:
+            stop.set()
+            if task is not None:
+                await task
+            database.engine.dispose()
+
+    app = FastAPI(title=settings.app_name, version="2.0.0", lifespan=lifespan,
+        docs_url="/api/v1/docs", openapi_url="/api/v1/openapi.json", redoc_url=None,
+        description="Ядро и API Aéza. Аналитика и risk-engine подключаются отдельным модулем.",
+        responses={401: {"model": ErrorResponse}, 422: {"model": ErrorResponse},
+            409: {"model": ErrorResponse}, 502: {"model": ErrorResponse}, 503: {"model": ErrorResponse}})
+    app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins),
+        allow_credentials=False, allow_methods=["GET", "POST", "PATCH", "PUT"],
+        allow_headers=["Authorization", "Content-Type", "Last-Event-ID"],
+        expose_headers=["X-Analysis-Generation"])
 
     @app.middleware("http")
-    async def _observe(request: Request, call_next):
+    async def observe(request: Request, call_next):
         started = time.perf_counter()
-        response = await call_next(request)
-        route = request.scope.get("route")
-        label = getattr(route, "path", request.url.path)
-        API_REQUESTS_TOTAL.labels(route=label, method=request.method).inc()
-        if response.status_code >= 400:
-            API_ERRORS_TOTAL.labels(status_class=f"{response.status_code // 100}xx").inc()
-        response.headers["X-Process-Time-Ms"] = f"{(time.perf_counter() - started) * 1000:.1f}"
-        return response
+        status_code = 500
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        finally:
+            if hasattr(request.app.state, "metrics"):
+                route = getattr(request.scope.get("route"), "path", "unmatched")
+                request.app.state.metrics.observe(route, request.method, status_code, time.perf_counter() - started)
+
+    @app.exception_handler(Unauthorized)
+    async def unauthorized(request: Request, error: Unauthorized):
+        return JSONResponse({"detail": str(error)}, status_code=401, headers={"WWW-Authenticate": "Bearer"})
+
+    @app.exception_handler(InvalidInput)
+    async def invalid_input(request: Request, error: InvalidInput):
+        return JSONResponse({"detail": str(error)}, status_code=422)
+
+    @app.exception_handler(ConflictError)
+    async def conflict(request: Request, error: ConflictError):
+        return JSONResponse({"detail": str(error)}, status_code=409)
+
+    @app.exception_handler(NotReadyError)
+    async def unavailable(request: Request, error: NotReadyError):
+        return JSONResponse({"detail": str(error)}, status_code=503, headers={"Retry-After": "5"})
+
+    @app.exception_handler(ResourceNotFoundError)
+    async def not_found(request: Request, error: ResourceNotFoundError):
+        return JSONResponse({"detail": str(error)}, status_code=404)
+
+    @app.exception_handler(ModuleContractError)
+    async def invalid_module(request: Request, error: ModuleContractError):
+        logger.exception("analytics module contract violation")
+        return JSONResponse({"detail": str(error)}, status_code=502)
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_handler(request: Request, exc: RequestValidationError):
-        return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content={"detail": "Ошибка валидации запроса", "errors": exc.errors()[:20]},
-        )
+    async def validation(request: Request, error: RequestValidationError):
+        errors = [{key: item[key] for key in ("loc", "msg", "type")} for item in error.errors()[:20]]
+        return JSONResponse({"detail": "Ошибка валидации запроса", "errors": errors}, status_code=422)
 
     @app.exception_handler(Exception)
-    async def _unhandled_handler(request: Request, exc: Exception):  # pragma: no cover
-        # Never leak a stack trace or personal data to the client.
-        logger.exception("unhandled error on %s %s", request.method, request.url.path)
-        API_ERRORS_TOTAL.labels(status_class="5xx").inc()
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"detail": "Внутренняя ошибка сервера"},
-        )
+    async def unhandled(request: Request, error: Exception):
+        logger.exception("unhandled API error")
+        return JSONResponse({"detail": "Внутренняя ошибка сервера"}, status_code=500)
 
-    @app.get("/health", tags=["ops"], summary="Проверка живости")
-    def health() -> dict:
+    @app.get("/health", tags=["ops"])
+    def health():
         return {"status": "ok"}
 
-    @app.get("/metrics", tags=["ops"], summary="Метрики Prometheus", include_in_schema=True)
-    def metrics() -> Response:
-        body, content_type = render_metrics()
-        return Response(content=body, media_type=content_type)
+    @app.get("/ready", tags=["ops"])
+    def ready(runtime: RuntimeDep):
+        with runtime.database.sessions() as session:
+            session.execute(text("SELECT 1"))
+        if isinstance(module, UnavailableAnalytics):
+            raise NotReadyError("Модуль аналитики и risk-engine пока не подключён")
+        runtime.storage.summary()
+        return {"status": "ready"}
 
-    app.include_router(routes_auth.router, prefix=settings.api_prefix)
-    app.include_router(routes_customers.router, prefix=settings.api_prefix)
-    app.include_router(routes_analytics.router, prefix=settings.api_prefix)
-    app.include_router(routes_model.router, prefix=settings.api_prefix)
-    app.include_router(routes_source.router, prefix=settings.api_prefix)
+    @app.get("/metrics", tags=["ops"], response_class=Response)
+    def metrics(request: Request, runtime: RuntimeDep):
+        header = request.headers.get("authorization", "")
+        if settings.metrics_token:
+            if not hmac.compare_digest(header.encode(), f"Bearer {settings.metrics_token}".encode()):
+                raise Unauthorized("Требуется токен метрик")
+        else:
+            scheme, _, token = header.partition(" ")
+            if scheme.lower() != "bearer" or not token:
+                raise Unauthorized("Требуется авторизация")
+            runtime.auth.authenticate(token)
+        return Response(request.app.state.metrics.render(), headers={"Content-Type": CONTENT_TYPE_LATEST})
 
+    for router in (routes_auth.router, routes_customers.router, routes_analytics.router, routes_model.router, routes_source.router):
+        app.include_router(router, prefix=settings.api_prefix)
     return app
-
-
-app = create_app()
