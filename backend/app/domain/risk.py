@@ -26,7 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from app.domain.money import cents_to_eur
+from .money import cents_to_eur
 
 #: Service states that are still open, i.e. a future churn event is possible.
 ELIGIBLE_STATUSES: frozenset[str] = frozenset({"active", "suspended", "prolong_wait"})
