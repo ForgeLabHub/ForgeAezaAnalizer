@@ -1,13 +1,11 @@
-# Part A (`aeza_analyzer/`) + the `backend/auth` module.
-fastapi>=0.110
-uvicorn[standard]>=0.29
-sqlalchemy>=2.0
-pydantic>=2.6
-httpx>=0.27
-pytest>=8.0
+# Dependencies for the whole repository: part A (`aeza_analyzer/`) and part C
+# (`backend/auth/`). Part B keeps its own list in `backend/requirements.txt`,
+# because it builds and runs as a separate Docker image.
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+sqlalchemy>=2.0,<3.0
+pydantic>=2.7,<3.0
+pytest>=8.0,<9.0
 
-# Required by backend/auth/tokens.py (JWT signing) and the RSA key handling
-# around it. These were imported but missing from this file, so a clean
-# `pip install -r requirements.txt` could not run the auth tests.
-pyjwt>=2.8
-cryptography>=42.0
+# Part C signs JWTs with RS256 and manages an RSA keypair.
+PyJWT[crypto]>=2.10.1,<3
