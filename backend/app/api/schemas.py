@@ -282,6 +282,47 @@ class SourceAccepted(Version):
     report: dict
 
 
+class PriorityItem(Output):
+    rank: int
+    customerId: int
+    email: str
+    serviceId: int
+    serviceName: str
+    serviceStatus: str
+    riskScore: RiskScore | None
+    riskCategory: RiskCategory
+    daysToExpiry: float | None
+    renewalAt: str | None
+    renewalAmount: Money | None
+    revenueAtRisk: Money
+    priorityScore: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]
+    tier: Literal["p1", "p2", "p3"]
+    tierLabel: str
+    tierReason: str
+    reasons: list[str]
+    actions: list[str]
+
+
+class PrioritySummary(Output):
+    items: int
+    servicesInPortfolio: int
+    servicesScored: int
+    byTier: dict[str, int]
+    tierLabels: dict[str, str]
+    tierDescriptions: dict[str, str]
+    revenueAtRiskCents: int
+    revenueAtRiskEur: str
+    customers: int
+    note: str
+
+
+class PriorityResponse(Version):
+    items: list[PriorityItem]
+    summary: PrioritySummary
+    horizonDays: int | None
+    generatedAt: str | None
+
+
 class ErrorResponse(BaseModel):
     detail: str
     errors: list[dict] | None = None

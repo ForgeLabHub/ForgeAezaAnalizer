@@ -66,6 +66,7 @@ def service_payload(sa: ServiceAnalysis) -> dict:
         "missingData": risk.missing_data,
         "factors": [factor_payload(f) for f in risk.factors],
         "revenueAtRisk": money(sa.exposure.revenue_at_risk_cents) if sa.exposure else None,
+        "renewalAmount": money(sa.exposure.amount_cents) if sa.exposure else None,
         "upcomingRenewalAt": sa.exposure.renewal_at.isoformat() if sa.exposure else None,
         "recommendations": [
             {"code": r.code, "title": r.title, "detail": r.detail, "priority": r.priority}

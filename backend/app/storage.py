@@ -116,6 +116,39 @@ class Storage:
                 raise ResourceNotFoundError(f"Клиент {customer_id} не найден")
             return {**row.payload, **session.get(AnalysisRow, generation).summary["version"]}
 
+    def priority(self, *, generation=None, limit: int = 50, tier: str | None = None,
+                 sort: str = "priority") -> dict:
+        """Rank the stored generation into a retention worklist.
+
+        Ranking reads the same serialised payloads the dashboard and customer
+        card publish, so the worklist can never disagree with them.
+        """
+
+        from backend.app.domain.priority import (
+            build_priority,
+            priority_summary,
+            serialize_priority,
+        )
+
+        with self.database.sessions() as session:
+            generation = self._generation(session, generation)
+            analysis = session.get(AnalysisRow, generation)
+            rows = session.scalars(
+                select(CustomerRow)
+                .where(CustomerRow.generation == generation)
+                .order_by(CustomerRow.customer_id)
+            ).all()
+            customers = [row.payload for row in rows]
+            items = build_priority(customers, limit=limit, tier=tier, sort=sort)
+            summary = priority_summary(items, analysis.summary["services"]["total"])
+            return {
+                "items": [serialize_priority(item) for item in items],
+                "summary": summary,
+                "horizonDays": analysis.summary.get("horizonDays"),
+                "generatedAt": analysis.summary.get("generatedAt"),
+                **analysis.summary["version"],
+            }
+
     def model(self, generation=None) -> dict:
         with self.database.sessions() as session:
             generation = self._generation(session, generation)
