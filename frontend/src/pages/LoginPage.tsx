@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { ErrorBox } from '../components/ui'
+import { ThemeToggle } from '../lib/theme'
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -25,6 +26,7 @@ export default function LoginPage() {
 
   return (
     <div className="login-wrap">
+      <ThemeToggle className="login-theme-toggle" />
       <form className="login-card" onSubmit={onSubmit}>
         <div className="brand" style={{ marginBottom: 14 }}>
           <span className="brand-mark" aria-hidden="true">

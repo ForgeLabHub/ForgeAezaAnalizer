@@ -1,6 +1,7 @@
 import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import { useAuth } from './lib/auth'
 import { Loading } from './components/ui'
+import { ThemeToggle } from './lib/theme'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import CustomersPage from './pages/CustomersPage'
@@ -35,6 +36,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </nav>
         <div className="header-user">
           <span className="email">{email}</span>
+          <ThemeToggle />
           <button type="button" className="btn sm" onClick={onLogout}>
             Выйти
           </button>
