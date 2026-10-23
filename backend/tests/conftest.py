@@ -86,14 +86,15 @@ class FixtureAnalytics:
 
 @pytest.fixture(scope="session")
 def snapshot_payload():
-    return json.loads((ROOT / "backend/data/snapshot.json").read_text(encoding="utf-8"))
+    return json.loads((ROOT / "dataset/data.json").read_text(encoding="utf-8"))
 
 
 @pytest.fixture
 def settings(tmp_path):
     return Settings(database_url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}",
+        auth_database_url=f"sqlite:///{(tmp_path / 'auth.db').as_posix()}",
         jwt_secret="test-secret-key", bootstrap_admin_password="demo123",
-        snapshot_path=str(ROOT / "backend/data/snapshot.json"), as_of=AS_OF)
+        seed_demo_data=True, snapshot_path=str(ROOT / "dataset/data.json"), as_of=AS_OF)
 
 
 @pytest.fixture
