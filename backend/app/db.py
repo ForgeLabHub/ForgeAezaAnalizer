@@ -103,6 +103,27 @@ class AuditRow(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
 
 
+class RecommendationStatusRow(Base):
+    """Workflow status of one retention playbook for one customer.
+
+    Deliberately **not** keyed by ``generation``. A generation is republished on
+    every recalculation, so tying a status to it would silently reset the
+    operator's work whenever the snapshot or the model settings changed. The
+    natural key is the pair the analytics layer already uses to deduplicate
+    recommendations: the customer and the stable recommendation ``code``.
+
+    Nothing here feeds back into the model: a status is a workflow fact, not an
+    analytical signal, so it can never change a score or an exposure.
+    """
+
+    __tablename__ = "analyzer_recommendation_status"
+    customer_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16))
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    updated_by: Mapped[str] = mapped_column(String(320))
+
+
 class UserRow(Base):
     __tablename__ = "analyzer_users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
