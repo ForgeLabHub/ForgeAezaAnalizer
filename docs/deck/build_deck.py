@@ -1,815 +1,896 @@
-"""Build the Aéza Analyzer deck for «Хакатон Осень 2026» (ДГТУ).
+"""Builds the Aéza defence decks (UMIRHACK 2026 and Хакатон Осень 2026).
 
-Aéza - это быстрый хостинг
+Every number and every screenshot comes from the running product on the
+organiser dataset (10 accounts / 30 services / 100 transactions) at the fixed
+reference instant 2026-10-19 15:00 UTC. Unfilled facts are explicit placeholders
+and are listed in aeza_umirhack_placeholder_checklist.md.
 
-Every figure on every slide is recomputed here by importing the real domain
-modules from ``backend/app/domain`` and running them over ``dataset/data.json``.
-Nothing is transcribed by hand, so the deck cannot drift away from the product.
-
-Facts the repository does not contain (team name, participant names, demo URL)
-are left as bracketed placeholders instead of being invented.
-
-Run:  python3 docs/deck/build_deck.py
+All text is wrapped at build time with real Manrope metrics and emitted as one
+paragraph per line, so PowerPoint / LibreOffice / Keynote render identically.
 """
 
 from __future__ import annotations
 
-import collections
-import datetime as dt
-import json
-import os
 import sys
 
+from pathlib import Path
+
 from pptx import Presentation
-from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
-from pptx.util import Inches, Pt
+from pptx.chart.data import CategoryChartData
+from pptx.dml.color import RGBColor
+from pptx.enum.chart import XL_CHART_TYPE
+from pptx.enum.shapes import MSO_SHAPE
+from pptx.util import Emu, Inches, Pt
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-SHOTS = os.path.join(HERE, "shots")
-
-
-def find_repo_root(start):
-    """Walk up until the case dataset is found, so the script is relocatable."""
-
-    cur = start
-    while True:
-        if os.path.isdir(os.path.join(cur, "dataset")) and \
-           os.path.isdir(os.path.join(cur, "backend", "app", "domain")):
-            return cur
-        parent = os.path.dirname(cur)
-        if parent == cur:
-            raise SystemExit("repo root not found above " + start)
-        cur = parent
-
-
-REPO = find_repo_root(HERE)
-OUT = os.path.join(REPO, "aeza_hackathon_osen_2026.pptx")
-sys.path.insert(0, os.path.join(REPO, "backend"))
-
-from app.domain.risk import (  # noqa: E402
-    DEFAULT_WEIGHTS,
-    FACTORS,
-    RiskSettings,
-    compute_customer_risk,
-    compute_service_risk,
+from deckkit import (
+    CORAL, CORAL_DEEP, DIM, FONT, INK, INK_2, LINE, LINE_DARK, MINT, MUTED,
+    PAPER, SH, SW, TEXT,
+    WHITE, badge, bg, hairline, notes, numbered_marker, para, picture_fit,
+    qr_slot, rect, runs, textbox,
 )
-from app.domain.revenue import (  # noqa: E402
-    compute_customer_exposure,
-    compute_service_exposure,
-)
-from app.domain.schema import Snapshot  # noqa: E402
+from layout import OVERFLOW, lines_box, text_block
 
-from deck_lib import (  # noqa: E402
-    CONTENT_W,
-    CORAL,
-    DARK,
-    FONT,
-    INK,
-    INK_ON_DARK,
-    LINE,
-    LINE_ON_DARK,
-    MARGIN,
-    MINT,
-    MUTED,
-    MUTED_ON_DARK,
-    SLIDE_H,
-    SLIDE_W,
-    WARM,
-    WHITE,
-    add_picture_contain,
-    background,
-    kicker,
-    line_h,
-    line_v,
-    para,
-    rect,
-    rich,
-    slide_title,
-    textbox,
-)
+# Assets live next to this script; the decks themselves are written to the
+# repository root, where the team expects to find them.
+HERE = Path(__file__).resolve().parent
+IMG = HERE / "shots"
+BRAND = HERE / "brand"
 
 
-AS_OF = dt.datetime(2026, 10, 19, 15, 0, tzinfo=dt.timezone.utc)
-HORIZON = 30
-FEATURED = 10
-TUNED_KEY = "expiry_proximity"
-W_FROM, W_TO = 3.0, 9.0
-TOTAL_SLIDES = 10
-MONO = "DejaVu Sans Mono"
+def _repo_root() -> Path:
+    for cand in (HERE, *HERE.parents):
+        if (cand / "dataset").is_dir() and (cand / "backend" / "app" / "domain").is_dir():
+            return cand
+    return HERE
 
 
-# ------------------------------------------------------------------ facts ---
-def gather():
-    """Recompute every deck figure from the dataset through the real modules."""
+ROOT = _repo_root()
 
-    with open(os.path.join(REPO, "dataset", "data.json"), encoding="utf-8") as fh:
-        snap = Snapshot.model_validate(json.load(fh))
+# Two event briefs were supplied for the same product. Everything that differs
+# between them lives here, so both decks come from one verified source of facts.
+PROFILES = {
+    "hackathon": {
+        "out": "aeza_hackathon_osen_2026.pptx",
+        "event": "ХАКАТОН ОСЕНЬ 2026 · ДГТУ · РОСТОВ-НА-ДОНУ",
+        "cover_sub": "Aéza Analyzer — аналитика риска оттока клиентов "
+                     "хостинг-провайдера.",
+        "title": "Aéza Analyzer — Хакатон Осень 2026",
+        "final_kicker": "РИСК ВИДЕН · ПРИЧИНЫ ПОНЯТНЫ · ШАГ ОПРЕДЕЛЁН",
+        "final_title": "Не ждать ухода клиента",
+        "final_sub": "Дать команде возможность\nдействовать раньше",
+        "next_step": "Предлагаем следующий шаг: вместе проверить модель на данных "
+                     "Aéza и определить, какие сигналы действительно полезны "
+                     "команде удержания. Это предложение, а не существующая "
+                     "договорённость.",
+    },
+    "umirhack": {
+        "out": "aeza_umirhack_defense.pptx",
+        "event": "UMIRHACK 2026 · КЕЙС AÉZA",
+        "cover_sub": "Aéza Analyzer — инструмент для поиска клиентов под риском, "
+                     "объяснения причин и оценки потенциальных потерь.",
+        "title": "Aéza Analyzer — защита UMIRHACK 2026",
+        "final_kicker": "ИТОГ И СЛЕДУЮЩИЙ ШАГ",
+        "final_title": "Не ждать ухода клиента",
+        "final_sub": "Дать команде увидеть риск\nи действовать раньше",
+        "next_step": "Предлагаем следующий шаг: вместе проверить модель на данных "
+                     "Aéza и определить, какие сигналы действительно полезны "
+                     "команде удержания. Это предложение, а не существующая "
+                     "договорённость.",
+    },
+}
 
-    tx = collections.defaultdict(list)
-    for t in snap.transactions:
-        tx[t.service_id].append(t)
+P = PROFILES["hackathon"]
+OUT = ROOT / P["out"]
 
-    def run(weights):
-        st = RiskSettings(horizon_days=HORIZON, weights=weights)
-        rows = {}
-        for a in snap.accounts:
-            svcs = sorted((s for s in snap.services if s.owner_id == a.id),
-                          key=lambda s: s.id)
-            risks = [
-                compute_service_risk(service=s, account=a, transactions=tx[s.id],
-                                     settings=st, now=AS_OF)
-                for s in svcs
-            ]
-            exposures = [
-                e for e in (
-                    compute_service_exposure(service=s, risk=r,
-                                             horizon_days=HORIZON, now=AS_OF)
-                    for s, r in zip(svcs, risks)
-                ) if e
-            ]
-            rows[a.id] = {
-                "account": a,
-                "services": svcs,
-                "risks": risks,
-                "cust": compute_customer_risk(customer_id=a.id, service_risks=risks,
-                                              settings=st),
-                "exposure": compute_customer_exposure(customer_id=a.id,
-                                                      renewals=exposures),
-            }
-        return rows
-
-    base = run(dict(DEFAULT_WEIGHTS))
-    tuned = run({**DEFAULT_WEIGHTS, TUNED_KEY: W_TO})
-
-    signals = collections.Counter()
-    for r in base.values():
-        for risk in r["risks"]:
-            for f in risk.factors:
-                if f.available and f.value > 0:
-                    signals[f.key] += 1
-
-    fsvc = next(s for s in base[FEATURED]["services"] if s.id == 30)
-    frisk = next(r for s, r in zip(base[FEATURED]["services"],
-                                   base[FEATURED]["risks"]) if s.id == 30)
-
-    return {
-        "snap": snap,
-        "base": base,
-        "tuned": tuned,
-        "cats": collections.Counter(r["cust"].category for r in base.values()),
-        "tune_cats": collections.Counter(r["cust"].category for r in tuned.values()),
-        "signals": signals,
-        "fsvc": fsvc,
-        "frisk": frisk,
-        "n_open": sum(1 for s in snap.services
-                      if s.status not in ("deleted", "blocked")),
-        "rar": sum(r["exposure"].revenue_at_risk_cents for r in base.values()),
-        "upcoming": sum(r["exposure"].upcoming_renewals_cents for r in base.values()),
-        "rar_tuned": sum(r["exposure"].revenue_at_risk_cents for r in tuned.values()),
-        "topups": sum(a.total_replenished for a in snap.accounts),
-    }
+M = Inches(0.72)
+CW = SW - 2 * M
+SOFT = RGBColor(0xC9, 0xC9, 0xC9)      # light text on dark
+HAIR = RGBColor(0xC9, 0xC9, 0xC9)      # placeholder outline
 
 
-def eur(cents: int) -> str:
-    whole, frac = divmod(int(cents), 100)
-    return f"{whole:,}".replace(",", "\u2009") + f",{frac:02d}\u2009€"
+def E(v) -> Emu:
+    return Emu(int(v))
 
 
-def n1(x) -> str:
-    return "—" if x is None else f"{x:.1f}"
-
-
-def plural(n: int, one: str, few: str, many: str) -> str:
-    """Russian numeral agreement: 1 услуга, 2 услуги, 5 услуг."""
-
-    n = abs(int(n))
-    if n % 10 == 1 and n % 100 != 11:
-        return f"{n} {one}"
-    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
-        return f"{n} {few}"
-    return f"{n} {many}"
-
-
-# ------------------------------------------------------------ deck helpers ---
-def new_deck():
-    prs = Presentation()
-    prs.slide_width = SLIDE_W
-    prs.slide_height = SLIDE_H
-    return prs
-
-
-def blank(prs, color):
-    s = prs.slides.add_slide(prs.slide_layouts[6])
-    background(s, prs, color)
-    return s
-
-
-def notes(slide, text):
-    slide.notes_slide.notes_text_frame.text = text
-
-
-def page(slide, n, dark=False):
-    tb, tf = textbox(slide, SLIDE_W - MARGIN - Inches(1.1), SLIDE_H - Inches(0.58),
-                     Inches(1.1), Inches(0.3))
-    para(tf, f"{n} / {TOTAL_SLIDES}", 10, MUTED_ON_DARK if dark else MUTED,
-         first=True, align=PP_ALIGN.RIGHT)
-
-
-def slot(slide, x, y, w, h, label, sub=None, dark=False):
-    """Neutral outlined placeholder for information we must not invent."""
-
-    edge = LINE_ON_DARK if dark else LINE
-    rect(slide, x, y, w, h, fill=None, line=edge, line_w=Pt(0.9))
-    tb, tf = textbox(slide, x + Inches(0.12), y, w - Inches(0.24), h,
-                     anchor=MSO_ANCHOR.MIDDLE)
-    para(tf, label, 11, MUTED_ON_DARK if dark else MUTED, bold=True,
-         first=True, align=PP_ALIGN.CENTER)
+# ------------------------------------------------------------------ heads ---
+def head(slide, kicker, title, sub=None, dark=False, y=0.60, title_size=30,
+         sub_size=14, sub_w=None):
+    """Kicker + statement headline + optional sub. Returns content start y (EMU)."""
+    tc = WHITE if dark else TEXT
+    kc = MINT if dark else CORAL_DEEP
+    sc = SOFT if dark else MUTED
+    cy = Inches(y)
+    _, tf = textbox(slide, M, cy, CW, Inches(0.22))
+    para(tf, kicker.upper(), 10.5, kc, 700, first=True, spacing_pt=1.4)
+    cy = E(cy + Inches(0.27))
+    cy = E(cy + text_block(slide, M, cy, CW, title, title_size, tc, 700,
+                           spacing=1.08, tag=f"title:{title[:24]}"))
     if sub:
-        para(tf, sub, 9.5, MUTED_ON_DARK if dark else MUTED,
-             align=PP_ALIGN.CENTER, space_before=2)
+        cy = E(cy + Inches(0.13))
+        cy = E(cy + text_block(slide, M, cy, Inches(sub_w or 11.0), sub, sub_size,
+                               sc, 400, spacing=1.28, tag=f"sub:{title[:18]}"))
+    return E(cy + Inches(0.30))
 
 
-def qr_slot(slide, x, y, size, label, dark=False):
-    """A visibly-empty frame: never a fake scannable QR code."""
-
-    edge = LINE_ON_DARK if dark else LINE
-    rect(slide, x, y, size, size, fill=None, line=edge, line_w=Pt(0.9))
-    c = size // 2
-    line_h(slide, x + Inches(0.24), y + c, size - Inches(0.48), color=edge)
-    line_v(slide, x + c, y + Inches(0.24), size - Inches(0.48), color=edge)
-    tb, tf = textbox(slide, x, y + size + Inches(0.08), size, Inches(0.44))
-    para(tf, "[ВСТАВИТЬ QR]", 9.5, MUTED_ON_DARK if dark else MUTED, bold=True,
-         first=True, align=PP_ALIGN.CENTER)
-    para(tf, label, 9.5, MUTED_ON_DARK if dark else MUTED, align=PP_ALIGN.CENTER)
+def foot(slide, text, dark=False, y=6.95):
+    hairline(slide, M, Inches(y - 0.15), CW, LINE_DARK if dark else LINE)
+    text_block(slide, M, Inches(y), CW, text, 9.5, SOFT if dark else MUTED, 400,
+               spacing=1.2, tag="foot")
 
 
-def factor_bar(slide, x, y, w, label, value, weight, contribution, max_c):
-    """One explainability row: label, weight, proportional bar, contribution."""
-
-    tb, tf = textbox(slide, x, y - Inches(0.03), Inches(3.32), Inches(0.34))
-    para(tf, label, 12, INK, bold=True, first=True)
-
-    tb2, tf2 = textbox(slide, x + Inches(3.36), y - Inches(0.03), Inches(1.28),
-                       Inches(0.34))
-    para(tf2, f"вес {weight:g}", 11.5, MUTED, first=True, align=PP_ALIGN.RIGHT)
-
-    bar_x = x + Inches(4.8)
-    bar_w = w - Inches(4.8) - Inches(1.05)
-    rect(slide, bar_x, y + Inches(0.02), bar_w, Inches(0.13), fill=LINE)
-    if contribution > 0:
-        frac = contribution / max_c if max_c > 0 else 0.0
-        rect(slide, bar_x, y + Inches(0.02), int(bar_w * frac), Inches(0.13),
-             fill=CORAL if value >= 1.0 else MINT)
-
-    tb3, tf3 = textbox(slide, x + w - Inches(0.95), y - Inches(0.03), Inches(0.95),
-                       Inches(0.34))
-    para(tf3, f"{contribution:.1f}", 12.5, INK, bold=True, first=True,
-         align=PP_ALIGN.RIGHT)
+def shot(slide, name, x, y, w, h, align="left", valign="top", pad=0.035,
+         line=LINE):
+    """Screenshot inside a thin framed panel."""
+    rect(slide, E(x - Inches(pad)), E(y - Inches(pad)),
+         E(w + Inches(2 * pad)), E(h + Inches(2 * pad)),
+         fill=WHITE, line=line, line_w=0.8)
+    return picture_fit(slide, IMG / name, x, y, w, h, align=align, valign=valign)
 
 
-# ================================================================ slide 1 ====
-def s01_cover(prs, F):
-    s = blank(prs, DARK)
-    kicker(s, "Хакатон Осень 2026 · ДГТУ", y=Inches(1.02), color=MINT)
-
-    tb, tf = textbox(s, MARGIN, Inches(1.72), Inches(7.5), Inches(3.1))
-    para(tf, "Увидеть риск", 45, WHITE, bold=True, first=True, line_spacing=0.98)
-    para(tf, "оттока раньше,", 45, WHITE, bold=True, line_spacing=0.98)
-    rich(tf, [("чем клиент уйдёт", True, CORAL)], 45, WHITE, line_spacing=0.98)
-
-    line_h(s, MARGIN, Inches(4.92), Inches(2.1), color=CORAL, weight=Pt(2))
-
-    tb2, tf2 = textbox(s, MARGIN, Inches(5.16), Inches(6.5), Inches(0.8))
-    para(tf2, "Aéza Analyzer — аналитика риска оттока клиентов хостинг-провайдера",
-         16.5, INK_ON_DARK, first=True, line_spacing=1.25)
-
-    tb3, tf3 = textbox(s, MARGIN, Inches(6.18), Inches(6.5), Inches(0.7))
-    para(tf3, "[НАЗВАНИЕ КОМАНДЫ]", 13, MUTED_ON_DARK, bold=True, first=True)
-    para(tf3, "XIX Форум программных разработчиков · Ростов-на-Дону",
-         11.5, MUTED_ON_DARK, space_before=3)
-
-    add_picture_contain(s, os.path.join(SHOTS, "01-dashboard.png"),
-                        Inches(8.55), Inches(1.5), Inches(4.05), Inches(4.5),
-                        bg=WHITE, border_color=LINE_ON_DARK)
-    tb4, tf4 = textbox(s, Inches(8.55), Inches(6.12), Inches(4.05), Inches(0.4))
-    para(tf4, "Рабочий интерфейс на данных кейса", 10.5, MUTED_ON_DARK,
-         first=True, align=PP_ALIGN.CENTER)
-
-    page(s, 1, dark=True)
-    notes(s, "Представиться. Одно предложение: инструмент находит клиентов под "
-             "риском оттока и объясняет, почему они в группе риска, — на реальных "
-             "данных Aéza. Дальше — сквозной сценарий защиты.")
+def label(slide, x, y, w, text, color=MUTED, size=9.5):
+    text_block(slide, x, y, w, text, size, color, 700, spacing=1.1, tag="label")
 
 
-# ================================================================ slide 2 ====
-def s02_problem(prs, F):
-    s = blank(prs, WARM)
-    kicker(s, "Проблема")
-    slide_title(s, "Клиент может уйти раньше,\nчем команда это заметит",
-                y=Inches(0.98), w=Inches(9.4), size=32)
-
-    tb, tf = textbox(s, MARGIN, Inches(2.62), Inches(6.1), Inches(2.6))
-    para(tf, "Отток не начинается с явной отмены услуги. Задолго до неё в данных "
-             "появляются отдельные изменения: срок подходит к концу, "
-             "автопродление выключено, списание не проходит.", 16.5, INK,
-         first=True, line_spacing=1.45)
-    para(tf, "По отдельности каждый сигнал выглядит безобидно. Проблема в том, "
-             "что их смотрят по разным отчётам — или не смотрят вовсе.",
-         16.5, INK, line_spacing=1.45, space_before=12)
-
-    line_h(s, MARGIN, Inches(5.32), Inches(6.1), color=LINE)
-
-    tb2, tf2 = textbox(s, MARGIN, Inches(5.5), Inches(6.3), Inches(0.9))
-    rich(tf2, [("Задача. ", True, INK),
-               ("Не просто увидеть, кто уже ушёл, а определить, кому стоит "
-                "уделить внимание сейчас.", False, INK)], 16.5, INK,
-         first=True, line_spacing=1.35)
-
-    x = Inches(7.85)
-    tb3, tf3 = textbox(s, x, Inches(2.62), Inches(4.6), Inches(0.35))
-    para(tf3, "ЧТО МЕНЯЕТСЯ ПЕРЕД УХОДОМ", 11, MUTED, bold=True, first=True)
-
-    for i, (t, sub) in enumerate([
-        ("Срок услуги", "истекает или уже истёк"),
-        ("Автопродление", "выключено — решения нет"),
-        ("Продление", "не проходит: not_performed"),
-    ]):
-        y = Inches(3.12) + Inches(1.05) * i
-        rect(s, x, y + Inches(0.07), Inches(0.15), Inches(0.15), fill=CORAL)
-        tbi, tfi = textbox(s, x + Inches(0.38), y - Inches(0.02), Inches(4.2),
-                           Inches(0.8))
-        para(tfi, t, 16.5, INK, bold=True, first=True)
-        para(tfi, sub, 13, MUTED, space_before=2)
-
-    line_v(s, Inches(7.38), Inches(2.62), Inches(3.7), color=LINE)
-
-    tb4, tf4 = textbox(s, MARGIN, Inches(6.66), Inches(11.0), Inches(0.4))
-    para(tf4, "Мы не приводим статистику оттока Aéza и отраслевые цифры: "
-              "в исходных данных нет истории уходов.", 11, MUTED, first=True)
-
-    page(s, 2)
-    notes(s, "Не давить цифрами, которых у нас нет. Проблема методическая: "
-             "сигналы разбросаны, и никто не сводит их в одну оценку.")
+def stat(slide, x, y, w, value, caption, vcolor=CORAL_DEEP, vsize=25, csize=9.5):
+    lines_box(slide, x, y, w, [value], vsize, vcolor, 700, spacing=1.0, tag="stat")
+    text_block(slide, x, E(y + Inches(vsize * 1.05 / 72 + 0.06)), w, caption,
+               csize, MUTED, 400, spacing=1.2, tag="statcap")
 
 
-# ================================================================ slide 3 ====
-def s03_product(prs, F):
-    s = blank(prs, WARM)
-    kicker(s, "Продукт")
-    slide_title(s, "От данных клиента —\nк объяснимому сигналу риска",
-                y=Inches(0.98), w=Inches(8.0), size=31)
+# ================================================================= SLIDES ===
+def s01_cover(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    bg(s, INK)
+    rect(s, E(SW - Inches(3.55)), 0, Inches(3.55), SH, fill=INK_2)
+    rect(s, E(SW - Inches(3.55)), 0, Inches(0.045), SH, fill=CORAL)
 
-    add_picture_contain(s, os.path.join(SHOTS, "01b-dashboard-full.png"),
-                        MARGIN, Inches(2.72), Inches(7.85), Inches(3.72),
-                        bg=WHITE)
+    picture_fit(s, BRAND / "aeza_logo_on_dark.png", M, Inches(0.58),
+                Inches(1.40), Inches(0.34))
 
-    x = Inches(9.05)
-    tb, tf = textbox(s, x, Inches(2.72), Inches(3.45), Inches(0.35))
-    para(tf, "ЧТО ДЕЛАЕТ СИСТЕМА", 11, MUTED, bold=True, first=True)
+    text_block(s, M, Inches(1.16), Inches(8.2), P["event"],
+               10.5, MINT, 700, tag="cover-kicker")
 
-    for i, c in enumerate([
-        "Находит клиентов с повышенным риском",
-        "Объясняет, какие факторы повлияли на оценку",
-        "Показывает доступную финансовую оценку",
-        "Позволяет проверить влияние новых параметров",
-    ], 1):
-        y = Inches(3.18) + Inches(0.82) * (i - 1)
-        tbi, tfi = textbox(s, x, y, Inches(3.45), Inches(0.78))
-        rich(tfi, [(f"{i}  ", True, CORAL), (c, False, INK)], 13, INK,
-             first=True, line_spacing=1.32)
+    y = Inches(1.86)
+    y = E(y + lines_box(s, M, y, Inches(8.6), ["Увидеть риск оттока"], 44, WHITE,
+                        700, spacing=1.0, tag="cover-t1"))
+    lines_box(s, M, E(y + Inches(0.06)), Inches(8.6), ["раньше, чем клиент уйдёт"],
+              44, CORAL, 700, spacing=1.0, tag="cover-t2")
 
-    line_h(s, MARGIN, Inches(6.66), CONTENT_W, color=LINE)
-    tb2, tf2 = textbox(s, MARGIN, Inches(6.8), Inches(10.2), Inches(0.4))
-    para(tf2, f"Снимок данных кейса: {len(F['snap'].accounts)} клиентов · "
-              f"{len(F['snap'].services)} услуг · "
-              f"{len(F['snap'].transactions)} транзакций. "
-              "Это реальный датасет организатора, а не демонстрационная заглушка.",
-         11, MUTED, first=True)
+    text_block(s, M, Inches(4.18), Inches(7.9), P["cover_sub"],
+               15.5, SOFT, 400, spacing=1.35, tag="cover-sub")
 
-    page(s, 3)
-    notes(s, "Скриншот — главный герой. Справа — что именно умеет система, "
-             "без маркетинговых обещаний.")
+    hairline(s, M, Inches(5.34), Inches(7.9), LINE_DARK)
 
+    text_block(s, M, Inches(5.54), Inches(4.2), "КОМАНДА", 9.5, DIM, 700,
+               tag="cover-teamlabel")
+    text_block(s, M, Inches(5.80), Inches(5.0), "[НАЗВАНИЕ КОМАНДЫ]", 16, WHITE,
+               600, tag="cover-teamname")
+    text_block(s, M, Inches(6.18), Inches(5.4),
+               "[ИМЯ УЧАСТНИКА 1] · [ИМЯ УЧАСТНИКА 2] · [ИМЯ УЧАСТНИКА 3]",
+               10.5, DIM, 400, spacing=1.3, tag="cover-members")
+    text_block(s, M, Inches(6.66), Inches(5.6),
+               "ЗАПОЛНИТЬ ПЕРЕД ЗАЩИТОЙ · команда и QR-ссылки",
+               8, MUTED, 600, spacing=1.2, tag="cover-fill")
 
-# ================================================================ slide 4 ====
-def s04_customer(prs, F):
-    s = blank(prs, WARM)
-    kicker(s, "Клиент под риском")
-    slide_title(s, "Клиент #10: высокая категория риска\nпри трёх услугах в ожидании продления",
-                y=Inches(0.98), w=Inches(9.7), size=29)
+    rx = E(SW - Inches(2.72))
+    text_block(s, rx, Inches(2.06), Inches(1.9), "ССЫЛКИ ДЛЯ ЖЮРИ", 9, DIM, 700,
+               tag="cover-qrlabel")
+    qr_slot(s, rx, Inches(2.44), Inches(1.56), "[QR-КОД: ДЕМО]")
+    qr_slot(s, rx, Inches(4.42), Inches(1.56), "[QR-КОД: GITHUB]")
 
-    cust = F["base"][FEATURED]["cust"]
-    svc, risk = F["fsvc"], F["frisk"]
+    notes(s, """Что сказать (15 сек):
+«У Aéza есть снимок клиентской базы. Мы задали один вопрос: как найти клиента,
+который может уйти, понять почему и оценить деньги, пока он ещё не ушёл.
+Вот что получилось.»
 
-    tb, tf = textbox(s, MARGIN, Inches(2.62), Inches(3.5), Inches(1.05))
-    para(tf, n1(cust.score), 62, CORAL, bold=True, first=True, line_spacing=0.95)
-    tb2, tf2 = textbox(s, MARGIN, Inches(3.82), Inches(3.5), Inches(0.35))
-    para(tf2, "балл риска клиента", 12.5, MUTED, first=True)
-    rect(s, MARGIN, Inches(4.18), Inches(1.28), Inches(0.3), fill=CORAL)
-    tb3, tf3 = textbox(s, MARGIN, Inches(4.2), Inches(1.28), Inches(0.3))
-    para(tf3, "Высокий", 11.5, WHITE, bold=True, first=True, align=PP_ALIGN.CENTER)
-
-    line_h(s, MARGIN, Inches(4.84), Inches(3.5), color=LINE)
-
-    tb4, tf4 = textbox(s, MARGIN, Inches(5.0), Inches(3.6), Inches(1.4))
-    rich(tf4, [("Клиент ", False, MUTED), (f"#{FEATURED}", True, INK),
-               (f" · {plural(cust.service_count, 'услуга', 'услуги', 'услуг')}, "
-                f"{cust.eligible_service_count} в прогнозе", False, MUTED)],
-         12.5, INK, first=True, line_spacing=1.35)
-    rich(tf4, [(plural(cust.high_risk_service_count, 'услуга', 'услуги', 'услуг'), True, CORAL),
-               (" высокого риска", False, MUTED)], 12.5, MUTED,
-         space_before=6)
-
-    add_picture_contain(s, os.path.join(SHOTS, "03-customer-10.png"),
-                        Inches(4.75), Inches(2.62), Inches(7.75), Inches(3.94),
-                        bg=WHITE)
-
-    line_h(s, MARGIN, Inches(6.72), CONTENT_W, color=LINE)
-    tb5, tf5 = textbox(s, MARGIN, Inches(6.86), Inches(10.2), Inches(0.4))
-    para(tf5, f"Идентификатор клиента взят из датасета; адрес не показываем. "
-              f"Критичная услуга — {svc.name}: {n1(risk.score)} балла, "
-              f"стоимость продления {eur(svc.price)}.",
-         11, MUTED, first=True)
-
-    page(s, 4)
-    notes(s, "Это живой клиент из датасета. Обратить внимание: высокая категория "
-             "риска и три открытые услуги. Почему — на следующем слайде.")
+Не начинайте с определения оттока и не читайте подзаголовок вслух — он на экране.
+ПЕРЕД ЗАЩИТОЙ: вписать название команды и участников, поставить реальные QR
+на демо-стенд и GitHub.""")
 
 
-# ================================================================ slide 5 ====
-def s05_reasons(prs, F):
-    s = blank(prs, WARM)
-    kicker(s, "Причины риска")
-    slide_title(s, "Оценка — это сумма наблюдаемых сигналов,\nа не мнение алгоритма",
-                y=Inches(0.98), w=Inches(9.6), size=29)
+def s02_problem(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    bg(s, PAPER)
+    y = head(s, "Бизнес-проблема",
+             "Сигналы разрознены — риск остаётся незаметным",
+             "Клиент продолжает пользоваться услугой, но отдельные признаки уже "
+             "говорят о риске. По одному статусу и общей выручке этого не увидеть.")
 
-    svc, risk = F["fsvc"], F["frisk"]
-    total_w = sum(r.weight for r in risk.factors)
-    total_c = sum(r.contribution for r in risk.factors)
-    max_c = max(r.contribution for r in risk.factors)
-
-    tb, tf = textbox(s, MARGIN, Inches(2.6), Inches(6.0), Inches(0.35))
-    para(tf, f"УСЛУГА {svc.name.upper()} · ВКЛАД КАЖДОГО ФАКТОРА", 11, MUTED,
-         bold=True, first=True)
-
-    y = Inches(3.06)
-    for r in risk.factors:
-        factor_bar(s, MARGIN, y, Inches(7.4), r.label, r.value, r.weight,
-                   r.contribution, max_c)
-        y += Inches(0.46)
-
-    line_h(s, MARGIN, Inches(6.42), Inches(7.4), color=LINE)
-
-    tb2, tf2 = textbox(s, MARGIN, Inches(6.56), Inches(7.6), Inches(0.4))
-    rich(tf2, [("Итог: ", True, INK),
-               (f"100 × {total_c:g} / {total_w:g} = {n1(risk.score)} из 100. ",
-                False, INK),
-               ("Веса настраиваются аналитиком.", False, MUTED)],
-         12.5, INK, first=True)
-
-    x = Inches(8.85)
-    tb3, tf3 = textbox(s, x, Inches(2.6), Inches(3.65), Inches(0.35))
-    para(tf3, "КАК ЭТО ЧИТАТЬ", 11, MUTED, bold=True, first=True)
-
-    for i, txt in enumerate([
-        "Балл — сила наблюдаемых сигналов, не вероятность ухода в процентах.",
-        "Факторы не доказывают причину оттока: модель rule-based, без обучения.",
-        "Нулевой вес исключает фактор; сумма весов пересчитывается.",
-    ]):
-        yy = Inches(3.06) + Inches(1.16) * i
-        rect(s, x, yy + Inches(0.05), Inches(0.15), Inches(0.15),
-             fill=MINT if i == 2 else CORAL)
-        tbi, tfi = textbox(s, x + Inches(0.36), yy, Inches(3.29), Inches(1.1))
-        para(tfi, txt, 12.5, INK, first=True, line_spacing=1.35)
-
-    page(s, 5)
-    notes(s, "Ключевая мысль: жюри видит механику. Пять факторов из семи "
-             "сработали; два нулевых честно показаны серыми. И сразу снимаем "
-             "вопрос «это ML?» — нет, и мы это не скрываем.")
-
-
-# ================================================================ slide 6 ====
-def s06_money(prs, F):
-    s = blank(prs, WARM)
-    kicker(s, "Денежная оценка")
-    slide_title(s, "Риск и деньги — разные величины,\nпоэтому считаются отдельно",
-                y=Inches(0.98), w=Inches(9.8), size=29)
-
-    figures = [
-        ("Выручка под риском", eur(F["rar"]), CORAL, 27,
-         "прогноз в пределах горизонта"),
-        ("Предстоящие продления", eur(F["upcoming"]), INK, 27,
-         "сумма без учёта риска"),
-        ("Исторические пополнения", eur(F["topups"]), MUTED, 20,
-         "справочно, в прогноз не входит"),
+    stages = [
+        ("Разрозненные сигналы",
+         "Дата окончания, автопродление, неуспешные продления, статус услуги — "
+         "каждое поле живёт отдельно."),
+        ("Риск остаётся незаметным",
+         "В общем списке клиентов нет приоритета: проблемный аккаунт выглядит "
+         "так же, как здоровый."),
+        ("Поздняя реакция",
+         "Разбираются, когда услуга уже истекла. Причины не собраны в одном месте, "
+         "поэтому действовать заранее не с чем."),
     ]
-    x = MARGIN
-    for i, (label, value, color, size, sub) in enumerate(figures):
-        tbi, tfi = textbox(s, x, Inches(2.66), Inches(3.5), Inches(1.5))
-        para(tfi, label, 12, MUTED, bold=True, first=True)
-        para(tfi, value, size, color, bold=True, space_before=6)
-        para(tfi, sub, 11.5, MUTED, space_before=4)
+    w = E((CW - Inches(0.60)) / 3)
+    ch = Inches(1.92)
+    for i, (t, b) in enumerate(stages):
+        x = E(M + i * (w + Inches(0.30)))
+        rect(s, x, y, w, ch, fill=WHITE, line=LINE, line_w=0.9)
+        rect(s, x, y, w, Inches(0.045), fill=CORAL_DEEP if i == 2 else INK_2)
+        numbered_marker(s, E(x + Inches(0.36)), E(y + Inches(0.44)), i + 1,
+                        fill=CORAL_DEEP if i == 2 else INK_2)
+        ty = E(y + Inches(0.72))
+        ty = E(ty + lines_box(s, E(x + Inches(0.22)), ty, E(w - Inches(0.44)), [t],
+                              14.5, TEXT, 600, spacing=1.12, tag="stage-t"))
+        text_block(s, E(x + Inches(0.22)), E(ty + Inches(0.07)), E(w - Inches(0.44)),
+                   b, 10.5, MUTED, 400, spacing=1.30, tag="stage-b")
         if i < 2:
-            line_v(s, x + Inches(3.78), Inches(2.66), Inches(1.3), color=LINE)
-        x += Inches(3.95)
+            rect(s, E(x + w + Inches(0.055)), E(y + Inches(0.80)), Inches(0.19),
+                 Inches(0.26), fill=LINE, shape=MSO_SHAPE.RIGHT_ARROW)
 
-    line_h(s, MARGIN, Inches(4.34), CONTENT_W, color=LINE)
+    # evidence strip
+    ey = E(y + ch + Inches(0.30))
+    eh = Inches(1.66)
+    rect(s, M, ey, CW, eh, fill=WHITE, line=LINE, line_w=0.9)
+    text_block(s, E(M + Inches(0.26)), E(ey + Inches(0.26)), Inches(3.10),
+               "Сигналы риска в снимке Aéza", 12.5, TEXT, 600, tag="ev-t")
+    text_block(s, E(M + Inches(0.26)), E(ey + Inches(0.58)), Inches(3.10),
+               "Прямой подсчёт по 30 услугам датасета организатора; одна услуга "
+               "может попасть в несколько категорий.",
+               9.5, MUTED, 400, spacing=1.3, tag="ev-b")
 
-    tb, tf = textbox(s, MARGIN, Inches(4.54), Inches(6.4), Inches(0.35))
-    para(tf, "ФОРМУЛА ИЗ КОДА", 11, MUTED, bold=True, first=True)
-    rect(s, MARGIN, Inches(4.86), Inches(6.4), Inches(0.5), fill=WHITE, line=LINE)
-    tb2, tf2 = textbox(s, MARGIN + Inches(0.18), Inches(4.96), Inches(6.1), Inches(0.35))
-    para(tf2, "revenue_at_risk = стоимость продления × балл риска / 100",
-         13, INK, first=True, font=MONO)
+    stats = [("12", "близость даты окончания"), ("9", "автопродление отключено"),
+             ("6", "неуспешные продления"), ("6", "услуга приостановлена")]
+    sx = E(M + Inches(3.62))
+    sw = Inches(2.03)
+    for i, (n, lab) in enumerate(stats):
+        x = E(sx + i * sw)
+        if i:
+            rect(s, E(x - Inches(0.09)), E(ey + Inches(0.34)), Pt(0.75),
+                 Inches(0.98), fill=LINE)
+        stat(s, x, E(ey + Inches(0.34)), E(sw - Inches(0.24)), n, lab)
 
-    tb3, tf3 = textbox(s, MARGIN, Inches(5.5), Inches(6.4), Inches(1.1))
-    para(tf3, "Учитываются только продления внутри горизонта 30 дней и только "
-              "по услугам, пригодным для прогноза. Баланс клиента и исторические "
-              "пополнения в выручку под риском не входят.",
-         12, MUTED, first=True, line_spacing=1.4)
+    foot(s, "Источник: Aéza Analyzer, блок «Основные причины риска», опорный момент "
+            "2026-10-19 15:00 UTC. Набор кейса синтетический.")
+    notes(s, """Что сказать (35 сек):
+«По 30 услугам снимка: 12 уже близки к окончанию, 9 не продлятся автоматически,
+по 6 есть неуспешные продления и 6 услуг приостановлены. Каждый сигнал по
+отдельности выглядит безобидно. Вместе они описывают клиента, который может уйти.
+Проблема в том, что в общем списке этого не видно: нет ни приоритета, ни объяснения.
+Отсюда — поздняя реакция.»
 
-    x2 = Inches(7.75)
-    rect(s, x2, Inches(4.54), Inches(4.75), Inches(2.06), fill=WHITE, line=LINE)
-    tbi, tfi = textbox(s, x2 + Inches(0.24), Inches(4.7), Inches(4.27), Inches(1.74))
-    para(tfi, "Клиент #10: выручка под риском 0,00 €", 13, INK, bold=True,
-         first=True, line_spacing=1.3)
-    para(tfi, "Несмотря на высокий балл, все его продления лежат в прошлом, "
-              "а горизонт — окно вперёд. Денег в горизонте у него нет.",
-         12, MUTED, space_before=6, line_spacing=1.4)
-    para(tfi, "В этом и смысл разделять балл риска и выручку под риском: "
-              "иначе мы показали бы ложную сумму.", 12, MUTED,
-         space_before=6, line_spacing=1.4)
-
-    line_h(s, MARGIN, Inches(6.8), CONTENT_W, color=LINE)
-    tb4, tf4 = textbox(s, MARGIN, Inches(6.92), Inches(10.2), Inches(0.4))
-    para(tf4, "Оценка приблизительная: она опирается на стоимость продления "
-              "и балл риска, а не на подтверждённую историю платежей.",
-         11, MUTED, first=True)
-
-    page(s, 6)
-    notes(s, "Три денежные метрики намеренно разделены, складывать их нельзя. "
-             "Формула — дословно из кода. И честный момент: у клиента #10 "
-             "выручка под риском нулевая, потому что сроки уже прошли.")
-
-
-# ================================================================ slide 7 ====
-def s07_before(prs, F):
-    s = blank(prs, WARM)
-    kicker(s, "Ключевой сценарий · шаг 1")
-    slide_title(s, "Меняем коэффициент\nи сразу проверяем гипотезу",
-                y=Inches(0.98), w=Inches(8.4), size=30)
-
-    tb, tf = textbox(s, MARGIN, Inches(2.6), Inches(5.5), Inches(0.35))
-    para(tf, "ВЕСА МОДЕЛИ · КОНФИГУРАЦИЯ ПО УМОЛЧАНИЮ", 11, MUTED, bold=True,
-         first=True)
-
-    rows = [("Близость даты окончания", W_FROM, True),
-            ("Ожидание продления", 2.5, False),
-            ("Автопродление отключено", 2.0, False),
-            ("Недостаточно средств", 2.0, False),
-            ("Неуспешные продления", 2.0, False),
-            ("Услуга приостановлена", 2.0, False),
-            ("Доля неуспешных продлений", 1.5, False)]
-    y = Inches(3.04)
-    for label, w, hot in rows:
-        tbi, tfi = textbox(s, MARGIN, y, Inches(4.3), Inches(0.34))
-        para(tfi, label, 13, INK, bold=hot, first=True)
-        tbj, tfj = textbox(s, MARGIN + Inches(4.35), y, Inches(1.15), Inches(0.34))
-        para(tfj, f"{w:g}", 13, CORAL if hot else MUTED, bold=hot, first=True,
-             align=PP_ALIGN.RIGHT)
-        y += Inches(0.4)
-
-    line_h(s, MARGIN, Inches(5.9), Inches(5.5), color=LINE)
-    tb2, tf2 = textbox(s, MARGIN, Inches(6.04), Inches(5.6), Inches(0.6))
-    para(tf2, "Сумма весов 15,0. Меняем «Близость даты окончания»: 3 → 9.",
-         13, INK, first=True, line_spacing=1.35)
-
-    add_picture_contain(s, os.path.join(SHOTS, "08-metrics-before.png"),
-                        Inches(7.0), Inches(2.6), Inches(5.48), Inches(1.6),
-                        bg=WHITE)
-    tb3, tf3 = textbox(s, Inches(7.0), Inches(4.3), Inches(5.48), Inches(0.35))
-    para(tf3, "Панель метрик до изменения веса", 11, MUTED, first=True,
-         align=PP_ALIGN.CENTER)
-
-    tb4, tf4 = textbox(s, Inches(7.0), Inches(4.86), Inches(5.48), Inches(1.7))
-    para(tf4, "Изменение веса — не косметика: оно уходит на сервер, сохраняется "
-              "в базе и пересчитывает всю аналитику.", 13, INK, first=True,
-         line_spacing=1.4)
-    para(tf4, "После сохранения меняются и баллы клиентов, и денежная оценка — "
-              "это следующий слайд.", 13, MUTED, space_before=8, line_spacing=1.4)
-
-    page(s, 7)
-    notes(s, "Шаг 1 ключевого сценария. Показать вес 3, назвать сумму весов 15,0. "
-             "Дальше — сохранение и пересчёт на живом приложении.")
+Показать: три блока схемы, затем цифры нижней полосы.
+Возможный вопрос: «Это статистика реальной базы Aéza?» — Нет. Это подсчёт по
+синтетическому снимку из комплекта кейса. Мы не приписываем эти числа реальным
+клиентам Aéza.
+Переход: «Поэтому мы собрали инструмент, который делает это за аналитика.»""")
 
 
-# ================================================================ slide 8 ====
-def s08_after(prs, F):
-    s = blank(prs, DARK)
-    kicker(s, "Ключевой сценарий · шаг 2", color=MINT)
+def s03_solution(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    bg(s, PAPER)
+    y = head(s, "Наше решение",
+             "Один экран: приоритет, причина, деньги",
+             "Aéza Analyzer ранжирует клиентов по риску, объясняет каждую оценку "
+             "наблюдаемыми сигналами и считает выручку под риском отдельно от баланса.",
+             sub_size=13.5)
 
-    tb, tf = textbox(s, MARGIN, Inches(0.92), Inches(9.0), Inches(0.8))
-    para(tf, "После пересчёта картина меняется", 31, WHITE, bold=True,
-         first=True, line_spacing=1.05)
-
-    before = F["base"][FEATURED]["cust"]
-    after = F["tuned"][FEATURED]["cust"]
-    cb, ca = F["cats"], F["tune_cats"]
-
-    # Left: the single most convincing movement — the customer's own score.
-    tb2, tf2 = textbox(s, MARGIN, Inches(1.94), Inches(4.6), Inches(0.35))
-    para(tf2, "БАЛЛ РИСКА КЛИЕНТА #10", 11, MUTED_ON_DARK, bold=True, first=True)
-    tb3, tf3 = textbox(s, MARGIN, Inches(2.26), Inches(4.6), Inches(0.8))
-    rich(tf3, [(n1(before.score), True, MUTED_ON_DARK),
-               ("  →  ", False, MUTED_ON_DARK),
-               (n1(after.score), True, CORAL)], 40, WHITE, first=True,
-         line_spacing=1.0)
-
-    # Right: the aggregate metrics that moved with it.
-    moves = [
-        ("Клиентов высокого риска", str(cb["high"]), str(ca["high"])),
-        ("Клиентов среднего риска", str(cb["medium"]), str(ca["medium"])),
-        ("Выручка под риском", eur(F["rar"]), eur(F["rar_tuned"])),
+    items = [
+        ("1", "Список клиентов", "сортировка по риску, фильтр по категории"),
+        ("2", "Балл риска", "0–100 и категория в карточке клиента"),
+        ("3", "Причины оценки", "каждый фактор с числом и вкладом"),
+        ("4", "Настройки модели", "веса, горизонт и пороги · /settings"),
     ]
-    x = Inches(6.15)
-    for i, (label, b, a) in enumerate(moves):
-        yy = Inches(1.94) + Inches(0.94) * i
-        tbi, tfi = textbox(s, x, yy, Inches(3.2), Inches(0.32))
-        para(tfi, label, 11.5, MUTED_ON_DARK, first=True)
-        tbj, tfj = textbox(s, x, yy + Inches(0.27), Inches(6.35), Inches(0.44))
-        rich(tfj, [(b, True, MUTED_ON_DARK), ("  →  ", False, MUTED_ON_DARK),
-                   (a, True, MINT)], 19, WHITE, first=True)
+    cw4 = E(CW / 4)
+    for i, (n, t, sub) in enumerate(items):
+        x = E(M + i * cw4)
+        numbered_marker(s, E(x + Inches(0.16)), E(y + Inches(0.16)), n)
+        lines_box(s, E(x + Inches(0.36)), E(y - Inches(0.02)), E(cw4 - Inches(0.42)),
+                  [t], 12, TEXT, 600, spacing=1.1, tag="sol-t")
+        text_block(s, E(x + Inches(0.36)), E(y + Inches(0.20)), E(cw4 - Inches(0.42)),
+                   sub, 9.5, MUTED, 400, spacing=1.15, tag="sol-s")
 
-    # Full-width evidence strips: the very panel the analyst clicks in the app.
-    strip_w = CONTENT_W
-    strip_h = Inches(0.72)
-    y = Inches(4.82)
-    for shot, label, in (("08-metrics-before.png", "ДО"),
-                         ("09-metrics-after.png", "ПОСЛЕ")):
-        tbi, tfi = textbox(s, MARGIN, y, Inches(0.75), strip_h,
-                           anchor=MSO_ANCHOR.MIDDLE)
-        para(tfi, label, 11, MUTED_ON_DARK, bold=True, first=True)
-        add_picture_contain(s, os.path.join(SHOTS, shot),
-                            MARGIN + Inches(0.8), y, strip_w - Inches(0.8), strip_h,
-                            bg=WHITE, border_color=LINE_ON_DARK)
-        y += strip_h + Inches(0.14)
+    py = E(y + Inches(0.80))
+    lw = Inches(7.10)
+    rw = E(CW - lw - Inches(0.30))
+    rx = E(M + lw + Inches(0.30))
 
-    line_h(s, MARGIN, Inches(6.62), CONTENT_W, color=LINE_ON_DARK)
-    tb4, tf4 = textbox(s, MARGIN, Inches(6.76), Inches(10.2), Inches(0.5))
-    para(tf4, "Изменён один вес: «Близость даты окончания», 3 → 9. Настройки "
-              "сохраняются на сервере и переживают перезапуск процесса.",
-         11.5, MUTED_ON_DARK, first=True)
+    # left: the ranked customer list
+    label(s, M, py, lw, "РЕАЛЬНЫЙ ИНТЕРФЕЙС · СПИСОК КЛИЕНТОВ ПО РИСКУ")
+    h1 = E(int(lw / 2.7579))
+    shot(s, "cust_table_all.png", M, E(py + Inches(0.26)), lw, h1)
+    text_block(s, M, E(py + Inches(0.26) + h1 + Inches(0.12)), lw,
+               "Все 10 клиентов снимка отсортированы по риску: балл, уровень и выручка "
+               "под риском в одной строке.", 10, MUTED, 400, spacing=1.28, tag="sol-cap-l")
 
-    page(s, 8, dark=True)
-    notes(s, "Кульминация защиты. Один вес — и клиент #10 идёт с 73,3 на 81,0, "
-             "высокий риск растёт с 2 до 3, выручка под риском с 5,74 до 7,48 €. "
-             "Полосы внизу — те же панели, что видит аналитик в приложении. "
-             "Числа воспроизводимы: опорная дата зафиксирована.")
+    # right: summary metrics above the risk-reason breakdown
+    label(s, rx, py, rw, "СВОДКА ПО БАЗЕ")
+    hm = E(int(rw / 3.2041))
+    shot(s, "w_dash_metrics6.png", rx, E(py + Inches(0.26)), rw, hm)
+    hy = E(py + Inches(0.26) + hm + Inches(0.22))
+    hr = E(int(rw / 3.3301))
+    shot(s, "w_dash_reasons.png", rx, hy, rw, hr)
+    text_block(s, rx, E(hy + hr + Inches(0.12)), rw,
+               "Сводка — по всем клиентам; причины риска — прямой подсчёт по услугам.",
+               10, MUTED, 400, spacing=1.28, tag="sol-cap-r")
 
+    notes(s, """Что сказать (30 сек):
+«Продукт делает четыре вещи: находит клиентов под риском и сортирует их,
+показывает балл риска, объясняет оценку конкретными сигналами и позволяет
+менять веса модели. Всё это — реальный интерфейс запущенного приложения, а не макет.»
 
-# ================================================================ slide 9 ====
-def s09_value(prs, F):
-    s = blank(prs, WARM)
-    kicker(s, "Ценность и ограничения")
-    slide_title(s, "Что получает аналитик\nи чего система не обещает",
-                y=Inches(0.98), w=Inches(8.6), size=30)
-
-    tb, tf = textbox(s, MARGIN, Inches(2.62), Inches(5.6), Inches(0.35))
-    para(tf, "ЧТО ПОЛУЧАЕТ СПЕЦИАЛИСТ", 11, MUTED, bold=True, first=True)
-
-    for i, t in enumerate([
-        "Список клиентов, которым следует уделить внимание",
-        "Объяснение факторов риска по каждой услуге",
-        "Финансовый контекст: что именно под угрозой",
-        "Проверку гипотез через изменение весов и горизонта",
-    ]):
-        yy = Inches(3.06) + Inches(0.72) * i
-        rect(s, MARGIN, yy + Inches(0.06), Inches(0.15), Inches(0.15), fill=MINT)
-        tbi, tfi = textbox(s, MARGIN + Inches(0.36), yy, Inches(5.2), Inches(0.62))
-        para(tfi, t, 13.5, INK, first=True, line_spacing=1.32)
-
-    line_v(s, Inches(6.95), Inches(2.62), Inches(3.7), color=LINE)
-
-    x = Inches(7.4)
-    tb2, tf2 = textbox(s, x, Inches(2.62), Inches(5.1), Inches(0.35))
-    para(tf2, "ЧЕГО МЫ НЕ ЗАЯВЛЯЕМ", 11, MUTED, bold=True, first=True)
-
-    for i, t in enumerate([
-        "Балл риска — не откалиброванная вероятность оттока.",
-        "Модель rule-based: в данных нет исходов для обучения и валидации.",
-        "Мы не измеряли снижение оттока и рост выручки.",
-    ]):
-        yy = Inches(3.06) + Inches(1.12) * i
-        rect(s, x, yy + Inches(0.06), Inches(0.15), Inches(0.15), fill=CORAL)
-        tbi, tfi = textbox(s, x + Inches(0.36), yy, Inches(4.74), Inches(1.05))
-        para(tfi, t, 13.5, INK, first=True, line_spacing=1.35)
-
-    line_h(s, MARGIN, Inches(6.52), CONTENT_W, color=LINE)
-    tb3, tf3 = textbox(s, MARGIN, Inches(6.66), Inches(10.2), Inches(0.6))
-    para(tf3, "Когда появятся данные об уходах, на тех же признаках можно обучить "
-              "логистическую регрессию и откалибровать вероятности. Скоринг живёт "
-              "в одном модуле именно для этого — контракт API и интерфейс "
-              "при этом не меняются.", 11.5, MUTED, first=True, line_spacing=1.35)
-
-    page(s, 9)
-    notes(s, "Честность здесь работает на нас: мы называем границы сами, "
-             "до вопросов жюри. И показываем путь развития.")
+Показать: маркеры 1–4 сверху, затем слева таблицу клиентов (обратите внимание на
+строку user-0010@example.test — верхняя, балл 73,3), справа сводные метрики и блок
+«Основные причины риска».
+Возможный вопрос: «Это прототип на макете?» — Нет. Приложение запущено:
+FastAPI + Postgres + React, работает на снимке из комплекта кейса.
+Переход: «Пройдём этот путь на конкретном клиенте.»""")
 
 
-# ================================================================ slide 10 ===
-def s10_final(prs, F):
-    s = blank(prs, DARK)
-    kicker(s, "Итог", color=MINT)
+def s04_customer(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    bg(s, PAPER)
+    y = head(s, "Сквозной сценарий · шаг 1–2",
+             "Клиент #10 — высокий риск, 73,3 из 100",
+             "Верхняя строка списка, отсортированного по риску по убыванию. "
+             "Слева — реальные поля снимка, справа — тот же клиент в интерфейсе.",
+             sub_size=13.5)
 
-    tb, tf = textbox(s, MARGIN, Inches(1.42), Inches(8.4), Inches(2.4))
-    para(tf, "Не ждать ухода клиента.", 40, WHITE, bold=True, first=True,
-         line_spacing=1.0)
-    para(tf, "Дать команде возможность", 40, WHITE, bold=True, line_spacing=1.0)
-    rich(tf, [("действовать раньше", True, CORAL)], 40, WHITE, line_spacing=1.0)
+    lw = Inches(4.20)
+    ph = E(Inches(6.62) - y)
+    rect(s, M, y, lw, ph, fill=WHITE, line=LINE, line_w=0.9)
+    text_block(s, E(M + Inches(0.26)), E(y + Inches(0.24)), E(lw - Inches(0.52)),
+               "user-0010@example.test", 15, TEXT, 600, tag="c10-mail")
+    text_block(s, E(M + Inches(0.26)), E(y + Inches(0.54)), E(lw - Inches(0.52)),
+               "Клиент #10 · 3 услуги, все 3 пригодны для прогноза",
+               10, MUTED, 400, tag="c10-sub")
+    badge(s, E(M + Inches(0.26)), E(y + Inches(0.86)), Inches(1.18), Inches(0.30),
+          "ВЫСОКИЙ", CORAL_DEEP)
 
-    line_h(s, MARGIN, Inches(4.2), Inches(2.1), color=CORAL, weight=Pt(2))
+    facts = [
+        ("Балл риска клиента", "73,3 / 100", CORAL_DEEP, 14),
+        ("Категория", "Высокий (порог ≥ 65)", TEXT, 12),
+        ("Услуг высокого риска", "1 из 3", TEXT, 12),
+        ("Выручка под риском", "0,00 € — сроки уже прошли", MUTED, 12),
+        ("Баланс / всего пополнено", "203,79 € / 4 206,69 €", TEXT, 12),
+    ]
+    fy = E(y + Inches(1.40))
+    for k, v, c, vs in facts:
+        text_block(s, E(M + Inches(0.26)), fy, E(lw - Inches(0.52)), k, 9, MUTED, 600,
+                   spacing=1.05, tag="c10-k")
+        h = text_block(s, E(M + Inches(0.26)), E(fy + Inches(0.17)),
+                       E(lw - Inches(0.52)), v, vs, c,
+                       600 if vs >= 13 else 500, spacing=1.1, tag="c10-v")
+        fy = E(fy + Inches(0.17) + h + Inches(0.13))
 
-    tb2, tf2 = textbox(s, MARGIN, Inches(4.48), Inches(5.6), Inches(2.2))
-    para(tf2, "[НАЗВАНИЕ КОМАНДЫ]", 15, WHITE, bold=True, first=True)
-    para(tf2, "[ИМЯ УЧАСТНИКА 1] — [РОЛЬ УЧАСТНИКА 1]", 12.5, MUTED_ON_DARK,
-         space_before=8)
-    para(tf2, "[ИМЯ УЧАСТНИКА 2] — [РОЛЬ УЧАСТНИКА 2]", 12.5, MUTED_ON_DARK,
-         space_before=3)
-    para(tf2, "[ИМЯ УЧАСТНИКА 3] — [РОЛЬ УЧАСТНИКА 3]", 12.5, MUTED_ON_DARK,
-         space_before=3)
-    para(tf2, "[КОНТАКТ / TELEGRAM]", 12.5, MUTED_ON_DARK, space_before=10)
+    rx = E(M + lw + Inches(0.32))
+    rw = E(CW - lw - Inches(0.32))
+    label(s, rx, E(y - Inches(0.03)), rw, "РЕАЛЬНЫЙ ИНТЕРФЕЙС · КАРТОЧКА КЛИЕНТА #10")
+    hh = E(int(rw / 19.4850))
+    shot(s, "c10_pagehead.png", rx, E(y + Inches(0.24)), rw, hh)
+    my = E(y + Inches(0.24) + hh + Inches(0.12))
+    hm = E(int((rw - Inches(0.16)) / 2 / 2.7786))
+    shot(s, "m_c10_score.png", rx, my, E((rw - Inches(0.16)) / 2), hm)
+    shot(s, "m_c10_rev.png", E(rx + (rw - Inches(0.16)) / 2 + Inches(0.16)), my,
+         E((rw - Inches(0.16)) / 2), hm)
+    ly = E(my + hm + Inches(0.26))
+    label(s, rx, ly, rw, "ПРИЧИНЫ ОЦЕНКИ ПО УСЛУГЕ service-0030")
+    hr = E(int(rw / 4.6503))
+    ry = E(ly + Inches(0.27))
+    shot(s, "w_c10_reasons.png", rx, ry, rw, hr)
+    text_block(s, rx, E(ry + hr + Inches(0.12)), rw,
+               "Почему именно этот клиент: максимальный балл в списке, услуга "
+               "просрочена на 35 дней, 2 из 2 продлений не выполнены, автопродление "
+               "отключено.", 10.5, MUTED, 400, spacing=1.3, tag="c10-why")
 
-    qx = Inches(7.9)
-    qsize = Inches(1.38)
-    qstep = Inches(1.58)
-    qr_slot(s, qx, Inches(2.86), qsize, "демо", dark=True)
-    qr_slot(s, qx + qstep, Inches(2.86), qsize, "GitHub", dark=True)
-    qr_slot(s, qx + 2 * qstep, Inches(2.86), qsize, "контакты", dark=True)
+    foot(s, "Опорный момент 2026-10-19 15:00 UTC. Данные: dataset/data.json "
+            "(10 аккаунтов / 30 услуг / 100 транзакций). Балл риска — не вероятность оттока.")
+    notes(s, """Что сказать (60 сек):
+«Открываем список клиентов — он уже отсортирован по риску. Верхняя строка:
+клиент #10, балл 73,3 из 100, категория «высокий». Выбираем его не случайно —
+это максимум по списку.
+Что мы про него знаем из данных: три услуги, все пригодны для прогноза,
+баланс 203,79 €, всего пополнено 4 206,69 €. Выручка под риском — ноль,
+и это отдельный важный момент, к нему вернёмся на слайде про деньги.
+Причины: услуга просрочена на 35 дней, два продления из двух не выполнены,
+автопродление выключено.»
 
-    tb3, tf3 = textbox(s, qx, Inches(5.34), Inches(4.58), Inches(1.2))
-    para(tf3, "GitHub: github.com/Pixelminds-hub/aeza-analizer", 11.5,
-         MUTED_ON_DARK, first=True)
-    para(tf3, "Демо-стенд: [АДРЕС СТЕНДА] — вставить подтверждённую ссылку "
-              "и сгенерировать QR-код.", 11.5, MUTED_ON_DARK, space_before=5,
-         line_spacing=1.35)
-
-    page(s, 10, dark=True)
-    notes(s, "Финал. Одна мысль крупно. Перед защитой подставить название "
-             "команды, имена, контакт и сгенерировать QR по подтверждённым "
-             "ссылкам.")
-
-
-# ==================================================================== main ===
-def postprocess(path):
-    """Fix two packaging details python-pptx leaves behind.
-
-    ``slide_width`` is set to a 16:9 size, but python-pptx keeps the default
-    ``type="screen4x3"`` hint on ``<p:sldSz>``.  PowerPoint trusts the explicit
-    cx/cy, yet the stale hint can make some viewers letterbox the deck, so it is
-    corrected here.  The theme font scheme is also switched to Inter so any
-    inherited (non-explicit) text does not fall back to Calibri.
-    """
-
-    import re
-    import shutil
-    import zipfile
-
-    tmp = path + ".tmp"
-    with zipfile.ZipFile(path) as src, zipfile.ZipFile(tmp, "w",
-                                                       zipfile.ZIP_DEFLATED) as dst:
-        for item in src.infolist():
-            data = src.read(item.filename)
-            if item.filename == "ppt/presentation.xml":
-                xml = data.decode("utf-8")
-                xml = re.sub(r'(<p:sldSz\b[^>]*?)\s+type="[^"]*"', r"\1", xml)
-                xml = xml.replace('<p:sldSz ', '<p:sldSz type="screen16x9" ')
-                data = xml.encode("utf-8")
-            elif item.filename == "ppt/theme/theme1.xml":
-                xml = data.decode("utf-8")
-                for tag in ("majorFont", "minorFont"):
-                    xml = re.sub(
-                        rf'(<a:{tag}>\s*<a:latin\s+)typeface="[^"]*"',
-                        rf'\1typeface="{FONT}"', xml,
-                    )
-                data = xml.encode("utf-8")
-            dst.writestr(item, data)
-    shutil.move(tmp, path)
+Показать: /customers → клик по #10 → шапка, метрики, блок «Причины оценки».
+Возможный вопрос: «Почему балл клиента 73,3, а не среднее по услугам?» —
+Правило продукта: балл клиента — максимум по услугам, пригодным для прогноза.
+Среднее замаскировало бы одну критичную услугу.
+Переход: «Разберём, из чего складывается этот балл.»""")
 
 
-def main():
-    F = gather()
-    prs = new_deck()
-    for fn in (s01_cover, s02_problem, s03_product, s04_customer, s05_reasons,
-               s06_money, s07_before, s08_after, s09_value, s10_final):
-        fn(prs, F)
+def s05_factors(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    bg(s, PAPER)
+    y = head(s, "Почему модель считает клиента рискованным",
+             "Балл объясним: видно каждый вклад",
+             "Формула: 100 × Σ(вес × значение) / Σвес. По service-0030 сумма вкладов "
+             "11,00 при сумме весов 15,0 → 73,3. Ниже — фактические вклады из интерфейса.",
+             sub_size=13)
+
+    ch = E(Inches(6.62) - y)
+    cw = Inches(6.55)
+    rect(s, M, y, cw, ch, fill=WHITE, line=LINE, line_w=0.9)
+    text_block(s, E(M + Inches(0.24)), E(y + Inches(0.20)), E(cw - Inches(0.48)),
+               "Вклад факторов в балл 73,3 · service-0030", 12.5, TEXT, 600, tag="ch-t")
+
+    cd = CategoryChartData()
+    cd.categories = [
+        "Близость даты окончания · 3,0",
+        "Ожидание продления · 2,5",
+        "Автопродление отключено · 2,0",
+        "Неуспешные продления · 2,0",
+        "Доля неуспешных продлений · 1,5",
+        "Недостаточно средств · 2,0",
+        "Услуга приостановлена · 2,0",
+    ]
+    cd.add_series("Вклад (вес × значение)", (3.0, 2.5, 2.0, 2.0, 1.5, 0.0, 0.0))
+    gf = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, E(M + Inches(0.18)),
+                            E(y + Inches(0.56)), E(cw - Inches(0.36)),
+                            E(ch - Inches(0.78)), cd)
+    chart = gf.chart
+    chart.has_legend = False
+    chart.has_title = False
+    plot = chart.plots[0]
+    plot.gap_width = 50
+    plot.has_data_labels = True
+    plot.data_labels.number_format = '0.00'
+    plot.data_labels.number_format_is_linked = False
+    plot.data_labels.font.size = Pt(10)
+    plot.data_labels.font.name = FONT
+    ser = plot.series[0]
+    ser.format.fill.solid()
+    ser.format.fill.fore_color.rgb = CORAL
+    ca = chart.category_axis
+    ca.tick_labels.font.size = Pt(9.5)
+    ca.tick_labels.font.name = FONT
+    ca.format.line.color.rgb = LINE
+    va = chart.value_axis
+    va.visible = False
+    va.has_major_gridlines = False
+    chart.chart_style = 2
+
+    rx = E(M + cw + Inches(0.30))
+    rw = E(CW - cw - Inches(0.30))
+    steps = [
+        ("Наблюдение", "Данные снимка: expiresAt 14.09.2026, autoProlong = false, "
+                       "2 продления из 2 со статусом not_performed.", MINT),
+        ("Интерпретация", "Услуга просрочена, продление не завершено, решение о "
+                          "продлении зависит от клиента.", MINT),
+        ("Влияние на оценку", "Три крупнейших фактора дают 3,0 + 2,5 + 2,0 = 7,5 из 15,0. "
+                              "С неуспешными продлениями и их долей (2,0 + 1,5) сумма "
+                              "вкладов 11,0 из 15,0 — отсюда 73,3, выше порога 65.",
+         CORAL_DEEP),
+    ]
+    inner = E((ch - Inches(0.27)) / 3)
+    for i, (t, b, c) in enumerate(steps):
+        yy = E(y + i * (inner + Inches(0.135)))
+        rect(s, rx, yy, rw, inner, fill=WHITE, line=LINE, line_w=0.9)
+        rect(s, rx, yy, Inches(0.045), inner, fill=c)
+        ty = E(yy + Inches(0.17))
+        ty = E(ty + lines_box(s, E(rx + Inches(0.22)), ty, E(rw - Inches(0.44)), [t],
+                              12, TEXT, 600, spacing=1.1, tag="step-t"))
+        text_block(s, E(rx + Inches(0.22)), E(ty + Inches(0.06)), E(rw - Inches(0.44)),
+                   b, 10, MUTED, 400, spacing=1.28, tag="step-b")
+
+    foot(s, "Факторы: expiry_proximity, prolong_wait_status, auto_prolong_disabled, "
+            "failed_renewals, renewal_failure_rate, insufficient_balance, suspended_status. "
+            "Причинно-следственная связь не доказана: исторических исходов оттока в снимке нет.")
+    notes(s, """Что сказать (50 сек):
+«Балл — это не «алгоритм решил». Формула простая и проверяемая: сто умножить на
+сумму вес×значение, делить на сумму весов. По этой услуге сумма вкладов 11 из 15 —
+отсюда 73,3.
+Крупнейшие вклады: близость даты окончания — 3,0, ожидание продления — 2,5,
+автопродление и неуспешные продления — по 2,0.
+Два фактора дали ноль: баланса хватает на продление, услуга не приостановлена.
+Это тоже важно: модель не накручивает риск там, где сигналов нет.»
+
+Показать: диаграмму вкладов, затем правые карточки «наблюдение → интерпретация →
+влияние». В интерфейсе — кнопку «Показать все факторы (7)».
+Возможный вопрос: «Это машинное обучение?» — Нет, и мы это не скрываем.
+В снимке нет исторических исходов: обучать и валидировать классификатор не на чем.
+Модуль спроектирован под замену на калиброванную модель без смены API.
+Переход: «Теперь деньги — отдельно от риска.»""")
+
+
+def s06_money(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    bg(s, PAPER)
+    y = head(s, "Денежная оценка",
+             "Риск и деньги — разные величины",
+             "Выручка под риском = стоимость продления × балл риска / 100, и только "
+             "для открытых услуг с продлением внутри горизонта.",
+             sub_size=13.5)
+
+    fh = Inches(0.84)
+    rect(s, M, y, CW, fh, fill=INK)
+    _, tf = textbox(s, E(M + Inches(0.30)), E(y + Inches(0.15)), Inches(7.2),
+                    Inches(0.56))
+    runs(tf, [("выручка под риском  ", SOFT, 500),
+              ("=  стоимость продления × балл риска / 100", WHITE, 600)], 15, first=True)
+    text_block(s, E(M + Inches(8.10)), E(y + Inches(0.24)), E(CW - Inches(8.4)),
+               "Баланс в формулу не входит", 10, MINT, 500,
+               spacing=1.2, tag="money-note")
+
+    cy = E(y + fh + Inches(0.30))
+    bh = E(Inches(6.62) - cy)
+    lw = Inches(4.35)
+    rect(s, M, cy, lw, bh, fill=WHITE, line=LINE, line_w=0.9)
+    text_block(s, E(M + Inches(0.24)), E(cy + Inches(0.22)), E(lw - Inches(0.48)),
+               "Клиент #10 — высокий риск, но 0,00 € под риском", 12, TEXT, 600,
+               spacing=1.12, tag="money-h")
+    rows = [
+        ("БАЛЛ РИСКА КЛИЕНТА", "73,3 / 100", CORAL_DEEP, 13.5),
+        ("ВЫРУЧКА ПОД РИСКОМ", "0,00 €", TEXT, 13.5),
+        ("ПОЧЕМУ НОЛЬ", "Сроки уже прошли — горизонт смотрит вперёд.", MUTED, 9.5),
+        ("БАЛАНС — НЕ ВЫРУЧКА", "203,79 €", MUTED, 13.5),
+        ("ВСЕГО ПОПОЛНЕНО — СПРАВОЧНО", "4 206,69 €", MUTED, 13.5),
+    ]
+    ry = E(cy + Inches(0.64))
+    for k, v, c, vs in rows:
+        text_block(s, E(M + Inches(0.24)), ry, E(lw - Inches(0.48)), k, 8.5, MUTED,
+                   600, spacing=1.05, tag="money-k")
+        h = text_block(s, E(M + Inches(0.24)), E(ry + Inches(0.17)),
+                       E(lw - Inches(0.48)), v, vs, c, 600 if vs >= 13 else 400,
+                       spacing=1.25, tag="money-v")
+        ry = E(ry + Inches(0.17) + h + Inches(0.16))
+
+    rx = E(M + lw + Inches(0.30))
+    rw = E(CW - lw - Inches(0.30))
+    label(s, rx, E(cy - Inches(0.03)), rw,
+          "РЕАЛЬНЫЙ ИНТЕРФЕЙС · БЛИЖАЙШИЕ ПРОДЛЕНИЯ В ГОРИЗОНТЕ")
+    shot(s, "renew_table.png", rx, E(cy + Inches(0.26)), rw, E(int(rw / 4.7347)))
+    ty = E(cy + Inches(2.02))
+    totals = [("ВЫРУЧКА ПОД РИСКОМ", "5,74 €", CORAL_DEEP, "прогнозная экспозиция"),
+              ("ПРЕДСТОЯЩИЕ ПРОДЛЕНИЯ", "17,03 €", TEXT, "сумма без учёта риска"),
+              ("ИСТОРИЧЕСКИЕ ПОПОЛНЕНИЯ", "22 240,73 €", MUTED,
+               "справочно, не суммируется")]
+    tw = E((rw - Inches(0.24)) / 3)
+    th = E(Inches(6.62) - ty)
+    for i, (k, v, c, sub) in enumerate(totals):
+        x = E(rx + i * (tw + Inches(0.12)))
+        rect(s, x, ty, tw, th, fill=WHITE, line=LINE, line_w=0.9)
+        text_block(s, E(x + Inches(0.14)), E(ty + Inches(0.14)), E(tw - Inches(0.28)),
+                   k, 8, MUTED, 600, spacing=1.1, tag="tot-k")
+        lines_box(s, E(x + Inches(0.14)), E(ty + Inches(0.40)), E(tw - Inches(0.28)),
+                  [v], 16, c, 700, spacing=1.0, tag="tot-v")
+        text_block(s, E(x + Inches(0.14)), E(ty + Inches(0.74)), E(tw - Inches(0.28)),
+                   sub, 8.5, MUTED, 400, spacing=1.15, tag="tot-s")
+
+    foot(s, "Горизонт 30 дней. Сумма по четырём продлениям: 0,32 + 0,77 + 1,57 + 3,08 "
+            "= 5,74 €. Оценка не является гарантированным прогнозом потерь.")
+    notes(s, """Что сказать (45 сек):
+«Здесь важно не сложить несопоставимое. У клиента #10 балл высокий — 73,3,
+но выручка под риском ноль. Почему? Все его сроки уже прошли: просроченные
+продления лежат в прошлом, а горизонт смотрит вперёд. Услуг с продлением
+внутри 30 дней у него нет.
+Баланс 203,79 € и пополнения 4 206,69 € — это не потерянные деньги. Мы держим
+три величины раздельно: выручка под риском — прогноз, предстоящие продления —
+сумма без риска, пополнения — справочная история.»
+
+Показать: формулу, затем таблицу «Ближайшие продления в горизонте» — 4 строки,
+и три итоговые метрики внизу.
+Возможный вопрос: «Почему сумма такая маленькая?» — Потому что горизонт 30 дней,
+и в него попадают 4 продления из 30 услуг. Это честная оценка по доступным полям,
+а не бухгалтерский прогноз: календаря будущих списаний в снимке нет.
+Переход: «Теперь проверим гипотезу: изменим вес фактора.»""")
+
+
+def s07_change(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    bg(s, PAPER)
+    y = head(s, "Сквозной сценарий · шаг 4–5",
+             "Меняем вес — результат пересчитывается",
+             "Гипотеза до изменения: усилим «близость даты окончания» с 3,0 до 9,0 — "
+             "баллы вырастут. Проверяем на реальном интерфейсе.",
+             sub_size=13.5)
+
+    hh = Inches(0.46)
+    rect(s, M, y, CW, hh, fill=WHITE, line=LINE, line_w=0.9)
+    rect(s, M, y, Inches(0.045), hh, fill=CORAL_DEEP)
+    _, tf = textbox(s, E(M + Inches(0.24)), E(y + Inches(0.11)), E(CW - Inches(0.48)),
+                    Inches(0.28))
+    runs(tf, [("ГИПОТЕЗА ДО ИЗМЕНЕНИЯ   ", CORAL_DEEP, 700),
+              ("вес expiry_proximity 3,0 → 9,0 должен повысить баллы и число "
+               "клиентов высокого риска", MUTED, 400)], 11, first=True)
+
+    cy = E(y + hh + Inches(0.26))
+    hw = E((CW - Inches(0.34)) / 2)
+    label(s, M, cy, hw, "ДО · ВЕС 3,0")
+    label(s, E(M + hw + Inches(0.34)), cy, hw, "ПОСЛЕ · ВЕС 9,0", CORAL_DEEP)
+    sh_ = E(int(hw / 2.7589))
+    shot(s, "t_set_before.png", M, E(cy + Inches(0.24)), hw, sh_)
+    shot(s, "t_set_after.png", E(M + hw + Inches(0.34)),
+         E(cy + Inches(0.24)), hw, sh_)
+
+    ry = E(cy + Inches(1.36))
+    pairs = [
+        ("Балл риска клиента #10", "73,3", "81,0"),
+        ("Балл service-0030", "73,3", "81,0"),
+        ("Клиентов высокого риска", "2", "3"),
+        ("Клиентов среднего риска", "4", "3"),
+        ("Выручка под риском", "5,74 €", "7,48 €"),
+        ("Сумма весов", "15,0", "21,0"),
+    ]
+    cw3 = E((CW - Inches(0.30)) / 3)
+    rh = Inches(0.70)
+    for i, (k, a, b) in enumerate(pairs):
+        x = E(M + (i % 3) * (cw3 + Inches(0.15)))
+        yy = E(ry + (i // 3) * (rh + Inches(0.14)))
+        rect(s, x, yy, cw3, rh, fill=WHITE, line=LINE, line_w=0.9)
+        text_block(s, E(x + Inches(0.16)), E(yy + Inches(0.10)), E(cw3 - Inches(0.32)),
+                   k, 8.5, MUTED, 600, spacing=1.05, tag="pair-k")
+        _, tf = textbox(s, E(x + Inches(0.16)), E(yy + Inches(0.30)),
+                        E(cw3 - Inches(0.32)), Inches(0.34))
+        runs(tf, [(a, MUTED, 500), ("   →   ", HAIR, 500), (b, CORAL_DEEP, 700)], 15,
+             first=True)
+
+    text_block(s, M, E(ry + 2 * rh + Inches(0.42)), CW,
+               "Расчёт: сумма весов выросла с 15,0 до 21,0, вклад фактора — с 3,0 до 9,0, "
+               "поэтому 100 × 17,0 / 21,0 = 81,0. Настройка сохраняется на сервере, "
+               "сводка обновляется сразу, без перезагрузки страницы; кнопка «Значения "
+               "по умолчанию» возвращает исходные 3,0 и прежние числа.",
+               10.5, MUTED, 400, spacing=1.3, tag="change-note")
+
+    notes(s, """Что сказать (60 сек):
+«Сначала формулируем ожидание: усилим фактор «близость даты окончания» с трёх
+до девяти. Гипотеза — баллы вырастут, клиентов высокого риска станет больше.
+Идём в настройки модели, меняем вес, нажимаем «Сохранить».
+Смотрите, что произошло. Балл клиента #10: 73,3 → 81,0. Клиентов высокого риска:
+2 → 3, среднего: 4 → 3. Выручка под риском: 5,74 → 7,48 €.
+Это не декоративный контрол: настройка уходит на сервер, сохраняется в базе и
+пересчитывает всю аналитику. Кнопка «Значения по умолчанию» возвращает исходные числа.»
+
+Показать: /settings → поле веса expiry_proximity 3 → 9 → «Сохранить». Сводка в шапке
+обновляется на месте, без перезагрузки: 2 → 3 высокого, 4 → 3 среднего, 5,74 → 7,48 €,
+сумма весов 15,0 → 21,0. Затем открыть карточку клиента #10 (балл 81,0) и вернуться
+в настройки, нажав «Значения по умолчанию».
+Возможный вопрос: «Пересчёт автоматический?» — Да. Настройки сохраняются на сервере,
+бэкенд пересчитывает всю аналитику, и интерфейс подтягивает новые значения сразу,
+без ручной перезагрузки. Проверено на стенде: страница настроек остаётся открытой,
+URL не меняется, числа в сводке обновляются сами.
+Переход: «Что это даёт команде Aéza.»""")
+
+
+def s08_value(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    bg(s, PAPER)
+    y = head(s, "Результат для бизнеса",
+             "Команда видит, с кого начать",
+             "Четыре подтверждённые возможности продукта — и то, что мы сознательно "
+             "не заявляем.", sub_size=13.5)
+
+    items = [
+        ("Приоритет вместо ручного просмотра",
+         "Список отсортирован по риску, фильтр по категории оставляет только тех, "
+         "кто требует внимания."),
+        ("Причина вместо непрозрачного числа",
+         "Каждый балл разложен на факторы с числами из данных и рекомендациями "
+         "по удержанию."),
+        ("Деньги отдельно от риска",
+         "Выручка под риском считается по продлениям внутри горизонта; баланс и "
+         "пополнения с ней не смешиваются."),
+        ("Проверка гипотез",
+         "Веса, горизонт и пороги меняются из интерфейса; результат пересчитывается "
+         "сразу."),
+    ]
+    w = E((CW - Inches(0.30)) / 2)
+    hh = Inches(1.06)
+    for i, (t, b) in enumerate(items):
+        x = E(M + (i % 2) * (w + Inches(0.30)))
+        yy = E(y + (i // 2) * (hh + Inches(0.18)))
+        rect(s, x, yy, w, hh, fill=WHITE, line=LINE, line_w=0.9)
+        rect(s, x, yy, Inches(0.045), hh, fill=MINT)
+        ty = E(yy + Inches(0.16))
+        ty = E(ty + lines_box(s, E(x + Inches(0.26)), ty, E(w - Inches(0.50)), [t],
+                              13, TEXT, 600, spacing=1.1, tag="val-t"))
+        text_block(s, E(x + Inches(0.26)), E(ty + Inches(0.05)), E(w - Inches(0.50)),
+                   b, 10.5, MUTED, 400, spacing=1.3, tag="val-b")
+
+    ny = E(y + 2 * (hh + Inches(0.18)) + Inches(0.12))
+    nh = E(Inches(6.62) - ny)
+    rect(s, M, ny, CW, nh, fill=WHITE, line=LINE, line_w=0.9)
+    rect(s, M, ny, Inches(0.045), nh, fill=CORAL_DEEP)
+    ty = E(ny + Inches(0.18))
+    ty = E(ty + lines_box(s, E(M + Inches(0.26)), ty, E(CW - Inches(0.52)),
+                          ["Чего мы не заявляем"], 12.5, TEXT, 600, spacing=1.1,
+                          tag="no-t"))
+    text_block(s, E(M + Inches(0.26)), E(ty + Inches(0.06)), E(CW - Inches(0.52)),
+               "Балл риска — не вероятность оттока в процентах: в снимке нет исторических "
+               "исходов, поэтому модель построена на правилах, а не обучена. Точность, "
+               "снижение оттока и рост выручки не измерены — мы их не обещаем. Продукт "
+               "помогает анализировать и приоритизировать; удержание зависит от следующих "
+               "действий команды.", 10.5, MUTED, 400, spacing=1.3, tag="no-b")
+
+    foot(s, "Подтверждено запуском продукта на датасете организатора: снимок "
+            "импортирован, все экраны и пересчёт проверены вживую.")
+    notes(s, """Что сказать (35 сек):
+«Что получает аналитик Aéza: приоритизированный список вместо ручного просмотра,
+объяснение вместо непрозрачного числа, денежную оценку отдельно от баланса и
+возможность проверить гипотезу, поменяв веса.
+И сразу честно про границы: балл — не вероятность в процентах, точность мы не
+измеряли, потому что в снимке нет истории уходов. Мы не обещаем снижение оттока —
+мы даём инструмент для решения.»
+
+Показать: четыре карточки, затем нижний блок ограничений — его проговариваем
+обязательно, это сильный ход перед бизнес-заказчиком.
+Возможный вопрос: «Какая точность модели?» — Не измерена и не заявлена. В данных
+нет исходов оттока, обучать и валидировать классификатор не на чем.
+Переход: «Коротко про то, как это устроено внутри.»""")
+
+
+def s09_trust(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    bg(s, PAPER)
+    y = head(s, "Архитектура доверия и ограничения",
+             "Данные → проверка → расчёт → интерфейс",
+             "Короткий путь данных. Никаких скрытых шагов и никакой подмены "
+             "отсутствующих сигналов нулём.", sub_size=13.5)
+
+    chain = [
+        ("Снимок Aéza", "data.json: 10 аккаунтов, 30 услуг, 100 транзакций"),
+        ("Импорт с проверкой", "валидация целиком до записи, применение атомарно"),
+        ("Скоринг", "один модуль: вес × фактор, сумма весов в знаменателе"),
+        ("API и интерфейс", "FastAPI + Postgres, панель аналитика на React"),
+    ]
+    bw = E((CW - Inches(0.90)) / 4)
+    bhh = Inches(1.30)
+    for i, (t, b) in enumerate(chain):
+        x = E(M + i * (bw + Inches(0.30)))
+        rect(s, x, y, bw, bhh, fill=WHITE, line=LINE, line_w=0.9)
+        rect(s, x, y, bw, Inches(0.045), fill=INK_2 if i < 3 else CORAL_DEEP)
+        ty = E(y + Inches(0.20))
+        ty = E(ty + lines_box(s, E(x + Inches(0.18)), ty, E(bw - Inches(0.36)), [t],
+                              12, TEXT, 600, spacing=1.1, tag="chain-t"))
+        text_block(s, E(x + Inches(0.18)), E(ty + Inches(0.05)), E(bw - Inches(0.36)),
+                   b, 9.5, MUTED, 400, spacing=1.3, tag="chain-b")
+        if i < 3:
+            rect(s, E(x + bw + Inches(0.055)), E(y + Inches(0.53)), Inches(0.19),
+                 Inches(0.24), fill=LINE, shape=MSO_SHAPE.RIGHT_ARROW)
+
+    ly = E(y + bhh + Inches(0.30))
+    lh = E(Inches(6.62) - ly)
+    lw = E(CW * 0.485)
+    rect(s, M, ly, lw, lh, fill=WHITE, line=LINE, line_w=0.9)
+    ty = E(ly + Inches(0.18))
+    ty = E(ty + lines_box(s, E(M + Inches(0.24)), ty, E(lw - Inches(0.48)),
+                          ["Как обрабатываются пропуски"], 12.5, TEXT, 600,
+                          spacing=1.1, tag="m-t"))
+    text_block(s, E(M + Inches(0.24)), E(ty + Inches(0.06)), E(lw - Inches(0.48)),
+               "• Неизвестное ≠ ноль: фактор без данных исключается из числителя и "
+               "знаменателя, веса перенормируются.\n"
+               "• Услуги deleted и blocked — состоявшееся событие, а не прогноз: "
+               "балл им не присваивается.\n"
+               "• Цена не входит в формулу риска: price — это экспозиция, а не "
+               "вероятность ухода.\n"
+               "• Опорный момент зафиксирован (2026-10-19 15:00 UTC), поэтому числа "
+               "воспроизводимы.", 10, MUTED, 400, spacing=1.34, tag="m-b")
+
+    rx = E(M + lw + Inches(0.30))
+    rw = E(CW - lw - Inches(0.30))
+    rect(s, rx, ly, rw, lh, fill=WHITE, line=LINE, line_w=0.9)
+    ty = E(ly + Inches(0.18))
+    ty = E(ty + lines_box(s, E(rx + Inches(0.24)), ty, E(rw - Inches(0.48)),
+                          ["Ограничения, которые важно знать"], 12.5, TEXT, 600,
+                          spacing=1.1, tag="lim-t"))
+    text_block(s, E(rx + Inches(0.24)), E(ty + Inches(0.06)), E(rw - Inches(0.48)),
+               "• Нет истории оттока — отсюда модель на правилах и отсутствие метрик "
+               "точности.\n"
+               "• Нет календаря будущих списаний: даты продлений выведены из expiresAt "
+               "и paymentTerm.\n"
+               "• Нет динамики: снимок описывает один момент, график тренда не строится.\n"
+               "• Нагрузка не измерялась: набор кейса — 10 / 30 / 100 записей.",
+               10, MUTED, 400, spacing=1.34, tag="lim-b")
+
+    notes(s, """Что сказать (30 сек, при технически подкованном заказчике):
+«Путь данных короткий: снимок Aéza проходит валидацию целиком до записи и
+применяется атомарно, скоринг живёт в одном модуле, результат уходит в API и в панель.
+Отдельно про пропуски: отсутствующий сигнал не превращается в ноль и не понижает
+риск — фактор просто исключается, а веса перенормируются.
+И про границы: истории уходов нет, календаря списаний нет, динамики нет, нагрузку
+на больших объёмах мы не измеряли.»
+
+Показать: цепочку, затем два блока ограничений. Не читать всё вслух — выбрать 2–3 пункта.
+Возможный вопрос: «Что будет на 10 000 клиентов?» — Список пагинируется, фильтры и
+сортировка выполняются в SQL, а не в браузере. Нагрузочного тестирования не проводили —
+говорим честно.
+Переход: «Финальный слайд.»""")
+
+
+def s10_final(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    bg(s, INK)
+    rect(s, 0, 0, Inches(0.06), SH, fill=CORAL)
+
+    picture_fit(s, BRAND / "aeza_logo_on_dark.png", M, Inches(0.62),
+                Inches(1.40), Inches(0.34))
+    text_block(s, M, Inches(1.16), Inches(8.0), P["final_kicker"], 10.5, MINT,
+               700, tag="fin-k")
+    y = Inches(1.72)
+    y = E(y + lines_box(s, M, y, Inches(8.3), [P["final_title"]], 40, WHITE,
+                        700, spacing=1.02, tag="fin-t1"))
+    y = E(y + lines_box(s, M, E(y + Inches(0.06)), Inches(8.3),
+                        P["final_sub"].split("\n"), 25, CORAL, 600, spacing=1.12,
+                        tag="fin-t2"))
+    text_block(s, M, E(y + Inches(0.26)), Inches(8.0), P["next_step"],
+               13, SOFT, 400, spacing=1.4, tag="fin-sub")
+
+    hairline(s, M, Inches(4.62), Inches(8.0), LINE_DARK)
+    text_block(s, M, Inches(4.82), Inches(4.2), "КОМАНДА", 9.5, DIM, 700, tag="fin-tl")
+    ty = Inches(5.10)
+    ty = E(ty + lines_box(s, M, ty, Inches(5.0), ["[НАЗВАНИЕ КОМАНДЫ]"], 17, WHITE,
+                          600, spacing=1.15, tag="fin-tn"))
+    for line in ("[ИМЯ УЧАСТНИКА 1] · [РОЛЬ УЧАСТНИКА 1]",
+                 "[ИМЯ УЧАСТНИКА 2] · [РОЛЬ УЧАСТНИКА 2]",
+                 "[ИМЯ УЧАСТНИКА 3] · [РОЛЬ УЧАСТНИКА 3]"):
+        ty = E(ty + text_block(s, M, E(ty + Inches(0.02)), Inches(5.4), line, 10.5,
+                               SOFT, 400, spacing=1.35, tag="fin-m"))
+    text_block(s, M, E(ty + Inches(0.10)), Inches(5.4), "[КОНТАКТ / TELEGRAM]", 10.5,
+               MINT, 500, tag="fin-c")
+
+    rx = E(SW - Inches(3.42))
+    rw = Inches(2.30)
+    text_block(s, rx, Inches(1.38), rw, "ССЫЛКИ", 9.5, DIM, 700, tag="fin-sl")
+    gy = Inches(1.74)
+    gsz = Inches(1.20)
+    rect(s, E(rx - Inches(0.03)), E(gy - Inches(0.03)),
+         E(gsz + Inches(0.06)), E(gsz + Inches(0.06)), fill=WHITE)
+    picture_fit(s, BRAND / "qr_github.png", rx, gy, gsz, gsz)
+    text_block(s, rx, E(gy + gsz + Inches(0.07)), rw,
+               "[QR-КОД: GITHUB] · репозиторий проекта", 8.5, DIM, 600,
+               spacing=1.1, tag="fin-qg")
+
+    qr_slot(s, rx, Inches(3.62), gsz, "[QR-КОД: ДЕМО]", caption_color=DIM)
+    qr_slot(s, rx, Inches(5.30), gsz, "[QR-КОД: КОНТАКТЫ]", caption_color=DIM)
+    text_block(s, rx, Inches(6.72), rw, "ЗАПОЛНИТЬ ПЕРЕД ЗАЩИТОЙ",
+               8, MUTED, 700, spacing=1.2, tag="fin-fill")
+    text_block(s, rx, Inches(6.92), rw, "Вставьте реальные ссылки",
+               8, DIM, 400, spacing=1.25, tag="fin-qn")
+
+    notes(s, """Что сказать (20 сек):
+«Мы не обещаем автоматического удержания. Мы даём команде возможность увидеть риск
+раньше и действовать до того, как клиент уйдёт.
+Предлагаем следующий шаг: вместе проверить модель на данных Aéza и понять, какие
+сигналы действительно полезны вашей команде удержания. Спасибо.»
+
+ПЕРЕД ЗАЩИТОЙ: подставить название команды, имена и роли, контакт; заменить два
+QR-блока-заглушки (демо и контакты) на реальные ссылки. QR GitHub уже настоящий:
+он закодирован из адреса публичного репозитория и проверен декодированием,
+заменяйте только если репозиторий переедет.
+Возможный вопрос: «Что дальше по продукту?» — Когда появятся исторические исходы,
+логистическая регрессия на тех же признаках заменит формулу без изменения контракта
+API и интерфейса.""")
+
+
+def build(which: str) -> None:
+    global P, OUT
+    P = PROFILES[which]
+    OUT = ROOT / P["out"]
+    prs = Presentation()
+    prs.slide_width = SW
+    prs.slide_height = SH
+    for fn in (s01_cover, s02_problem, s03_solution, s04_customer, s05_factors,
+               s06_money, s07_change, s08_value, s09_trust, s10_final):
+        fn(prs)
+    cp = prs.core_properties
+    cp.title = P["title"]
+    cp.author = "[НАЗВАНИЕ КОМАНДЫ]"
+    cp.subject = "Анализ риска оттока клиентов хостинг-провайдера"
+    cp.comments = ("Все числа и скриншоты получены из запущенного Aéza Analyzer "
+                   "на датасете организатора, опорный момент 2026-10-19 15:00 UTC.")
     prs.save(OUT)
-    postprocess(OUT)
-    print("saved:", OUT)
-    print("revenue at risk:", eur(F["rar"]), "-> tuned:", eur(F["rar_tuned"]))
-    print("upcoming:", eur(F["upcoming"]), "| topups:", eur(F["topups"]))
-    print("customer 10:", n1(F["base"][FEATURED]["cust"].score), "->",
-          n1(F["tuned"][FEATURED]["cust"].score))
-    print("cats:", dict(F["cats"]), "->", dict(F["tune_cats"]))
+    print(f"saved {OUT.name} · slides={len(prs.slides._sldIdLst)} · profile={which}")
+    if OVERFLOW:
+        print("OVERFLOW:")
+        for o in OVERFLOW:
+            print("  ", o)
+    else:
+        print("no overflow")
+
+
+def main() -> None:
+    arg = sys.argv[1] if len(sys.argv) > 1 else "hackathon"
+    for which in (sorted(PROFILES) if arg == "both" else [arg]):
+        build(which)
 
 
 if __name__ == "__main__":

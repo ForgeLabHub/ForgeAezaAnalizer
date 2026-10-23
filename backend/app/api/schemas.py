@@ -72,6 +72,10 @@ class SettingsPayload(BaseModel):
     weights: dict[str, Weight]
     lowMax: Annotated[int, Field(strict=True, ge=0, le=99)]
     mediumMax: Annotated[int, Field(strict=True, ge=1, le=100)]
+    #: Trailing window (days) used when counting failed renewals.  ``None``
+    #: means the whole snapshot, which is a valid configuration, so this field
+    #: is genuinely nullable rather than optional-with-a-default.
+    failedRenewalWindowDays: Annotated[int, Field(strict=True, ge=1, le=3650)] | None = None
 
     @model_validator(mode="after")
     def thresholds(self):
@@ -86,11 +90,17 @@ class SettingsPatch(BaseModel):
     weights: dict[str, Weight] | None = None
     lowMax: Annotated[int, Field(strict=True, ge=0, le=99)] | None = None
     mediumMax: Annotated[int, Field(strict=True, ge=1, le=100)] | None = None
+    #: Nullable on purpose: ``null`` means "count the whole snapshot", which is
+    #: distinct from omitting the field (keep the stored value).
+    failedRenewalWindowDays: Annotated[int, Field(strict=True, ge=1, le=3650)] | None = None
     expectedGeneration: Annotated[int, Field(strict=True, ge=0)] | None = None
 
     @model_validator(mode="after")
     def no_null(self):
-        if any(getattr(self, name) is None for name in self.model_fields_set):
+        # The window is the one field where null is a meaningful value rather
+        # than a way to clear a setting, so it is exempt from this rule.
+        supplied = self.model_fields_set - {"failedRenewalWindowDays", "expectedGeneration"}
+        if any(getattr(self, name) is None for name in supplied):
             raise ValueError("supplied settings cannot be null")
         return self
 
