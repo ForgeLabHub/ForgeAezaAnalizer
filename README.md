@@ -203,6 +203,10 @@ revenue_at_risk = eligible_renewal_amount × risk_score / 100
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | запуск и развёртывание |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | безопасность и ограничения |
 | [`docs/AUTH_MODULE.md`](docs/AUTH_MODULE.md) | модуль аутентификации (OIDC, JWT) |
+| [`docs/IMPLEMENTATION_AUDIT.md`](docs/IMPLEMENTATION_AUDIT.md) | аудит всех реализаций в репозитории |
+| [`docs/ARCHITECTURE_DECISION.md`](docs/ARCHITECTURE_DECISION.md) | выбор основного продукта |
+| [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) | сценарий демонстрации жюри |
+| [`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md) | реализованное и идеи |
 
 
 ---

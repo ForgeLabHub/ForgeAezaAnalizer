@@ -1,77 +1,154 @@
-# Тестирование
+# Тестирование и проверки
 
-## Запуск
+Все результаты ниже получены **фактическим запуском** команд на актуальном
+коде. Не проверенные пункты помечены явно.
+
+## Тестовые наборы
+
+| Компонент | Команда | Результат |
+|---|---|---|
+| B: основной продукт | `cd backend && python -m pytest tests/ -q` | **108 passed** |
+| C: auth-модуль | `python -m pytest tests/test_auth.py -q` | **17 passed** |
+| A: анализатор | `python -m pytest tests/ -q --ignore=tests/test_auth.py` | **52 passed** |
+| Всё вместе | `python -m pytest tests/ -q` | **69 passed** |
+
+**Итого 177 тестов**, все проходят.
+
+## Сборка фронтенда
 
 ```bash
-python -m pytest tests/ -q          # весь набор
-python -m pytest tests/ -v          # подробно
-python -m pytest tests/test_risk_model.py -v
+cd frontend && npm ci && npm run build
 ```
 
-## Набор тестов
+Результат: `tsc -b && vite build` — успешно, без ошибок типизации.
 
-| Файл | Что покрывает | Тестов |
-|---|---|---:|
-| `test_archive.py` | безопасность распаковки: traversal, absolute, дубликаты, symlink, ratio, nested, повреждённый | 7 |
-| `test_money.py` | правило 100:1, отсутствие float-дрейфа, `None` остаётся `None` | 3 |
-| `test_validation.py` (в `test_importer.py`) | типы, диапазоны, даты, ссылочная целостность | — |
-| `test_importer.py` | реальный датасет, идемпотентность, атомарность, откат, наивные даты | 8 |
-| `test_risk_model.py` | формула, нормализация, неизвестные, границы полос, валидация весов | 9 |
-| `test_revenue.py` | eligible-продления, исключения, отсутствие двойного счёта | 5 |
-| `test_api.py` | эндпоинты, фильтры, сортировки, ошибки, идемпотентность | 16 |
-| `test_robustness.py` | повреждённая БД, пустой датасет, клиент без услуг | 4 |
-| `test_auth.py` | auth-модуль (`backend/`): сессии, RS256 JWT, вход/выход — **другой участник** | 17 |
+```
+dist/index.html                   0.58 kB
+dist/assets/index-*.css          14.03 kB
+dist/assets/index-*.js          200.69 kB
+✓ built in 1.00s
+```
 
-Итого: **69 тестов** (52 аналитика + 17 auth-модуль).
+## Проверка основного продукта (B) на живом сервере
 
-> `tests/test_auth.py` относится к отдельному приложению `backend/` (см. README,
-> раздел «Модуль аутентификации»). Он не покрывает аналитику `aeza_analyzer/`.
-> Для запуска только аналитики: `python -m pytest tests/ -q --ignore=tests/test_auth.py`.
+Запуск:
 
-## Что проверяется (инварианты)
+```bash
+cd backend
+export AEZA_JWT_SECRET=... AEZA_ADMIN_EMAIL=analyst@aeza.test \
+       AEZA_ADMIN_PASSWORD=... AEZA_SEED_DEMO_DATA=1
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8210
+```
 
-| Инвариант | Где |
-|---|---|
-| Импорт даёт 10/30/100 без отклонений | `test_imports_real_dataset` |
-| Повторный импорт не создаёт дубликатов | `test_reimport_is_idempotent` |
-| Ошибочный импорт не меняет данные | `test_failed_import_leaves_previous_data_intact` |
-| Path traversal отклоняется | `test_rejects_path_traversal` |
-| Неизвестное ≠ нулевой риск | `test_unknown_balance_is_excluded_not_zeroed` |
-| Полосы без дыр (34.9 → low) | `test_band_boundaries_are_inclusive` |
-| `deleted` = уже отток | `test_deleted_service_excluded_from_revenue` |
-| Баланс не входит в выручку | `test_balance_is_not_part_of_revenue_at_risk` |
-| Изменение весов меняет результат | `test_weight_change_alters_scores` |
-| Повреждённая БД → понятная ошибка | `test_corrupt_store_raises_clear_error` |
+### Критерии приёмки ТЗ
 
-## Регрессии, добавленные при исправлении дефектов
-
-| Дефект | Тест |
-|---|---|
-| Дыра в полосах риска (34.9 → `high`) | `test_band_boundaries_are_inclusive` |
-| Наивные даты из SQLite ломали сравнения | `test_naive_timestamp_is_rejected`, `UTCDateTime` |
-| Перекрытие переменной `service` → 500 | `test_customer_detail_has_services_and_reasons` |
-| `Settings` не подхватывал env при тестах | все тесты через фикстуру `data_dir` |
-| Повреждённая БД → сырой traceback | `test_corrupt_store_raises_clear_error` |
-| Пустой датасет / клиент без услуг | `test_empty_dataset_is_handled`, `test_account_without_services_is_unknown_not_low` |
-
-## Ручные проверки (проведены)
-
-| Проверка | Процедура | Результат |
+| Проверка | Команда | Результат |
 |---|---|---|
-| Импорт | `python -m aeza_analyzer.cli import` | 10/30/100, rejected 0 |
-| Профиль | `python -m aeza_analyzer.cli audit` | полный JSON-профиль |
-| Запуск скрипта | `bash /path/run.sh --port 8099` из `/tmp` | venv + импорт + сервер, HTTP 200 |
+| Health | `curl /health` | `200` |
+| Метрики | `curl /metrics` | `200`, 31 строка Prometheus |
+| Swagger | `curl /api/v1/docs` | `200` |
+| OpenAPI | `curl /api/v1/openapi.json` | `200` |
+| **API защищён без токена** | `curl /api/v1/customers` | **`401`** |
+| То же для summary | `curl /api/v1/analytics/summary` | **`401`** |
+
+### Авторизация
+
+```bash
+curl -X POST /api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"analyst@aeza.test","password":"..."}'
+```
+
+Результат: `access_token` длиной 184 символа (JWT).
+
+### Все обязательные эндпоинты с токеном
+
+| Эндпоинт | Результат |
+|---|---|
+| `GET /api/v1/auth/me` | `200` |
+| `GET /api/v1/customers` | `200` |
+| `GET /api/v1/analytics/summary` | `200` |
+| `GET /api/v1/model/settings` | `200` |
+| `GET /api/v1/source/snapshot` | `200` |
+
+### Реальные данные (не заглушки)
+
+```
+summary: customers.total = 10, services.total = 30
+         high = 2, medium = 4, not_applicable = 4
+customers[0]: user-0010@example.test, riskScore 73.3, riskCategory "high",
+              balance {cents: 20379, eur: "203.79"},
+              topReasons: ["Близость даты окончания: Услуга истекла 35.0 дн. назад..."]
+```
+
+### Изменение коэффициентов и пересчёт
+
+| Действие | `highRisk` |
+|---|---|
+| До изменения | 2 |
+| `PATCH {"weights":{"expiry_proximity":0.5}}` | **1** |
+| `POST /api/v1/model/settings/reset` | 2 (восстановлено) |
+
+Значение веса после PATCH: `0.5`; после reset: `3.0` (значение по умолчанию).
+Это доказывает, что критерий A6 ТЗ («изменение коэффициента вызывает пересчёт»)
+выполняется.
+
+### Метрики Prometheus
+
+```
+# HELP aeza_customers_total Number of customers in the current dataset
+# TYPE aeza_customers_total gauge
+aeza_customers_total 0.0
+# HELP aeza_services_total Number of services in the current dataset
+...
+```
+
+Формат соответствует требованиям Prometheus (HELP/TYPE/значение), кардинальность
+низкая — email и ID клиентов в метки не попадают.
+
+## Проверка анализатора (A)
+
+| Проверка | Команда | Результат |
+|---|---|---|
+| Импорт датасета | `python -m aeza_analyzer.cli import` | 10 / 30 / 100, rejected 0 |
+| Профиль данных | `python -m aeza_analyzer.cli audit` | JSON-профиль |
+| Тесты | `pytest tests/ --ignore=tests/test_auth.py` | 52 passed |
+| `run.sh` синтаксис | `bash -n run.sh` | OK |
+| `run.sh` из другого каталога | `bash /path/run.sh --port 8099` из `/tmp` | venv + импорт + сервер, `200` |
 | Повторный запуск | повторный `run.sh` | «existing store found», хеш БД не изменился |
-| Остановка | `kill -INT` серверу | 0 оставшихся процессов |
+| Остановка | `kill -INT` | 0 оставшихся процессов |
 | Конфликт порта | `run.sh --port <занятый>` | сообщение + exit 1 |
-| Отсутствие архива | `AEZA_SOURCE_ZIP=/nope run.sh` | сообщение + exit 1 |
-| API | `curl` по всем эндпоинтам | 200 (см. отчёт) |
-| UI | Playwright: dashboard, клиенты, поиск, карточка, модель, данные, повторный импорт | без ошибок в консоли |
-| Веса | `PUT /api/weights` → dashboard | €7.48 → €6.93 → сброс → €7.48 |
 
-## Ограничения тестирования
+## Негативные проверки
 
-- Браузерная проверка выполнена Playwright'ом по локальному серверу; внешние
-  браузеры и мобильные устройства не проверялись.
-- Тесты используют SQLite; поведение на PostgreSQL не проверялось.
-- Аутентификация отсутствует, поэтому проверки прав доступа нет.
+| Сценарий | Ожидание | Результат |
+|---|---|---|
+| Запрос без токена | 401 | 401 ✅ |
+| Логин без поля `email` | 422 | 422 ✅ |
+| Повреждённая БД (A) | понятная ошибка, exit 2 | ✅ |
+| Ошибочный импорт (A) | 400, данные целы | ✅ |
+| Path traversal в ZIP (A) | отказ | ✅ (`test_archive.py`) |
+
+## Что НЕ проверялось
+
+| Пункт | Причина |
+|---|---|
+| `docker compose up --build` | в окружении нет активного Docker-демона (`docker info` недоступен) |
+| PostgreSQL как БД | используется SQLite; `psycopg` установлен, но подключение к PG не выполнялось |
+| OIDC-поток с внешним провайдером | проверен только юнит-тестами `backend/auth` |
+| React UI в браузере | сборка и типизация проверены; интерактивная проверка страниц B не проводилась |
+| Нагрузочное тестирование | вне объёма задачи |
+
+## Воспроизведение
+
+```bash
+# основной продукт (B)
+cd backend && python -m pytest tests/ -q
+
+# фронтенд
+cd frontend && npm ci && npm run build
+
+# вспомогательный инструмент (A)
+python -m pytest tests/ -q --ignore=tests/test_auth.py
+./run.sh
+```
