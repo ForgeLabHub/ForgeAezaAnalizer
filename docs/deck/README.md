@@ -87,7 +87,13 @@ python3 docs/deck/qa_visual.py aeza_umirhack_defense.pptx  # читаемост�
 
 ## PDF
 
-Если на машине защиты нет шрифта Manrope, соберите PDF заранее:
-`soffice --headless --convert-to pdf <файл>.pptx`. Шрифты Manrope (Regular,
-Medium, SemiBold, Bold) встраиваются в PDF, поэтому он отображается одинаково
-везде. Рендер PDF в репозиторий не коммитится.
+В корне репозитория рядом с каждой колодой лежит одноимённый PDF — резерв на
+случай, если на машине защиты нет шрифта Manrope. Шрифты встроены в PDF, поэтому
+он отображается одинаково везде. Пересобрать после правок:
+
+```bash
+soffice --headless --convert-to pdf aeza_umirhack_defense.pptx aeza_hackathon_osen_2026.pptx
+```
+
+PDF — только страховка для показа. Правки и заглушки вносятся в `.pptx`, после
+чего PDF пересобирается.
