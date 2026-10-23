@@ -1,4 +1,12 @@
-import type { CustomerDetail, CustomerPage, ModelSettings, Summary } from '../types'
+import type {
+  CustomerDetail,
+  CustomerPage,
+  ModelSettings,
+  PriorityResponse,
+  QualityReport,
+  ScenarioResult,
+  Summary,
+} from '../types'
 
 const TOKEN_KEY = 'aeza.token'
 
@@ -97,6 +105,29 @@ export const api = {
   customer: (id: number) => request<CustomerDetail>(`/api/v1/customers/${id}`),
 
   modelSettings: () => request<ModelSettings>('/api/v1/model/settings'),
+
+  priority: (params: {
+    horizonDays?: number
+    category?: string
+    sortBy?: 'urgency' | 'riskScore' | 'exposure' | 'id'
+    sortDir?: 'asc' | 'desc'
+  } = {}) => {
+    const query = new URLSearchParams()
+    if (params.horizonDays) query.set('horizonDays', String(params.horizonDays))
+    if (params.category) query.set('category', params.category)
+    if (params.sortBy) query.set('sortBy', params.sortBy)
+    if (params.sortDir) query.set('sortDir', params.sortDir)
+    const suffix = query.toString()
+    return request<PriorityResponse>(`/api/v1/priority${suffix ? `?${suffix}` : ''}`)
+  },
+
+  quality: () => request<QualityReport>('/api/v1/quality'),
+
+  compareScenario: (overrides: Record<string, unknown>, name = 'Custom') =>
+    request<ScenarioResult>('/api/v1/scenarios/compare', {
+      method: 'POST',
+      body: JSON.stringify({ name, overrides }),
+    }),
 
   patchSettings: (patch: Record<string, unknown>) =>
     request<ModelSettings>('/api/v1/model/settings', {

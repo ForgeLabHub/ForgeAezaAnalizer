@@ -7,6 +7,8 @@ import DashboardPage from './pages/DashboardPage'
 import CustomersPage from './pages/CustomersPage'
 import CustomerDetailPage from './pages/CustomerDetailPage'
 import SettingsPage from './pages/SettingsPage'
+import ActionCenterPage from './pages/ActionCenterPage'
+import WhatIfPage from './pages/WhatIfPage'
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { email, logout } = useAuth()
@@ -31,7 +33,9 @@ function Shell({ children }: { children: React.ReactNode }) {
           <NavLink to="/" end>
             Дашборд
           </NavLink>
+          <NavLink to="/action-center">Центр действий</NavLink>
           <NavLink to="/customers">Клиенты</NavLink>
+          <NavLink to="/what-if">Сценарии</NavLink>
           <NavLink to="/settings">Настройки модели</NavLink>
         </nav>
         <div className="header-user">
@@ -73,6 +77,8 @@ export default function App() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/customers" element={<CustomersPage />} />
         <Route path="/customers/:id" element={<CustomerDetailPage />} />
+        <Route path="/action-center" element={<ActionCenterPage />} />
+        <Route path="/what-if" element={<WhatIfPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
