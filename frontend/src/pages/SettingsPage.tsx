@@ -10,6 +10,9 @@ export default function SettingsPage() {
   const [horizon, setHorizon] = useState(30)
   const [lowMax, setLowMax] = useState(34)
   const [mediumMax, setMediumMax] = useState(64)
+  // The window is nullable by design: null means "the whole snapshot".
+  const [windowEnabled, setWindowEnabled] = useState(true)
+  const [windowDays, setWindowDays] = useState(90)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -21,6 +24,9 @@ export default function SettingsPage() {
     setHorizon(data.settings.horizonDays)
     setLowMax(data.settings.lowMax)
     setMediumMax(data.settings.mediumMax)
+    const stored = data.settings.failedRenewalWindowDays
+    setWindowEnabled(stored !== null && stored !== undefined)
+    setWindowDays(stored ?? 90)
   }, [])
 
   const refreshSummary = useCallback(async () => {
@@ -55,10 +61,12 @@ export default function SettingsPage() {
     if (!model) return false
     if (horizon !== model.settings.horizonDays) return true
     if (lowMax !== model.settings.lowMax || mediumMax !== model.settings.mediumMax) return true
+    const storedWindow = model.settings.failedRenewalWindowDays ?? null
+    if ((windowEnabled ? windowDays : null) !== storedWindow) return true
     return Object.keys(weights).some(
       (key) => Math.abs(weights[key] - (model.settings.weights[key] ?? 0)) > 1e-9,
     )
-  }, [model, weights, horizon, lowMax, mediumMax])
+  }, [model, weights, horizon, lowMax, mediumMax, windowEnabled, windowDays])
 
   async function save() {
     setSaving(true)
@@ -69,6 +77,7 @@ export default function SettingsPage() {
         weights,
         lowMax,
         mediumMax,
+        failedRenewalWindowDays: windowEnabled ? windowDays : null,
       })
       applyModel(updated)
       await refreshSummary()
@@ -221,6 +230,35 @@ export default function SettingsPage() {
                 />
                 <span className="hint">
                   Продления вне горизонта не учитываются в выручке под риском.
+                </span>
+              </div>
+              <div className="field">
+                <label htmlFor="windowDays">Окно неудачных продлений, дней</label>
+                <input
+                  id="windowDays"
+                  className="input num"
+                  style={{ width: '100%', textAlign: 'left' }}
+                  type="number"
+                  min={1}
+                  max={3650}
+                  value={windowDays}
+                  disabled={!windowEnabled}
+                  onChange={(e) =>
+                    setWindowDays(Math.max(1, Math.min(3650, Number(e.target.value) || 1)))
+                  }
+                />
+                <label className="hint">
+                  <input
+                    type="checkbox"
+                    checked={!windowEnabled}
+                    onChange={(e) => setWindowEnabled(!e.target.checked)}
+                  />{' '}
+                  учитывать весь снимок (null)
+                </label>
+                <span className="hint">
+                  Доля неуспешных продлений считается только по попыткам внутри окна. При
+                  выключенном ограничении используются все события снимка. События позже момента
+                  расчёта не учитываются никогда.
                 </span>
               </div>
               <div className="field">
