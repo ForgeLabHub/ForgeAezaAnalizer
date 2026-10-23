@@ -42,11 +42,15 @@ class _SourceModel(BaseModel):
 class Account(_SourceModel):
     id: int
     email: str = Field(min_length=3, max_length=320)
-    balance: NonNegativeCents = 0
-    withdraw_balance: NonNegativeCents = Field(default=0, alias="withdrawBalance")
-    total_replenished: NonNegativeCents = Field(default=0, alias="totalReplenished")
-    bonus_balance: NonNegativeCents = Field(default=0, alias="bonusBalance")
-    bonus_state: BonusState = Field(default="locked", alias="bonusState")
+    # The platform's source validator allows any analytical field to arrive as
+    # null (see backend/app/source.py), so the domain model must accept that
+    # rather than reject the whole snapshot.  A null amount stays unknown and is
+    # never silently read as zero; the risk engine treats it explicitly.
+    balance: NonNegativeCents | None = None
+    withdraw_balance: NonNegativeCents | None = Field(default=None, alias="withdrawBalance")
+    total_replenished: NonNegativeCents | None = Field(default=None, alias="totalReplenished")
+    bonus_balance: NonNegativeCents | None = Field(default=None, alias="bonusBalance")
+    bonus_state: BonusState | None = Field(default=None, alias="bonusState")
 
     @field_validator("email")
     @classmethod
@@ -60,9 +64,21 @@ class Account(_SourceModel):
         # The source README documents these as business expectations rather than
         # schema constraints.  We surface a violation instead of silently
         # trusting a snapshot that contradicts the documented invariants.
-        if self.withdraw_balance > self.balance:
+        #
+        # Only compare values that are actually present: a null amount is
+        # unknown, and treating "unknown" as a violation would reject a
+        # snapshot for lacking a field rather than for contradicting itself.
+        if (
+            self.withdraw_balance is not None
+            and self.balance is not None
+            and self.withdraw_balance > self.balance
+        ):
             raise ValueError("withdrawBalance cannot exceed balance")
-        if self.total_replenished < self.balance:
+        if (
+            self.total_replenished is not None
+            and self.balance is not None
+            and self.total_replenished < self.balance
+        ):
             raise ValueError("totalReplenished cannot be lower than balance")
         return self
 
