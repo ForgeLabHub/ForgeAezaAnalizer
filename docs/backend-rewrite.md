@@ -31,21 +31,21 @@ python -m venv .venv
 ```
 
 Без внешнего модуля доступны вход и Swagger; /ready и действия, требующие
-расчёта, возвращают 503. Демо-вход: analyst@aeza.test / aeza-demo-password.
+расчёта, возвращают 503. Демо-вход: analyst@aeza.test / demo123.
 В общей среде задайте AEZA_ALLOW_DEV_SECRET=0, AEZA_JWT_SECRET и AEZA_ADMIN_PASSWORD.
 
 ```powershell
 .venv\Scripts\python -m pytest backend/tests -q
 .venv\Scripts\python backend/scripts/export_openapi.py
-.venv\Scripts\python backend/scripts/load_snapshot.py backend/data/snapshot.json
+.venv\Scripts\python backend/scripts/load_snapshot.py dataset/data.json
 docker compose up --build
 ```
 
 Импорт требует подключённой аналитики: без неё возвращает код выхода 2.
-Схема analyzer_* создаётся при первом запуске. Старые таблицы не удаляются и
-автоматически не мигрируют. При подключении существующей БД нужен явный импорт
-актуального снимка через CLI; источник первой загрузки задаётся AEZA_SNAPSHOT_PATH.
-При первой загрузке с AEZA_SEED_DEMO_DATA=0 анализируется пустой снимок.
+Compose хранит PostgreSQL в `db/postgres/`, а пользователей и сессии — в
+`db/auth.sqlite3`. SQL seed применяется PostgreSQL только при первом создании
+каталога данных. Схема analyzer_* создаётся приложением; старые таблицы не
+удаляются и автоматически не мигрируют. Для импорта нового снимка используй CLI.
 Сохранённые версии не очищаются автоматически.
 
 ## Подключение внешнего модуля
