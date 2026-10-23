@@ -72,6 +72,10 @@ class SettingsPayload(BaseModel):
     weights: dict[str, Weight]
     lowMax: Annotated[int, Field(strict=True, ge=0, le=99)]
     mediumMax: Annotated[int, Field(strict=True, ge=1, le=100)]
+    # Trailing window (days) for counting failed renewals.  Optional so that a
+    # settings payload persisted before this field existed still validates; the
+    # default matches the domain default.
+    failedRenewalWindowDays: Annotated[int, Field(strict=True, ge=1, le=3650)] | None = 90
 
     @model_validator(mode="after")
     def thresholds(self):
@@ -86,6 +90,7 @@ class SettingsPatch(BaseModel):
     weights: dict[str, Weight] | None = None
     lowMax: Annotated[int, Field(strict=True, ge=0, le=99)] | None = None
     mediumMax: Annotated[int, Field(strict=True, ge=1, le=100)] | None = None
+    failedRenewalWindowDays: Annotated[int, Field(strict=True, ge=1, le=3650)] | None = None
     expectedGeneration: Annotated[int, Field(strict=True, ge=0)] | None = None
 
     @model_validator(mode="after")

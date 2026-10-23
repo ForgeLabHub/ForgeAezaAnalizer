@@ -6,7 +6,9 @@ from fastapi.testclient import TestClient
 from backend.app.main import create_app
 
 
-def test_stub_starts_auth_and_reports_missing_module(settings):
+def test_stub_starts_auth_and_reports_missing_module(settings, monkeypatch):
+    # An explicitly empty factory must still degrade to the 503 stub.
+    monkeypatch.setenv("AEZA_ANALYTICS_FACTORY", "")
     with TestClient(create_app(settings)) as client:
         assert client.get("/health").json() == {"status": "ok"}
         assert client.get("/ready").status_code == 503

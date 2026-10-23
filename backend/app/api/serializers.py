@@ -3,6 +3,11 @@
 Money is exposed both as exact eurocents (integers, source units) and as
 decimal euro strings, so a client never has to guess the unit and never has to
 re-convert.
+
+Every monetary accessor is null-aware.  A value that is *unknown* in the source
+is published as the pair ``{"cents": null, "eur": null}`` rather than ``0``:
+the API schema enforces that pairing, and silently reporting a missing balance
+as zero would misstate the customer's position.
 """
 
 from __future__ import annotations
@@ -17,7 +22,11 @@ from app.domain.analytics import (
 from app.domain.money import cents_to_eur
 
 
-def money(cents: int) -> dict:
+def money(cents: int | None) -> dict:
+    """Render an amount as exact eurocents plus a decimal euro string."""
+
+    if cents is None:
+        return {"cents": None, "eur": None}
     return {"cents": cents, "eur": str(cents_to_eur(cents))}
 
 
@@ -42,10 +51,10 @@ def service_payload(sa: ServiceAnalysis) -> dict:
         "status": service.status,
         "statusLabel": STATUS_LABELS.get(service.status, service.status),
         "paymentTerm": service.payment_term,
-        "paymentTermLabel": TERM_LABELS.get(service.payment_term, service.payment_term),
+        "paymentTermLabel": TERM_LABELS.get(service.payment_term, service.payment_term or ""),
         "autoProlong": service.auto_prolong,
-        "createdAt": service.created_at.isoformat(),
-        "expiresAt": service.expires_at.isoformat(),
+        "createdAt": service.created_at.isoformat() if service.created_at else None,
+        "expiresAt": service.expires_at.isoformat() if service.expires_at else None,
         "daysToExpiry": round(risk.days_to_expiry, 2) if risk.days_to_expiry is not None else None,
         "price": money(service.price),
         "riskScore": risk.score,

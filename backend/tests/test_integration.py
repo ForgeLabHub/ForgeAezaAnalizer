@@ -142,7 +142,7 @@ def test_stale_result_cannot_replace_newer_result(client):
     assert runtime.storage.load() == new
 
 
-def test_settings_sessions_and_saved_reads_survive_restart(client, auth_headers, settings, analytics):
+def test_settings_sessions_and_saved_reads_survive_restart(client, auth_headers, settings, analytics, monkeypatch):
     client.patch("/api/v1/model/settings", json={"horizonDays": 7}, headers=auth_headers)
     calls = analytics.calls
     with TestClient(create_app(settings, analytics)) as restarted:
@@ -150,6 +150,8 @@ def test_settings_sessions_and_saved_reads_survive_restart(client, auth_headers,
         body = restarted.get("/api/v1/model/settings", headers=auth_headers).json()
         assert body["settings"]["horizonDays"] == 7 and body["generation"] == 2
         assert analytics.calls == calls
+    # With the engine detached, saved results stay readable but new writes need it.
+    monkeypatch.setenv("AEZA_ANALYTICS_FACTORY", "")
     with TestClient(create_app(settings)) as without_module:
         assert without_module.get("/ready").status_code == 503
         assert without_module.get("/api/v1/customers", headers=auth_headers).status_code == 200

@@ -30,6 +30,11 @@ from backend.app.storage import Storage
 
 logger = logging.getLogger("aeza")
 
+#: Factory of the analytics module used when AEZA_ANALYTICS_FACTORY is unset.
+#: ``app.domain.engine`` is the bundled rule-based engine; leaving the variable
+#: empty selects the 503 stub instead.
+DEFAULT_ANALYTICS_FACTORY = "app.domain.engine:create"
+
 
 async def recalculate(runtime: Runtime, stop: asyncio.Event):
     while True:
@@ -45,7 +50,11 @@ async def recalculate(runtime: Runtime, stop: asyncio.Event):
 
 def create_app(settings: Settings | None = None, analytics: AnalyticsModule | None = None) -> FastAPI:
     settings = settings or get_settings()
-    module = analytics if analytics is not None else load_module(os.getenv("AEZA_ANALYTICS_FACTORY", ""))
+    # The bundled domain engine is the default so the product works when simply
+    # started.  Set AEZA_ANALYTICS_FACTORY to an empty string to fall back to the
+    # 503 stub, which is still exercised by the degraded-path tests.
+    module = analytics if analytics is not None else load_module(
+        os.getenv("AEZA_ANALYTICS_FACTORY", DEFAULT_ANALYTICS_FACTORY))
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
