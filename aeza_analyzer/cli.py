@@ -11,12 +11,16 @@ from .config import settings
 
 
 def cmd_import(args: argparse.Namespace) -> int:
-    from .importer import import_dataset
+    from .db import StoreError
+    from .importer import ArchiveError, import_dataset
 
     source = Path(args.source) if args.source else None
     try:
         result = import_dataset(source, strict=not args.lenient)
-    except (FileNotFoundError, ValueError) as exc:
+    except StoreError as exc:
+        print(f"import failed: {exc}", file=sys.stderr)
+        return 2
+    except (FileNotFoundError, ValueError, ArchiveError, OSError) as exc:
         print(f"import failed: {exc}", file=sys.stderr)
         return 1
     payload = result.as_dict()
@@ -28,10 +32,14 @@ def cmd_import(args: argparse.Namespace) -> int:
 
 def cmd_audit(args: argparse.Namespace) -> int:
     from .audit import profile_store
-    from .db import get_session_factory, init_db
+    from .db import StoreError, get_session_factory, init_db
 
-    init_db()
-    session = get_session_factory()()
+    try:
+        init_db()
+        session = get_session_factory()()
+    except StoreError as exc:
+        print(f"audit failed: {exc}", file=sys.stderr)
+        return 2
     try:
         profile = profile_store(session)
     finally:

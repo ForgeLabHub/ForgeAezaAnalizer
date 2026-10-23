@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from ..analytics import DEFAULT_HORIZON_DAYS, AnalyticsService, FACTOR_TITLES, RISK_LEVEL_BANDS
 from ..analytics.risk import DEFAULT_WEIGHTS
 from ..config import settings
-from ..db import get_session_factory, init_db
+from ..db import StoreError, get_session_factory, init_db
 from ..importer import ArchiveError, import_dataset
 from ..money import cents_to_euros_str
 from .schemas import ImportPayload, WeightsPayload
@@ -41,7 +41,6 @@ def _euro_fields(payload: dict) -> dict:
         "revenue_at_risk_cents": "revenue_at_risk_eur",
         "eligible_renewal_cents": "eligible_renewal_eur",
         "price_cents": "price_eur",
-        "revenue_at_risk_cents_total": "revenue_at_risk_eur_total",
     }
     for cents_key, euro_key in mapping.items():
         if cents_key in payload:
@@ -228,6 +227,12 @@ def index() -> FileResponse:
 @app.exception_handler(ValueError)
 def _value_error_handler(_request, exc: ValueError) -> JSONResponse:
     return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
+@app.exception_handler(StoreError)
+def _store_error_handler(_request, exc: StoreError) -> JSONResponse:
+    """A broken store is a server-side condition, not a bad request."""
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 if STATIC_DIR.is_dir():
