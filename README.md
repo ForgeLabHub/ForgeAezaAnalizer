@@ -1,11 +1,12 @@
 # Aéza · Churn Risk Analyzer
 
-**Backend v2:** ядро находится в `core.py`, запуск из корня —
-`python -m uvicorn main:app --port 8000` после установки `backend/requirements.txt`.
-Аналитика и risk-engine разрабатываются отдельно; по умолчанию подключена заглушка
-с ответом 503. План, текущие команды и контракт подключения:
-[docs/backend-rewrite.md](docs/backend-rewrite.md). Описание части B ниже относится
-к предыдущей реализации.
+**Backend v2:** ядро — FastAPI-приложение `backend.app.main:create_app` (часть B
+ниже). Встроенный объяснимый risk-engine подключается фабрикой
+`AEZA_ANALYTICS_FACTORY=backend.app.domain.module:create` — это значение по
+умолчанию в `.env.example` и `docker-compose.yml`. Если переменную оставить
+пустой, аналитические маршруты отвечают 503 («Расчёт ещё не опубликован»).
+Контракт подключения внешнего модуля:
+[docs/backend-rewrite.md](docs/backend-rewrite.md).
 
 Аналитика клиентских данных Aéza для хакатона **UMIRHack 2026, кейс №2**:
 выявление риска оттока, объяснение причин оценки и выручки под риском на
@@ -320,6 +321,19 @@ docker compose up --build
 
 - `001_schema.up.sql` — таблицы, ограничения, индексы;
 - `002_seed.sql` — те же 10/30/100 записей из `dataset/data.json`.
+
+> **Обновление до новой версии модели.** Настройки модели хранятся в БД
+> (`pgdata`), а не в образе. После `docker compose up --build` уже
+> существующий том сохраняет прежние веса, поэтому опубликованная модель
+> может отличаться от новых значений по умолчанию. Сбросьте её до дефолта:
+>
+> ```bash
+> curl -X POST http://localhost:8000/api/v1/model/settings/reset \
+>   -H "Authorization: Bearer <token>"   # токен: POST /api/v1/auth/login
+> ```
+>
+> Либо пересоздайте том с данными: `docker compose down -v && docker compose up --build`
+> (удалит БД, включая загруженный снимок и сессии).
 
 ---
 
