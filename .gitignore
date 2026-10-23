@@ -51,3 +51,7 @@ frontend/tsconfig.tsbuildinfo
 .DS_Store
 .idea/
 .vscode/
+
+# Deck render output (PDF + rasterised slide previews)
+/render/
+/render_final/

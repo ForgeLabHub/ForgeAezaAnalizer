@@ -387,6 +387,23 @@ docs/             документация по данным, модели, им
 | [`docs/import.md`](docs/import.md) | Формат снимка, правила валидации, атомарность |
 | [`docs/demo.md`](docs/demo.md) | Сценарий демонстрации на 3–5 минут |
 | [`docs/readiness.md`](docs/readiness.md) | Отчёт о готовности: что проверено и что осталось |
+| [`docs/REQUIREMENTS_TRACEABILITY.md`](docs/REQUIREMENTS_TRACEABILITY.md) | Матрица соответствия официальному ТЗ |
+| [`docs/IMPLEMENTATION_AUDIT.md`](docs/IMPLEMENTATION_AUDIT.md) | Аудит всех реализаций в репозитории |
+| [`docs/ARCHITECTURE_DECISION.md`](docs/ARCHITECTURE_DECISION.md) | Выбор основного продукта и судьба остальных |
+| [`docs/TESTING.md`](docs/TESTING.md) | Фактические команды, тесты и результаты |
+| [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) | Пошаговый сценарий защиты |
+| [`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md) | Реализованное и идеи на будущее |
+| [`docs/AUTH_MODULE.md`](docs/AUTH_MODULE.md) | Модуль аутентификации (OIDC, JWT) |
+| [`docs/API.md`](docs/API.md) | Эндпоинты части A и схемы |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Устройство части A |
+| [`docs/ANALYTICS_METHODOLOGY.md`](docs/ANALYTICS_METHODOLOGY.md) | Методика риска части A |
+| [`docs/REVENUE_METHODOLOGY.md`](docs/REVENUE_METHODOLOGY.md) | Денежная оценка части A |
+| [`docs/IMPORT_AND_DATA_AUDIT.md`](docs/IMPORT_AND_DATA_AUDIT.md) | Импорт и профиль данных части A |
+| [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md) | Словарь полей |
+| [`docs/SCHEMA_MAPPING.md`](docs/SCHEMA_MAPPING.md) | Источник → модель приложения |
+| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Разработка части A |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Развёртывание |
+| [`docs/SECURITY.md`](docs/SECURITY.md) | Безопасность |
 
 ---
 

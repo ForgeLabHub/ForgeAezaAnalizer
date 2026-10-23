@@ -291,8 +291,11 @@ def test_risk_score_matches_formula():
         DEFAULT_WEIGHTS[k] * v for k, v in expected_features.items()
     ) / total_weight
     assert result.score == pytest.approx(round(expected, 1))
-    # failed_renewals / renewal_failure_rate must be excluded (no history).
-    assert "Неуспешные продления" in result.missing_data
+    # No renewal history: the *rate* is unknown, so it is reported as missing.
+    # The deprecated diagnostic factor must not appear in missing_data, since
+    # it never contributes to the score.
+    assert "Доля неуспешных продлений" in result.missing_data
+    assert "Неуспешные продления" not in result.missing_data
 
 
 def test_high_risk_scenario_scores_high():
@@ -429,7 +432,12 @@ def test_expiry_just_inside_horizon_is_positive():
     assert 0.0 < proximity.value < 0.1
 
 
-def test_failed_renewal_saturation():
+def test_failed_renewals_is_diagnostic_only():
+    """The approved model counts failures once, via renewal_failure_rate.
+
+    ``failed_renewals`` stays in the payload for compatibility but carries no
+    weight, so it must not change the score however many failures exist.
+    """
     service = Service.model_validate(_service())
     one = compute_service_risk(
         service=service,
@@ -445,10 +453,54 @@ def test_failed_renewal_saturation():
         settings=RiskSettings(),
         now=NOW,
     )
-    f1 = next(f for f in one.factors if f.key == "failed_renewals").value
-    f2 = next(f for f in many.factors if f.key == "failed_renewals").value
-    assert f1 == pytest.approx(0.5)
-    assert f2 == pytest.approx(1.0)
+    diag1 = next(f for f in one.factors if f.key == "failed_renewals")
+    diag3 = next(f for f in many.factors if f.key == "failed_renewals")
+
+    # Diagnostics report the raw historical count, normalised by nothing.
+    assert diag1.value == pytest.approx(1.0)
+    assert diag3.value == pytest.approx(3.0)
+    # ...but it is deprecated, unweighted and therefore not "available".
+    assert diag1.deprecated is True
+    assert diag1.weight == 0.0
+    assert diag1.available is False
+    assert diag1.contribution == 0.0
+
+    # The rate is the single rating factor and does move with the failures.
+    rate1 = next(f for f in one.factors if f.key == "renewal_failure_rate")
+    rate3 = next(f for f in many.factors if f.key == "renewal_failure_rate")
+    assert rate1.value == pytest.approx(1.0)  # 1 failed of 1 attempt
+    assert rate3.value == pytest.approx(1.0)  # 3 failed of 3 attempts
+    assert rate1.weight == pytest.approx(2.5)
+
+
+def test_failed_renewals_does_not_double_count():
+    """Removing the duplicate must not change the rating at all.
+
+    With the same rate but different absolute failure counts, the score has to
+    stay identical: only the rate is weighted.
+    """
+    service = Service.model_validate(_service())
+    few = compute_service_risk(
+        service=service,
+        account=_account(),
+        transactions=[_tx(1, "not_performed"), _tx(2, "performed")],
+        settings=RiskSettings(),
+        now=NOW,
+    )
+    lots = compute_service_risk(
+        service=service,
+        account=_account(),
+        transactions=[
+            _tx(1, "not_performed"),
+            _tx(2, "not_performed"),
+            _tx(3, "performed"),
+            _tx(4, "performed"),
+        ],
+        settings=RiskSettings(),
+        now=NOW,
+    )
+    # Both are 1 failed of 2 attempts -> identical rate -> identical score.
+    assert few.score == pytest.approx(lots.score)
 
 
 def test_customer_risk_uses_maximum_not_average():
