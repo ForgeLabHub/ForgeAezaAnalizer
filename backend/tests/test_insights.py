@@ -18,7 +18,7 @@ import pytest
 from backend.app.api.routes_export import _safe, row_for
 from backend.app.domain import insights
 
-SNAPSHOT = Path(__file__).resolve().parents[1] / "data" / "snapshot.json"
+SNAPSHOT = Path(__file__).resolve().parents[2] / "dataset" / "data.json"
 NOW = dt.datetime(2026, 10, 19, 15, 0, tzinfo=dt.timezone.utc)
 
 
