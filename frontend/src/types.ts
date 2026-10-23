@@ -150,14 +150,114 @@ export interface FactorInfo {
   missingDataBehaviour: string
 }
 
+export interface PriorityExposure {
+  cents: number
+  eur: string
+}
+
+/** One row of the retention worklist. Risk, exposure, urgency and data quality
+ *  are four separate measurements; ``categories`` groups work without
+ *  collapsing them into a single number. */
+export interface PriorityItem {
+  id: number
+  email: string
+  riskScore: number | null
+  riskCategory: RiskCategory
+  serviceCount: number
+  highRiskServiceCount: number
+  highRiskShare: number | null
+  revenueAtRiskOnHorizon: PriorityExposure | null
+  upcomingRenewalsOnHorizon: PriorityExposure | null
+  overdueOperational: PriorityExposure | null
+  overdueServiceCount: number
+  lifecycleInconsistentCount: number
+  categories: string[]
+  urgencyRank: number
+}
+
+export interface PriorityResponse {
+  horizonDays: number
+  total: number
+  categories: Record<string, string>
+  qualityCounts: Record<string, number>
+  items: PriorityItem[]
+  note: string
+}
+
+/** One measured quantity inside a scenario comparison. */
+export interface ScenarioMeasure {
+  baseline: number
+  scenario: number
+  absolute: number
+  relative: number | null
+}
+
+export interface ScenarioCustomerChange {
+  id: number
+  email: string
+  scoreBefore: number | null
+  scoreAfter: number | null
+  categoryBefore: RiskCategory
+  categoryAfter: RiskCategory
+  categoryChanged: boolean
+  revenueAtRiskBefore: number
+  revenueAtRiskAfter: number
+}
+
+export interface ScenarioComparison {
+  horizonDays: ScenarioMeasure
+  revenueAtRiskCents: ScenarioMeasure
+  upcomingRenewalsCents: ScenarioMeasure
+  highRiskCustomers: ScenarioMeasure
+  mediumRiskCustomers: ScenarioMeasure
+  highRiskServices: ScenarioMeasure
+  categories: Record<string, ScenarioMeasure>
+  note?: string
+  [key: string]: ScenarioMeasure | Record<string, ScenarioMeasure> | string | undefined
+}
+
+export interface ScenarioResult {
+  name: string
+  baselineSettings: ModelSettings['settings']
+  scenarioSettings: ModelSettings['settings']
+  appliedOverrides: Record<string, unknown>
+  allowedParameters: string[]
+  asOf: string | null
+  baseline: Summary
+  scenario: Summary
+  comparison: ScenarioComparison
+  customers: ScenarioCustomerChange[]
+  factorAvailability: unknown
+  note: string
+}
+
 export interface ModelSettings {
   settings: {
     horizonDays: number
     weights: Record<string, number>
     lowMax: number
     mediumMax: number
+    failedRenewalWindowDays?: number | null
   }
   factors: FactorInfo[]
   updatedAt: string | null
   isDefault: boolean
+}
+
+export interface QualityIssue {
+  level: 'critical' | 'warning' | 'info'
+  code: string
+  message: string
+  count: number
+  records: number[]
+  action: string
+}
+
+export interface QualityReport {
+  levels: Record<string, string>
+  issues: QualityIssue[]
+  counts: Record<string, number>
+  recordsInspected: number
+  note: string
+  asOf: string | null
 }

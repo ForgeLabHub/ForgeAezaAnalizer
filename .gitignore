@@ -54,3 +54,6 @@ frontend/tsconfig.tsbuildinfo
 # Deck render output (PDF + rasterised slide previews)
 /render/
 /render_final/
+
+# Local-only compose overrides (published sandbox ports).
+docker-compose.override.yml

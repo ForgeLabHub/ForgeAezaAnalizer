@@ -63,9 +63,14 @@ export default function DashboardPage() {
             взвешенной rule-based модели, а не откалиброванная вероятность оттока.
           </p>
         </div>
-        <Link className="btn" to="/customers?riskCategory=high">
-          Клиенты высокого риска
-        </Link>
+        <div className="row" style={{ gap: 8 }}>
+          <Link className="btn" to="/action-center">
+            Центр действий
+          </Link>
+          <Link className="btn" to="/customers?riskCategory=high">
+            Клиенты высокого риска
+          </Link>
+        </div>
       </div>
 
       <div className="metric-grid">
