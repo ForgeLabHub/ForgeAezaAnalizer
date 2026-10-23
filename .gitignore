@@ -1,4 +1,12 @@
-# Runtime data store and derived artefacts
+# ---------------------------------------------------------------------------
+# Combined ignore rules. This file merges the rules from both implementations
+# that live in this repository:
+#   - `aeza_analyzer/` (the Python package on `main`)
+#   - `backend/` + `frontend/` (the FastAPI + React app)
+# Keep both sets so neither workflow commits build output or runtime state.
+# ---------------------------------------------------------------------------
+
+# Runtime data store and derived artefacts (aeza_analyzer)
 /data/
 /datasets/extracted/
 *.sqlite
@@ -8,13 +16,37 @@
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
 venv/
 .pytest_cache/
+.ruff_cache/
 .mypy_cache/
 .coverage
 htmlcov/
 
-# Tooling
+# Node / frontend build output
 node_modules/
+frontend/dist/
+npm-debug.log*
+
+# Local data / runtime state (backend)
+backend/data/aeza.db
+backend/data/*.db
+
+# Secrets and local env
+.env
+.env.local
+
+# Tooling scratch
+.playwright-mcp/
+.agent_tmp/
+*.log
+
+# TypeScript incremental build info
+frontend/tsconfig.tsbuildinfo
+
+# Editors / OS
 .DS_Store
+.idea/
+.vscode/

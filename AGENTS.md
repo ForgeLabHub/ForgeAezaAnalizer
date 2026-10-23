@@ -93,3 +93,81 @@ without reloading modules. Keep it lazy.
 
 Also avoid naming a loop/local variable `service` in API handlers — it shadowed
 the analytics service and caused a 500.
+
+---
+
+# Implementations living in this repository
+
+The repository carries **three** independently written bodies of work for the
+same case. None of them imports from the others, and each has its own storage
+layer, scoring code and entrypoint. Do not delete one to "clean up" another.
+
+| Area | What it is | Storage | Entrypoint |
+| --- | --- | --- | --- |
+| `aeza_analyzer/` | Python package, CLI, vanilla-JS SPA (documented above) | SQLite (`data/`) | `python -m aeza_analyzer.cli serve` |
+| `backend/app/` + `frontend/` | FastAPI app + React/TypeScript SPA (documented below) | Postgres via Compose, SQLite for tests | `docker compose up` |
+| `backend/auth/`, `backend/main.py` | Standalone auth module (JWT + RSA, own `db/schema.sql`) | SQLite (`db/auth.sqlite3`) | `backend/main.py` |
+
+Note the path collision: `backend/` holds two unrelated trees — `backend/app/`
+(below) and `backend/auth/` + `backend/main.py` + `backend/config.py`
+(the standalone auth module). `backend/__init__.py` is shared. Check which one
+you are editing before changing shared names.
+
+`db/auth.sqlite3` is committed but holds no user rows (verified: the `users`
+table is empty). It is the auth module's runtime store, not fixture data.
+
+## Layout
+
+| Path | Purpose |
+| --- | --- |
+| `dataset/` | Case dataset as shipped (`data.json`, schema/seed SQL, `generate.py`, `README.md`). Read-only source material. |
+| `backend/app/domain/` | Business logic: money, scoring, revenue, analytics, importer, settings. No HTTP here. |
+| `backend/app/api/` | FastAPI routers, request/response schemas, serializers. |
+| `backend/app/auth/` | JWT issuing/verification and PBKDF2 password hashing. |
+| `backend/data/snapshot.json` | Seed snapshot served on first boot; loaded from `AEZA_SNAPSHOT_PATH`. |
+| `backend/migrations/` | Postgres DDL/seed used by the Compose stack. |
+| `frontend/src/` | React + TypeScript + Vite SPA. |
+| `docs/` | Data schema, model, import contract, demo script, readiness report. |
+
+## Commands
+
+```bash
+# Backend tests (from backend/)
+python -m pytest tests/ -q
+
+# Frontend typecheck + build (from frontend/)
+npx tsc -b && npm run build
+
+# Full stack (Postgres + API + nginx) from the repo root
+sudo docker compose up -d --build
+# API on :8000, SPA on :8080
+```
+
+## Invariants worth preserving
+
+- **Money is integer eurocents** in the backend. Convert only at the edge
+  (`backend/app/domain/money.py`). 100 cents = €1. Never mix balance, bonus
+  balance, historical top-ups, service price, and revenue-at-risk.
+- **The risk score is not a probability.** The snapshot has no historical churn
+  outcomes, so the model is a transparent weighted rule-based score. Do not
+  describe it as a calibrated probability or claim accuracy in the UI or docs.
+- **Keep three states apart:** current state, already-concluded events, and
+  forward-looking risk. `deleted`/`blocked` services are concluded — they must
+  not be forecast as future churn.
+- **Price never feeds the risk score.** Cost is exposure, not likelihood.
+- **Customer risk is the max over forecastable services**, not an average.
+- **Revenue at risk counts each renewal once**, only for open services with a
+  positive price renewing inside the horizon.
+- **Reference time is pinned** to `2026-10-19T15:00:00Z` (`AEZA_AS_OF`) so scores
+  are reproducible. Change it deliberately, not incidentally.
+- **Import is all-or-nothing.** Validate the whole snapshot before writing; a
+  rejected import must leave the previous dataset untouched.
+
+## Gotchas
+
+- `AEZA_JWT_SECRET` must be set (with `AEZA_ALLOW_DEV_SECRET=0`) outside local
+  development; the app refuses to invent a secret in shared environments.
+- Compose uses a throwaway Postgres password (`aeza`) for local demos. Replace
+  it and the JWT secret before exposing the stack to anyone.
+- The frontend table must stay inside `.table-wrap`; page-level horizontal
+  overflow at narrow widths is a regression (the header wraps at ≤720px).
