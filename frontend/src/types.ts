@@ -275,3 +275,33 @@ export interface ScenarioComparison {
   factorAvailability: Record<string, FactorAvailabilityChange>
   note: string
 }
+
+// ------------------------------------------------------- retention playbooks
+
+export type RecommendationState = 'new' | 'in_progress' | 'done'
+
+export interface PlaybookItem {
+  code: string
+  title: string
+  detail: string
+  priority: number
+  status: RecommendationState
+  statusUpdatedAt: string | null
+  statusUpdatedBy: string | null
+}
+
+export interface PlaybookList {
+  customerId: number
+  items: PlaybookItem[]
+  statuses: RecommendationState[]
+  note: string
+}
+
+export interface PlaybookUpdate {
+  customerId: number
+  code: string
+  status: RecommendationState
+  updatedAt: string
+  updatedBy: string
+  note: string
+}

@@ -2,6 +2,9 @@ import type {
   CustomerDetail,
   CustomerPage,
   ModelSettings,
+  PlaybookList,
+  PlaybookUpdate,
+  RecommendationState,
   PriorityView,
   QualityReport,
   ScenarioComparison,
@@ -103,6 +106,19 @@ export const api = {
   },
 
   customer: (id: number) => request<CustomerDetail>(`/api/v1/customers/${id}`),
+
+  /** Playbooks for one customer, each with its stored workflow status. */
+  playbooks: (id: number) => request<PlaybookList>(`/api/v1/customers/${id}/recommendations`),
+
+  /**
+   * Move one playbook to a new status. Only the addressed (customer, code)
+   * pair changes; the backend rejects an unknown code or status.
+   */
+  setPlaybookStatus: (id: number, code: string, status: RecommendationState) =>
+    request<PlaybookUpdate>(
+      `/api/v1/customers/${id}/recommendations/${encodeURIComponent(code)}`,
+      { method: 'PATCH', body: JSON.stringify({ status }) },
+    ),
 
   modelSettings: () => request<ModelSettings>('/api/v1/model/settings'),
 
