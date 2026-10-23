@@ -125,7 +125,13 @@ class AnalyticsService:
             service_risks=[sa.risk for sa in service_analyses],
             settings=self.settings,
         )
-        exposure = compute_customer_exposure(customer_id=account.id, renewals=exposures)
+        exposure = compute_customer_exposure(
+            customer_id=account.id,
+            renewals=exposures,
+            services=list(account.services),
+            risks_by_service={sa.service.id: sa.risk for sa in service_analyses},
+            now=self.now,
+        )
 
         recommendations = []
         seen: set[str] = set()

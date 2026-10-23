@@ -34,12 +34,57 @@ class RenewalExposure:
     in_horizon: bool
 
 
+#: Horizons reported side by side, in days.
+HORIZONS: tuple[int, ...] = (7, 30, 90)
+
+#: A ``prolong_wait`` service that has been awaiting payment longer than this
+#: should already have moved to ``deleted`` per the case brief.  Kept as a
+#: named constant so the diagnostic and its tests share one definition.
+PROLONG_WAIT_GRACE_DAYS = 5
+
+
+@dataclass
+class OverdueExposure:
+    """An open service whose ``expiresAt`` is already in the past.
+
+    Reported separately from the forward horizons: a service that has already
+    expired has no *future* renewal to count, but leaving it out entirely would
+    hide a real operational problem.  The nominal price is shown as the amount
+    needing review, never as predicted revenue.
+    """
+
+    service_id: int
+    status: str
+    expired_at: datetime
+    days_overdue: float
+    amount_cents: int
+    #: True when a ``prolong_wait`` service is past the documented grace period,
+    #: i.e. the snapshot state contradicts the stated lifecycle.
+    lifecycle_inconsistent: bool
+
+
+@dataclass
+class HorizonExposure:
+    """Nominal and risk-weighted amounts for one forward horizon."""
+
+    horizon_days: int
+    renewal_count: int
+    upcoming_renewals_cents: int
+    revenue_at_risk_cents: int
+
+
 @dataclass
 class CustomerExposure:
     customer_id: int
     upcoming_renewals_cents: int
     revenue_at_risk_cents: int
     renewals: list[RenewalExposure] = field(default_factory=list)
+    #: Per-horizon breakdown keyed by day count (7 / 30 / 90).
+    horizons: dict[int, HorizonExposure] = field(default_factory=dict)
+    overdue: list[OverdueExposure] = field(default_factory=list)
+    overdue_operational_cents: int = 0
+    #: Number of services whose state contradicts the documented lifecycle.
+    lifecycle_inconsistent_count: int = 0
 
 
 def compute_service_exposure(
@@ -78,20 +123,115 @@ def compute_service_exposure(
     )
 
 
+def compute_overdue(
+    *, services: list, risks_by_service: dict, now: datetime
+) -> list[OverdueExposure]:
+    """Collect open services whose ``expiresAt`` already passed.
+
+    These carry no *future* renewal, so they stay out of the forward horizons,
+    but they are exactly the cases an operator must look at.  A ``prolong_wait``
+    service overdue beyond the documented grace period is additionally flagged
+    as lifecycle-inconsistent: the brief says it should have become ``deleted``.
+
+    The flag is a data-consistency signal.  It is never a claim that the service
+    will be renewed, nor that the customer has churned.
+    """
+
+    out: list[OverdueExposure] = []
+    for service in services:
+        risk = risks_by_service.get(service.id)
+        if risk is None or not risk.eligible:
+            continue
+        if service.expires_at >= now:
+            continue
+        days_overdue = (now - service.expires_at).total_seconds() / 86400.0
+        inconsistent = (
+            service.status == "prolong_wait" and days_overdue > PROLONG_WAIT_GRACE_DAYS
+        )
+        out.append(
+            OverdueExposure(
+                service_id=service.id,
+                status=service.status,
+                expired_at=service.expires_at,
+                days_overdue=days_overdue,
+                amount_cents=service.price,
+                lifecycle_inconsistent=inconsistent,
+            )
+        )
+    return out
+
+
+def compute_horizons(
+    *, services: list, risks_by_service: dict, now: datetime
+) -> dict[int, HorizonExposure]:
+    """Nominal and risk-weighted amounts for each configured horizon.
+
+    A service contributes to a horizon when ``now <= expiresAt <= now + H``
+    (inclusive on both ends).  It appears in every horizon that contains its
+    expiry but only **once** per horizon, so no amount is double counted.
+    """
+
+    result: dict[int, HorizonExposure] = {}
+    for days in HORIZONS:
+        end = now + timedelta(days=days)
+        count = 0
+        nominal = 0
+        at_risk = 0
+        for service in services:
+            risk = risks_by_service.get(service.id)
+            if risk is None or not risk.eligible or risk.score is None:
+                continue
+            if service.price <= 0:
+                continue
+            if not (now <= service.expires_at <= end):
+                continue
+            count += 1
+            nominal += service.price
+            at_risk += scaled_cents(service.price, risk.score / 100.0)
+        result[days] = HorizonExposure(
+            horizon_days=days,
+            renewal_count=count,
+            upcoming_renewals_cents=nominal,
+            revenue_at_risk_cents=at_risk,
+        )
+    return result
+
+
 def compute_customer_exposure(
-    *, customer_id: int, renewals: list[RenewalExposure]
+    *,
+    customer_id: int,
+    renewals: list[RenewalExposure],
+    services: list | None = None,
+    risks_by_service: dict | None = None,
+    now: datetime | None = None,
 ) -> CustomerExposure:
     """Sum a customer's upcoming renewals and the portion at risk.
 
     Summing is safe because :func:`compute_service_exposure` guarantees one
     entry per service, so no renewal can be double counted.
+
+    When ``services`` and ``now`` are supplied the per-horizon breakdown and the
+    overdue list are filled in as well; otherwise those fields stay empty and
+    the function keeps its original two-argument behaviour.
     """
+
+    horizons: dict[int, HorizonExposure] = {}
+    overdue: list[OverdueExposure] = []
+    if services is not None and risks_by_service is not None and now is not None:
+        horizons = compute_horizons(
+            services=services, risks_by_service=risks_by_service, now=now
+        )
+        overdue = compute_overdue(services=services, risks_by_service=risks_by_service, now=now)
 
     return CustomerExposure(
         customer_id=customer_id,
         upcoming_renewals_cents=sum(r.amount_cents for r in renewals),
         revenue_at_risk_cents=sum(r.revenue_at_risk_cents for r in renewals),
         renewals=renewals,
+        horizons=horizons,
+        overdue=overdue,
+        overdue_operational_cents=sum(o.amount_cents for o in overdue),
+        lifecycle_inconsistent_count=sum(1 for o in overdue if o.lifecycle_inconsistent),
     )
 
 
