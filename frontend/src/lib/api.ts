@@ -1,4 +1,11 @@
-import type { CustomerDetail, CustomerPage, ModelSettings, Summary } from '../types'
+import type {
+  CustomerDetail,
+  CustomerPage,
+  ModelSettings,
+  PriorityResponse,
+  Simulation,
+  Summary,
+} from '../types'
 
 const TOKEN_KEY = 'aeza.token'
 
@@ -97,6 +104,21 @@ export const api = {
   customer: (id: number) => request<CustomerDetail>(`/api/v1/customers/${id}`),
 
   modelSettings: () => request<ModelSettings>('/api/v1/model/settings'),
+
+  priority: (params: { tier?: string; sort?: 'priority' | 'risk'; limit?: number } = {}) => {
+    const query = new URLSearchParams()
+    if (params.tier) query.set('tier', params.tier)
+    if (params.sort) query.set('sort', params.sort)
+    if (params.limit) query.set('limit', String(params.limit))
+    const suffix = query.toString()
+    return request<PriorityResponse>(`/api/v1/priority${suffix ? `?${suffix}` : ''}`)
+  },
+
+  simulate: (patch: Record<string, unknown>) =>
+    request<Simulation>('/api/v1/whatif', {
+      method: 'POST',
+      body: JSON.stringify(patch),
+    }),
 
   patchSettings: (patch: Record<string, unknown>) =>
     request<ModelSettings>('/api/v1/model/settings', {

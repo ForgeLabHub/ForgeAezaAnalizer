@@ -150,6 +150,100 @@ export interface FactorInfo {
   missingDataBehaviour: string
 }
 
+export type PriorityTier = 'p1' | 'p2' | 'p3'
+
+export interface PriorityItem {
+  rank: number
+  customerId: number
+  email: string
+  serviceId: number
+  serviceName: string
+  serviceStatus: string
+  riskScore: number | null
+  riskCategory: RiskCategory
+  daysToExpiry: number | null
+  renewalAt: string | null
+  renewalAmount: Money | null
+  revenueAtRisk: Money
+  priorityScore: number
+  tier: PriorityTier
+  tierLabel: string
+  tierReason: string
+  reasons: string[]
+  actions: string[]
+}
+
+export interface PriorityResponse {
+  items: PriorityItem[]
+  summary: {
+    items: number
+    servicesInPortfolio: number
+    servicesScored: number
+    byTier: Record<string, number>
+    tierLabels: Record<string, string>
+    tierDescriptions: Record<string, string>
+    revenueAtRiskCents: number
+    revenueAtRiskEur: string
+    customers: number
+    note: string
+  }
+  horizonDays: number | null
+  generatedAt: string | null
+  generation: number
+  sourceVersion: number
+  modelVersion: number
+  capturedAt: string | null
+  asOf: string | null
+  calculatedAt: string | null
+}
+
+export interface SimulationSide {
+  horizonDays: number | null
+  customers: Summary['customers']
+  services: Summary['services']
+  revenue: Summary['revenue']
+}
+
+export interface SimulationMovement {
+  customerId: number
+  email: string
+  before: RiskCategory
+  after: RiskCategory
+  beforeScore: number | null
+  afterScore: number | null
+  delta: number | null
+  direction: 'up' | 'down' | 'flat'
+  categoryChanged: boolean
+}
+
+export interface Simulation {
+  settingsPatch: Record<string, unknown>
+  settingsApplied: ModelSettings['settings']
+  baseline: SimulationSide
+  scenario: SimulationSide
+  delta: {
+    highRisk: number
+    mediumRisk: number
+    lowRisk: number
+    insufficientData: number
+    byCategory: Record<string, number>
+    revenueAtRiskCents: number
+    revenueAtRiskEur: string
+    upcomingRenewalsCents: number
+    servicesHighRisk: number
+  }
+  movements: SimulationMovement[]
+  movedCustomers: number
+  categoryChanges: number
+  note: string
+  generation: number
+  sourceVersion: number
+  modelVersion: number
+  capturedAt: string | null
+  asOf: string | null
+  calculatedAt: string | null
+}
+
 export interface ModelSettings {
   settings: {
     horizonDays: number
@@ -160,4 +254,10 @@ export interface ModelSettings {
   factors: FactorInfo[]
   updatedAt: string | null
   isDefault: boolean
+  generation: number
+  sourceVersion: number
+  modelVersion: number
+  capturedAt: string | null
+  asOf: string | null
+  calculatedAt: string | null
 }
