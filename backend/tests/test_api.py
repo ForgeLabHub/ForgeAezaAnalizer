@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.engine import make_url
 
 from backend.app.main import create_app
 
@@ -43,6 +46,20 @@ def test_secret_not_echoed_on_validation_failure(client):
     response = client.post("/api/v1/auth/login", json={"email": "a", "password": "private-password", "extra": "private-password"})
     assert response.status_code == 422
     assert "private-password" not in response.text
+
+
+def test_authentication_tables_are_separate_from_analytics(client, settings):
+    def tables(url):
+        with sqlite3.connect(make_url(url).database) as connection:
+            return {row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")}
+
+    analytics_tables = tables(settings.database_url)
+    auth_tables = tables(settings.auth_database_url)
+    assert "analyzer_current" in analytics_tables
+    assert "analyzer_users" not in analytics_tables
+    assert "analyzer_users" in auth_tables
+    assert "analyzer_current" not in auth_tables
 
 
 def test_logout_revokes_only_current_session(client, auth_headers):

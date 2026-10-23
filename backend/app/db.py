@@ -139,6 +139,13 @@ class AuthSessionRow(Base):
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
 
 
+ANALYTICS_TABLES = (
+    CurrentRow.__table__, SourceRow.__table__, ModelRow.__table__, AnalysisRow.__table__,
+    CustomerRow.__table__, ServiceIndexRow.__table__, ObservationRow.__table__, AuditRow.__table__,
+)
+AUTH_TABLES = (UserRow.__table__, AuthSessionRow.__table__)
+
+
 class Database:
     def __init__(self, url: str):
         parsed = make_url(url)
@@ -162,7 +169,7 @@ class Database:
         cursor.close()
 
     def initialize(self):
-        Base.metadata.create_all(self.engine)
+        Base.metadata.create_all(self.engine, tables=ANALYTICS_TABLES)
         try:
             with self.transaction() as session:
                 if session.get(CurrentRow, 1) is None:
@@ -171,6 +178,9 @@ class Database:
             with self.sessions() as session:
                 if session.get(CurrentRow, 1) is None:
                     raise
+
+    def initialize_auth(self):
+        Base.metadata.create_all(self.engine, tables=AUTH_TABLES)
 
     @contextmanager
     def transaction(self):
