@@ -36,6 +36,7 @@ def load_settings(session: Session) -> RiskSettings:
             weights=merged,
             low_max=row.low_max,
             medium_max=row.medium_max,
+            failed_renewal_window_days=row.failed_renewal_window_days,
         )
     except ValueError:
         return RiskSettings()
@@ -52,6 +53,7 @@ def save_settings(session: Session, settings: RiskSettings) -> RiskSettings:
     row.horizon_days = settings.horizon_days
     row.low_max = settings.low_max
     row.medium_max = settings.medium_max
+    row.failed_renewal_window_days = settings.failed_renewal_window_days
     row.weights_json = json.dumps(settings.weights, sort_keys=True)
     row.updated_at = dt.datetime.now(dt.timezone.utc)
     session.flush()
