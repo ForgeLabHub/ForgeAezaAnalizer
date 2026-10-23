@@ -323,6 +323,49 @@ class PriorityResponse(Version):
     generatedAt: str | None
 
 
+class SimulationSide(Output):
+    horizonDays: int | None
+    customers: CustomerCounts
+    services: ServiceCounts
+    revenue: RevenueSummary
+
+
+class SimulationDelta(Output):
+    highRisk: int
+    mediumRisk: int
+    lowRisk: int
+    insufficientData: int
+    byCategory: dict[str, int]
+    revenueAtRiskCents: int
+    revenueAtRiskEur: str
+    upcomingRenewalsCents: int
+    servicesHighRisk: int
+
+
+class SimulationMovement(Output):
+    customerId: int
+    email: str
+    before: RiskCategory
+    after: RiskCategory
+    beforeScore: RiskScore | None
+    afterScore: RiskScore | None
+    delta: float | None
+    direction: Literal["up", "down", "flat"]
+    categoryChanged: bool
+
+
+class SimulationResponse(Version):
+    settingsPatch: dict
+    settingsApplied: SettingsPayload
+    baseline: SimulationSide
+    scenario: SimulationSide
+    delta: SimulationDelta
+    movements: list[SimulationMovement]
+    movedCustomers: int
+    categoryChanges: int
+    note: str
+
+
 class ErrorResponse(BaseModel):
     detail: str
     errors: list[dict] | None = None
