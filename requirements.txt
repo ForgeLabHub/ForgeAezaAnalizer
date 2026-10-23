@@ -1,15 +1,10 @@
-# Aéza Analyzer — dependencies for every component in this repository:
-#   - aeza_analyzer/  (Python package: import, analytics, API, CLI)
-#   - backend/        (auth module, imported by its tests)
-fastapi>=0.110
-uvicorn[standard]>=0.29
+# Aéza Analyzer — runtime dependencies for every component in this repository:
+#   - aeza_analyzer/  (analytics package: import, scoring, API, CLI)
+#   - backend/        (auth module)
+fastapi>=0.162,<0.163
+uvicorn>=0.54,<0.55
+PyJWT[crypto]>=2.10.1,<3
+
+# Used by aeza_analyzer: ORM models, request schemas, money handling.
 sqlalchemy>=2.0
 pydantic>=2.6
-httpx>=0.27
-pytest>=8.0
-
-# Required by backend/auth/tokens.py (JWT signing) and the RSA key handling
-# around it. Without these a clean `pip install -r requirements.txt` could not
-# run the auth tests.
-pyjwt>=2.8
-cryptography>=42.0
