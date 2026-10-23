@@ -34,11 +34,9 @@ ELIGIBLE_STATUSES: frozenset[str] = frozenset({"active", "suspended", "prolong_w
 #: Service states that describe an already-concluded outcome.
 CONCLUDED_STATUSES: frozenset[str] = frozenset({"deleted", "blocked"})
 
-#: Number of failed renewals that saturates the ``failed_renewals`` factor.
-FAILED_RENEWAL_SATURATION = 2.0
-
-#: Trailing window (days) used when counting recent failed renewals.
-FAILED_RENEWAL_WINDOW_DAYS = 90
+#: Trailing window (days) used when counting failed renewals.  ``None`` means
+#: "every event present in the snapshot".
+FAILED_RENEWAL_WINDOW_DAYS: int | None = 90
 
 
 @dataclass(frozen=True)
@@ -52,6 +50,10 @@ class FactorDefinition:
     normalization: str
     default_weight: float
     missing_data_behaviour: str = "factor excluded and weights renormalised"
+    #: ``True`` for factors kept in the API for compatibility but excluded from
+    #: the weighted sum (weight is 0).  The signal they describe is already
+    #: carried by another factor, so counting them again would double-weight it.
+    deprecated: bool = False
 
 
 FACTORS: tuple[FactorDefinition, ...] = (
@@ -90,26 +92,34 @@ FACTORS: tuple[FactorDefinition, ...] = (
     FactorDefinition(
         key="failed_renewals",
         label="Неуспешные продления",
-        description="Есть транзакции продления со статусом not_performed.",
-        how_computed="количество not_performed продлений (за всё время снимка)",
-        normalization="min(1, count / 2): два и более неуспеха дают 1",
-        default_weight=2.0,
+        description=(
+            "Число транзакций продления со статусом not_performed. Диагностический "
+            "показатель: сигнал уже учтён в renewal_failure_rate и в рейтинг не входит."
+        ),
+        how_computed="количество not_performed продлений в пределах окна",
+        normalization="не участвует в рейтинге (вес 0)",
+        default_weight=0.0,
+        deprecated=True,
+        missing_data_behaviour="factor excluded and weights renormalised",
     ),
     FactorDefinition(
         key="suspended_status",
         label="Услуга приостановлена",
-        description="Статус suspended означает, что услуга уже не работает штатно.",
+        description=(
+            "Статус suspended означает отключение по требованию клиента, при этом "
+            "начисления продолжаются, поэтому это сигнал внимания, а не оттока."
+        ),
         how_computed="status == 'suspended'",
         normalization="1 если статус suspended, иначе 0",
-        default_weight=2.0,
+        default_weight=1.0,
     ),
     FactorDefinition(
         key="renewal_failure_rate",
         label="Доля неуспешных продлений",
         description="Доля неуспешных продлений от всех попыток продления по услуге.",
-        how_computed="not_performed / все продления услуги",
+        how_computed="not_performed / все продления услуги в пределах окна",
         normalization="0..1; 0 если по услуге нет продлений",
-        default_weight=1.5,
+        default_weight=2.5,
     ),
 )
 
@@ -135,6 +145,8 @@ class RiskSettings:
     weights: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_WEIGHTS))
     low_max: int = DEFAULT_LOW_MAX
     medium_max: int = DEFAULT_MEDIUM_MAX
+    #: Trailing window for failed renewals.  ``None`` = whole snapshot.
+    failed_renewal_window_days: int | None = FAILED_RENEWAL_WINDOW_DAYS
 
     def __post_init__(self) -> None:
         validate_settings(self)
@@ -154,6 +166,11 @@ def validate_settings(settings: RiskSettings) -> None:
 
     if not 1 <= settings.horizon_days <= 365:
         raise RiskConfigError("horizon_days must be between 1 and 365")
+    window = settings.failed_renewal_window_days
+    if window is not None and not 1 <= window <= 3650:
+        raise RiskConfigError(
+            "failed_renewal_window_days must be null (whole snapshot) or between 1 and 3650"
+        )
     if not 0 <= settings.low_max < settings.medium_max <= 100:
         raise RiskConfigError("thresholds must satisfy 0 <= low_max < medium_max <= 100")
     unknown = set(settings.weights) - set(FACTOR_BY_KEY)
@@ -189,6 +206,9 @@ class FactorResult:
     contribution: float
     reason: str
     available: bool
+    #: Mirrors :class:`FactorDefinition.deprecated`.  Reported to the client so
+    #: a consumer can tell a live rating factor from a diagnostic one.
+    deprecated: bool = False
 
 
 @dataclass
@@ -281,22 +301,37 @@ def compute_service_risk(
     )
 
     # --- balance vs price -------------------------------------------------
+    # Only funds that can actually pay for the renewal count.  The bonus
+    # balance is spendable only when the snapshot marks it unlocked; an
+    # unknown bonusState is treated as *not* available, so missing data can
+    # never inflate the customer's capacity.  withdrawBalance is referral money
+    # meant for withdrawal and is deliberately excluded.
+    bonus_available = (
+        account.bonus_balance if getattr(account, "bonus_state", None) == "unlocked" else 0
+    )
+    spendable = account.balance + bonus_available
+
     if service.price <= 0:
         raw["insufficient_balance"] = None
         missing.append("insufficient_balance")
         reasons["insufficient_balance"] = "Цена услуги равна нулю, фактор неприменим."
     else:
-        ratio = account.balance / service.price
+        ratio = spendable / service.price
         feature = max(0.0, min(1.0, 1.0 - ratio))
         raw["insufficient_balance"] = feature
+        bonus_note = (
+            f" + бонус {_format_eur(bonus_available)} (unlocked)"
+            if bonus_available
+            else ""
+        )
         if feature <= 0:
             reasons["insufficient_balance"] = (
-                f"Баланса ({_format_eur(account.balance)}) достаточно для продления "
-                f"({_format_eur(service.price)})."
+                f"Доступно {_format_eur(spendable)}{bonus_note} против цены "
+                f"{_format_eur(service.price)} — продление обеспечено."
             )
         else:
             reasons["insufficient_balance"] = (
-                f"Баланс {_format_eur(account.balance)} против цены продления "
+                f"Доступно {_format_eur(spendable)}{bonus_note} против цены продления "
                 f"{_format_eur(service.price)} — покрытие {ratio * 100:.0f}%."
             )
 
@@ -316,25 +351,63 @@ def compute_service_risk(
     )
 
     # --- transaction history ---------------------------------------------
-    prolongs = [t for t in transactions if t.type == "prolong"]
-    failed = [t for t in prolongs if t.status == "not_performed"]
-
-    if not prolongs:
-        raw["failed_renewals"] = None
-        raw["renewal_failure_rate"] = None
-        missing.extend(["failed_renewals", "renewal_failure_rate"])
-        reasons["failed_renewals"] = "История продлений отсутствует в снимке."
-        reasons["renewal_failure_rate"] = "История продлений отсутствует в снимке."
+    # Only events at or before the evaluation instant may be used: a renewal
+    # recorded after ``now`` would leak the future into the score.
+    window = settings.failed_renewal_window_days
+    if window is None:
+        window_start = None
     else:
-        raw["failed_renewals"] = min(1.0, len(failed) / FAILED_RENEWAL_SATURATION)
-        raw["renewal_failure_rate"] = len(failed) / len(prolongs)
-        reasons["failed_renewals"] = (
-            f"Неуспешных продлений: {len(failed)} из {len(prolongs)}."
-            if failed
-            else f"Неуспешных продлений нет (проверено {len(prolongs)} попыток)."
-        )
+        window_start = now - timedelta(days=window)
+
+    prolongs_all = [
+        t
+        for t in transactions
+        if t.type == "prolong" and (t.created_at is None or t.created_at <= now)
+    ]
+    in_window = [
+        t
+        for t in prolongs_all
+        if window_start is None or (t.created_at is not None and t.created_at >= window_start)
+    ]
+    failed_all = [t for t in prolongs_all if t.status == "not_performed"]
+    failed = [t for t in in_window if t.status == "not_performed"]
+
+    window_note = (
+        "за всё время снимка"
+        if window is None
+        else f"за последние {window} дн."
+    )
+
+    if not in_window:
+        # No observable attempts inside the window: the rate is unknown, not 0.
+        raw["renewal_failure_rate"] = None
+        missing.append("renewal_failure_rate")
         reasons["renewal_failure_rate"] = (
-            f"Доля неуспешных продлений {len(failed) / len(prolongs) * 100:.0f}%."
+            f"Попыток продления {window_note} нет — доля неуспешных не определена."
+        )
+    else:
+        raw["renewal_failure_rate"] = len(failed) / len(in_window)
+        reasons["renewal_failure_rate"] = (
+            f"Неуспешных продлений {len(failed)} из {len(in_window)} {window_note} "
+            f"({len(failed) / len(in_window) * 100:.0f}%)."
+        )
+
+    # Diagnostics only: never enters the weighted sum (its weight is 0).
+    # Kept so the analyst can still see how many failures exist historically
+    # and how many the window excluded.
+    raw["failed_renewals"] = float(len(failed_all)) if prolongs_all else None
+    if not prolongs_all:
+        reasons["failed_renewals"] = "История продлений отсутствует в снимке."
+    else:
+        excluded = len(failed_all) - len(failed)
+        tail = (
+            f" Вне окна {window_note}: {excluded}."
+            if excluded and window is not None
+            else ""
+        )
+        reasons["failed_renewals"] = (
+            f"Диагностика: неуспешных продлений {len(failed_all)} из "
+            f"{len(prolongs_all)} всего.{tail} В рейтинг не входит."
         )
 
     # --- weighted aggregation --------------------------------------------
@@ -360,6 +433,7 @@ def compute_service_risk(
                 contribution=contribution,
                 reason=reasons.get(definition.key, ""),
                 available=available,
+                deprecated=definition.deprecated,
             )
         )
 
@@ -404,6 +478,13 @@ class CustomerRisk:
     missing_data: list[str]
     concluded_states: dict[str, int]
     state_note: str = ""
+    #: Share of *scored* services that sit in the high band (0..1).
+    #: Reported alongside ``score`` rather than folded into it: ``score`` stays
+    #: the maximum service risk, so a wider portfolio never raises the rating
+    #: by itself.  Concentration is a separate decision input.
+    high_risk_share: float = 0.0
+    #: Services in an open state whose ``expiresAt`` is already in the past.
+    overdue_service_count: int = 0
 
 
 def compute_customer_risk(
@@ -470,16 +551,27 @@ def compute_customer_risk(
             category = "insufficient_data"
             state_note = "У клиента нет услуг в снимке."
 
+    high_risk_count = sum(1 for r in scored if r.category == "high")
+    # Denominator is the *scored* services: services with no computable score
+    # carry no information, so including them would understate concentration.
+    # An empty denominator yields 0.0 rather than a division error.
+    high_risk_share = (high_risk_count / len(scored)) if scored else 0.0
+    overdue_count = sum(
+        1 for r in eligible if r.days_to_expiry is not None and r.days_to_expiry < 0
+    )
+
     return CustomerRisk(
         customer_id=customer_id,
         score=score,
         category=category,
         service_count=len(service_risks),
         eligible_service_count=len(eligible),
-        high_risk_service_count=sum(1 for r in scored if r.category == "high"),
+        high_risk_service_count=high_risk_count,
         service_risks=service_risks,
         reasons=reasons[:8],
         missing_data=missing,
         concluded_states=concluded,
         state_note=state_note,
+        high_risk_share=high_risk_share,
+        overdue_service_count=overdue_count,
     )
