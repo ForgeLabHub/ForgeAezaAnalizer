@@ -1,83 +1,57 @@
-"""Prometheus metrics.
-
-Only aggregated, non-personal counters are exposed.  No email, customer id or
-other identifier ever becomes a label, and every label set is low cardinality.
-"""
-
 from __future__ import annotations
 
-from prometheus_client import (
-    CONTENT_TYPE_LATEST,
-    CollectorRegistry,
-    Counter,
-    Gauge,
-    Histogram,
-    generate_latest,
-)
+from prometheus_client import CollectorRegistry, Counter, Histogram, generate_latest
+from prometheus_client.core import GaugeMetricFamily
 
-REGISTRY = CollectorRegistry(auto_describe=True)
-
-CUSTOMERS_TOTAL = Gauge(
-    "aeza_customers_total", "Number of customers in the current dataset", registry=REGISTRY
-)
-SERVICES_TOTAL = Gauge(
-    "aeza_services_total", "Number of services in the current dataset", registry=REGISTRY
-)
-SERVICES_OPEN_TOTAL = Gauge(
-    "aeza_services_open_total",
-    "Number of services whose state still allows a future churn event",
-    registry=REGISTRY,
-)
-CUSTOMERS_BY_RISK = Gauge(
-    "aeza_customers_by_risk_category",
-    "Customers grouped by risk category",
-    ["category"],
-    registry=REGISTRY,
-)
-REVENUE_AT_RISK = Gauge(
-    "aeza_revenue_at_risk_eur",
-    "Projected revenue at risk for the configured horizon, in EUR",
-    registry=REGISTRY,
-)
-IMPORTS_TOTAL = Counter(
-    "aeza_snapshot_imports_total",
-    "Snapshot imports by outcome",
-    ["status"],
-    registry=REGISTRY,
-)
-API_ERRORS_TOTAL = Counter(
-    "aeza_api_errors_total",
-    "API errors by HTTP status class",
-    ["status_class"],
-    registry=REGISTRY,
-)
-API_REQUESTS_TOTAL = Counter(
-    "aeza_api_requests_total", "API requests by route and method", ["route", "method"], registry=REGISTRY
-)
-ANALYTICS_DURATION = Histogram(
-    "aeza_analytics_duration_seconds",
-    "Time spent computing analytics",
-    ["operation"],
-    registry=REGISTRY,
-    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
-)
+from core import NotReadyError
 
 
-def risk_category_labels() -> list[str]:
-    return ["low", "medium", "high", "insufficient_data", "not_applicable"]
+class PublishedCollector:
+    def __init__(self, storage):
+        self.storage = storage
+
+    def collect(self):
+        ready = GaugeMetricFamily("aeza_analysis_ready", "A published analysis is available")
+        try:
+            summary = self.storage.summary()
+        except NotReadyError:
+            ready.add_metric([], 0)
+            yield ready
+            return
+        ready.add_metric([], 1)
+        yield ready
+        for name, help_text, value in (
+            ("aeza_analysis_generation", "Published analysis generation", summary["generation"]),
+            ("aeza_customers_total", "Customers in the published analysis", summary["customers"]["total"]),
+            ("aeza_services_total", "Services in the published analysis", summary["services"]["total"]),
+            ("aeza_services_open_total", "Open services in the published analysis", summary["services"]["open"]),
+            ("aeza_revenue_at_risk_eur", "Scenario weighted payments in EUR", summary["revenue"]["revenueAtRiskCents"] / 100),
+            ("aeza_upcoming_renewals_eur", "Planned payments in EUR", summary["revenue"]["upcomingRenewalsCents"] / 100),
+        ):
+            metric = GaugeMetricFamily(name, help_text)
+            metric.add_metric([], value)
+            yield metric
+        categories = GaugeMetricFamily("aeza_customers_by_risk_category", "Published customer categories", labels=["category"])
+        for category in ("low", "medium", "high", "insufficient_data", "not_applicable"):
+            categories.add_metric([category], summary["customers"]["byCategory"].get(category, 0))
+        yield categories
+        from datetime import datetime
+        calculated = GaugeMetricFamily("aeza_analysis_calculated_timestamp_seconds", "Last successful calculation")
+        calculated.add_metric([], datetime.fromisoformat(summary["calculatedAt"]).timestamp())
+        yield calculated
 
 
-def update_dataset_gauges(*, summary: dict, customers_total: int, services_total: int) -> None:
-    """Refresh the dataset gauges from a computed summary."""
+class Metrics:
+    def __init__(self, storage):
+        self.registry = CollectorRegistry()
+        self.registry.register(PublishedCollector(storage))
+        self.requests = Counter("aeza_api_requests_total", "API responses", ["route", "method", "status_class"], registry=self.registry)
+        self.duration = Histogram("aeza_api_duration_seconds", "API response duration", ["route"], registry=self.registry)
 
-    CUSTOMERS_TOTAL.set(customers_total)
-    SERVICES_TOTAL.set(services_total)
-    SERVICES_OPEN_TOTAL.set(summary["services"]["open"])
-    by_category = summary["customers"]["byCategory"]
-    for category in risk_category_labels():
-        CUSTOMERS_BY_RISK.labels(category=category).set(by_category.get(category, 0))
-    REVENUE_AT_RISK.set(float(summary["revenue"]["revenueAtRiskEur"]))
+    def observe(self, route: str, method: str, status: int, duration: float):
+        method = method if method in {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"} else "OTHER"
+        self.requests.labels(route, method, f"{status // 100}xx").inc()
+        self.duration.labels(route).observe(duration)
 
-
-def render_metrics() -> tuple[bytes, str]:
-    return generate_latest(REGISTRY), CONTENT_TYPE_LATEST
+    def render(self) -> bytes:
+        return generate_latest(self.registry)
