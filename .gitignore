@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+frontend/dist/
+npm-debug.log*
+
+# Local data / runtime state
+*.db
+*.sqlite3
+backend/data/aeza.db
+backend/data/*.db
+
+# Secrets and local env
+.env
+.env.local
+
+# Tooling scratch
+.playwright-mcp/
+.agent_tmp/
+*.log
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+
+# TypeScript incremental build info
+frontend/tsconfig.tsbuildinfo
