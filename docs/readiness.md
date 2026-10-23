@@ -106,12 +106,15 @@ GET  /api/v1/customers               POST /api/v1/model/settings/reset
 GET  /api/v1/customers/{id}          GET  /api/v1/source/snapshot
 PUT  /api/v1/source/snapshot         GET  /metrics
 GET  /health                         GET  /api/v1/docs
-GET  /api/v1/priority                POST /api/v1/whatif
+GET  /api/v1/priority                POST /api/v1/scenarios/compare
+GET  /api/v1/quality                 GET  /api/v1/analytics/events
+GET  /api/v1/source/observations     GET  /api/v1/export/customers.csv
+GET  /ready
 ```
 
 Схема авторизации — `HTTPBearer`. Спецификация описывает только существующие
-маршруты; наличие `/api/v1/priority` и `/api/v1/whatif` в `openapi.json` проверено
-автоматическим тестом.
+маршруты; наличие `/api/v1/priority` и `/api/v1/scenarios/compare` в `openapi.json`
+проверено автоматическим тестом.
 
 ---
 
