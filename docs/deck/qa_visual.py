@@ -51,6 +51,7 @@ def main() -> int:
     prs = Presentation(DECK)
     sw, sh = inch(prs.slide_width), inch(prs.slide_height)
     issues: list[str] = []
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
     print(f"=== {DECK.name} · {len(prs.slides._sldIdLst)} slides · {sw:.2f}x{sh:.2f}in")
 
     print("\n-- screenshot legibility (want >= 110 px/in) --")
@@ -127,19 +128,27 @@ def main() -> int:
             issues.append(f"{f.name} ink {ink:.1f}% (overloaded)")
 
     print("\n-- contrast (>= 4.5 body, >= 3.0 large) --")
+    # Read the real palette from the deck kit, so this check can never drift
+    # away from the colours actually used on the slides.
+    from deckkit import (CORAL, CORAL_DEEP, DIM, INK, INK_2, LINE, MINT,
+                         MUTED, PAPER, TEXT, WHITE)
+
+    def rgb(c):
+        return (c[0], c[1], c[2])
+
     pairs = [
-        ("body on paper", (0x20, 0x2B, 0x3A), (0xF7, 0xF6, 0xF2)),
-        ("muted on paper", (0x64, 0x6D, 0x79), (0xF7, 0xF6, 0xF2)),
-        ("muted on white", (0x64, 0x6D, 0x79), (0xFF, 0xFF, 0xFF)),
-        ("coral-deep on paper", (0xC6, 0x43, 0x2C), (0xF7, 0xF6, 0xF2)),
-        ("coral-deep on white", (0xC6, 0x43, 0x2C), (0xFF, 0xFF, 0xFF)),
-        ("coral on ink", (0xEF, 0x63, 0x4D), (0x14, 0x22, 0x38)),
-        ("white on ink", (0xFF, 0xFF, 0xFF), (0x14, 0x22, 0x38)),
-        ("soft on ink", (0xC3, 0xCE, 0xDD), (0x14, 0x22, 0x38)),
-        ("dim on ink", (0x96, 0xA1, 0xB0), (0x14, 0x22, 0x38)),
-        ("dim on ink2", (0x96, 0xA1, 0xB0), (0x20, 0x2F, 0x45)),
-        ("mint on ink", (0x83, 0xCD, 0xB7), (0x14, 0x22, 0x38)),
-        ("mint on ink2", (0x83, 0xCD, 0xB7), (0x20, 0x2F, 0x45)),
+        ("body on paper", rgb(TEXT), rgb(PAPER)),
+        ("muted on paper", rgb(MUTED), rgb(PAPER)),
+        ("muted on white", rgb(MUTED), rgb(WHITE)),
+        ("coral-deep on paper", rgb(CORAL_DEEP), rgb(PAPER)),
+        ("coral-deep on white", rgb(CORAL_DEEP), rgb(WHITE)),
+        ("coral on ink", rgb(CORAL), rgb(INK)),
+        ("white on ink", rgb(WHITE), rgb(INK)),
+        ("soft on ink", rgb(LINE), rgb(INK)),
+        ("dim on ink", rgb(DIM), rgb(INK)),
+        ("dim on ink2", rgb(DIM), rgb(INK_2)),
+        ("mint on ink", rgb(MINT), rgb(INK)),
+        ("mint on ink2", rgb(MINT), rgb(INK_2)),
     ]
     for name, fg, bgc in pairs:
         r = contrast(fg, bgc)
