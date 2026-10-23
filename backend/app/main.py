@@ -50,9 +50,10 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         database = Database(settings.database_url)
+        auth_database = Database(settings.auth_database_url)
         storage = Storage(database)
         calculation = CalculationAdapter(module)
-        auth = AuthService(database, settings)
+        auth = AuthService(auth_database, settings)
         runtime = Runtime(settings, database, storage, auth, calculation,
             Core(storage, calculation, settings.reference_now))
         stop = asyncio.Event()
@@ -60,6 +61,7 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
 
         def initialize():
             database.initialize()
+            auth_database.initialize_auth()
             auth.bootstrap()
             if isinstance(module, UnavailableAnalytics):
                 return
@@ -84,6 +86,7 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
             if task is not None:
                 await task
             database.engine.dispose()
+            auth_database.engine.dispose()
 
     app = FastAPI(title=settings.app_name, version="2.0.0", lifespan=lifespan,
         docs_url="/api/v1/docs", openapi_url="/api/v1/openapi.json", redoc_url=None,
