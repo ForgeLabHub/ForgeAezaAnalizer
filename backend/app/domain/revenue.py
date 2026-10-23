@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from app.domain.money import cents_to_eur
+from app.domain.money import cents_to_eur, scaled_cents
 from app.domain.risk import ServiceRisk
 
 
@@ -67,7 +67,7 @@ def compute_service_exposure(
     if not (now <= service.expires_at <= horizon_end):
         return None
 
-    revenue_at_risk = int(round(service.price * risk.score / 100.0))
+    revenue_at_risk = scaled_cents(service.price, risk.score / 100.0)
     return RenewalExposure(
         service_id=service.id,
         renewal_at=service.expires_at,
