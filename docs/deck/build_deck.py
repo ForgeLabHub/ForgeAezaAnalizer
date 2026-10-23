@@ -293,7 +293,7 @@ def s03_solution(prs):
 
     # left: the ranked customer list
     label(s, M, py, lw, "РЕАЛЬНЫЙ ИНТЕРФЕЙС · СПИСОК КЛИЕНТОВ ПО РИСКУ")
-    h1 = E(int(lw / 3.3027))
+    h1 = E(int(lw / 2.7579))
     shot(s, "cust_table_all.png", M, E(py + Inches(0.26)), lw, h1)
     text_block(s, M, E(py + Inches(0.26) + h1 + Inches(0.12)), lw,
                "Все 10 клиентов снимка отсортированы по риску: балл, уровень и выручка "
@@ -301,10 +301,10 @@ def s03_solution(prs):
 
     # right: summary metrics above the risk-reason breakdown
     label(s, rx, py, rw, "СВОДКА ПО БАЗЕ")
-    hm = E(int(rw / 3.8267))
-    shot(s, "w_dash_metrics.png", rx, E(py + Inches(0.26)), rw, hm)
+    hm = E(int(rw / 3.2041))
+    shot(s, "w_dash_metrics6.png", rx, E(py + Inches(0.26)), rw, hm)
     hy = E(py + Inches(0.26) + hm + Inches(0.22))
-    hr = E(int(rw / 3.8686))
+    hr = E(int(rw / 3.3301))
     shot(s, "w_dash_reasons.png", rx, hy, rw, hr)
     text_block(s, rx, E(hy + hr + Inches(0.12)), rw,
                "Сводка — по всем клиентам; причины риска — прямой подсчёт по услугам.",
@@ -362,16 +362,16 @@ def s04_customer(prs):
     rx = E(M + lw + Inches(0.32))
     rw = E(CW - lw - Inches(0.32))
     label(s, rx, E(y - Inches(0.03)), rw, "РЕАЛЬНЫЙ ИНТЕРФЕЙС · КАРТОЧКА КЛИЕНТА #10")
-    hh = E(int(rw / 28.1481))
+    hh = E(int(rw / 19.4850))
     shot(s, "c10_pagehead.png", rx, E(y + Inches(0.24)), rw, hh)
     my = E(y + Inches(0.24) + hh + Inches(0.12))
-    hm = E(int((rw - Inches(0.16)) / 2 / 3.4352))
+    hm = E(int((rw - Inches(0.16)) / 2 / 2.7786))
     shot(s, "m_c10_score.png", rx, my, E((rw - Inches(0.16)) / 2), hm)
     shot(s, "m_c10_rev.png", E(rx + (rw - Inches(0.16)) / 2 + Inches(0.16)), my,
          E((rw - Inches(0.16)) / 2), hm)
     ly = E(my + hm + Inches(0.26))
     label(s, rx, ly, rw, "ПРИЧИНЫ ОЦЕНКИ ПО УСЛУГЕ service-0030")
-    hr = E(int(rw / 5.3000))
+    hr = E(int(rw / 4.6503))
     ry = E(ly + Inches(0.27))
     shot(s, "w_c10_reasons.png", rx, ry, rw, hr)
     text_block(s, rx, E(ry + hr + Inches(0.12)), rw,
@@ -538,7 +538,7 @@ def s06_money(prs):
     rw = E(CW - lw - Inches(0.30))
     label(s, rx, E(cy - Inches(0.03)), rw,
           "РЕАЛЬНЫЙ ИНТЕРФЕЙС · БЛИЖАЙШИЕ ПРОДЛЕНИЯ В ГОРИЗОНТЕ")
-    shot(s, "renew_table.png", rx, E(cy + Inches(0.26)), rw, Inches(1.36))
+    shot(s, "renew_table.png", rx, E(cy + Inches(0.26)), rw, E(int(rw / 4.7347)))
     ty = E(cy + Inches(2.02))
     totals = [("ВЫРУЧКА ПОД РИСКОМ", "5,74 €", CORAL_DEEP, "прогнозная экспозиция"),
               ("ПРЕДСТОЯЩИЕ ПРОДЛЕНИЯ", "17,03 €", TEXT, "сумма без учёта риска"),
@@ -597,7 +597,7 @@ def s07_change(prs):
     hw = E((CW - Inches(0.34)) / 2)
     label(s, M, cy, hw, "ДО · ВЕС 3,0")
     label(s, E(M + hw + Inches(0.34)), cy, hw, "ПОСЛЕ · ВЕС 9,0", CORAL_DEEP)
-    sh_ = E(int(hw / 6.9174))
+    sh_ = E(int(hw / 2.7589))
     shot(s, "t_set_before.png", M, E(cy + Inches(0.24)), hw, sh_)
     shot(s, "t_set_after.png", E(M + hw + Inches(0.34)),
          E(cy + Inches(0.24)), hw, sh_)
