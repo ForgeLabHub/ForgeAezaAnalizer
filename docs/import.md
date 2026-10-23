@@ -163,7 +163,7 @@ TOKEN=$(curl -s -X POST http://127.0.0.1:8000/api/v1/auth/login \
 curl -X PUT http://127.0.0.1:8000/api/v1/source/snapshot \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  --data-binary @backend/data/snapshot.json
+  --data-binary @dataset/data.json
 ```
 
 ### Скриптом
@@ -177,20 +177,22 @@ python scripts/load_snapshot.py path/to/snapshot.json
 
 ### Автоматически при старте
 
-Если база пуста и `AEZA_SEED_DEMO_DATA=1`, приложение при запуске применяет снимок из
-`AEZA_SNAPSHOT_PATH` (по умолчанию `data/snapshot.json`). Ошибка загрузки при старте
-не роняет приложение: она логируется, и API продолжает работать с пустым набором.
+Compose загружает `db/analytics_seed.sql` в PostgreSQL при первом создании каталога
+`db/postgres/`. Этот seed содержит демоданные и историю аналитических поколений;
+таблиц авторизации в нём нет. Для пустой БД вне Compose можно включить
+`AEZA_SEED_DEMO_DATA=1`; тогда приложение возьмёт JSON из `AEZA_SNAPSHOT_PATH`.
 
 ### Через SQL
 
-Для PostgreSQL комплект содержит готовые миграции:
+Для Compose повторно применять seed вручную не нужно. В чистую PostgreSQL базу его
+можно загрузить так:
 
 ```bash
 psql -X -v ON_ERROR_STOP=1 -d DATABASE_NAME \
-  -f dataset/001_schema.up.sql -f dataset/002_seed.sql
+  -f db/analytics_seed.sql
 ```
 
-Ожидаемый результат: `10 | 30 | 100`.
+Seed содержит 60 клиентов, 115 услуг, 285 транзакций и три поколения расчёта.
 
 ---
 

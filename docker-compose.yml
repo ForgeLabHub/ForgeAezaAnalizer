@@ -6,7 +6,8 @@ services:
       POSTGRES_USER: aeza
       POSTGRES_PASSWORD: aeza
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - ./db/postgres:/var/lib/postgresql/data
+      - ./db/analytics_seed.sql:/docker-entrypoint-initdb.d/20-analytics-seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aeza -d aeza"]
       interval: 5s
@@ -24,10 +25,10 @@ services:
       # Change this before exposing the stack to anyone.
       AEZA_JWT_SECRET: ${AEZA_JWT_SECRET:-change-me-in-production}
       AEZA_ADMIN_EMAIL: ${AEZA_ADMIN_EMAIL:-analyst@aeza.test}
-      AEZA_ADMIN_PASSWORD: ${AEZA_ADMIN_PASSWORD:-aeza-demo-password}
+      AEZA_ADMIN_PASSWORD: ${AEZA_ADMIN_PASSWORD:-demo123}
       AEZA_ALLOW_DEV_SECRET: "0"
-      AEZA_SEED_DEMO_DATA: "1"
-      AEZA_SNAPSHOT_PATH: backend/data/snapshot.json
+      AEZA_SEED_DEMO_DATA: "0"
+      AEZA_AUTH_DATABASE_URL: sqlite:////app/db/auth.sqlite3
       AEZA_AS_OF: ${AEZA_AS_OF:-2026-10-19T15:00:00+00:00}
       AEZA_ANALYTICS_FACTORY: ${AEZA_ANALYTICS_FACTORY:-backend.app.domain.module:create}
       AEZA_RECALCULATE_SECONDS: ${AEZA_RECALCULATE_SECONDS:-60}
@@ -38,6 +39,8 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+    volumes:
+      - ./db/auth.sqlite3:/app/db/auth.sqlite3
     restart: unless-stopped
 
   web:
@@ -49,6 +52,3 @@ services:
     ports:
       - "8080:80"
     restart: unless-stopped
-
-volumes:
-  pgdata:

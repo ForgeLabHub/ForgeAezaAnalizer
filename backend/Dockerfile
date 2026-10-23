@@ -13,12 +13,10 @@ COPY core.py main.py ./
 COPY backend/__init__.py ./backend/__init__.py
 COPY backend/app ./backend/app
 COPY backend/scripts ./backend/scripts
-COPY backend/data ./backend/data
 
-# Run as an unprivileged user; the data directory must stay writable because
-# SQLite lives there by default.
+# Run as an unprivileged user; the auth database is mounted under /app/db.
 RUN useradd --create-home --uid 10001 aeza \
-    && mkdir -p /app/data \
+    && mkdir -p /app/data /app/db \
     && chown -R aeza:aeza /app
 USER aeza
 
