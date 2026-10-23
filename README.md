@@ -2,16 +2,19 @@
 
 Аналитика клиентских данных Aéza для хакатона **UMIRHack 2026, кейс №2**:
 выявление риска оттока, объяснение причин оценки и выручки под риском на
-**реальных данных организатора** (10 аккаунтов, 30 услуг, 100 транзакций).
+**официальном датасете организатора** (10 аккаунтов, 30 услуг, 100 транзакций).
+Данные синтетические: их сгенерировал организатор (`dataset/generate.py`),
+это снимок состояния, а не история событий.
 
-> **В репозитории две независимые реализации одного кейса.** Они написаны
+> **В репозитории три независимых набора кода для одного кейса.** Они написаны
 > параллельно, не импортируют друг друга и имеют собственные модели данных,
 > скоринг, API и фронтенд. Выберите нужную.
 >
 > | Реализация | Стек | Раздел |
 > | --- | --- | --- |
 > | `aeza_analyzer/` | Python-пакет, SQLite, vanilla-JS SPA, CLI | [Часть A](#часть-a--aeza_analyzer) |
-> | `backend/` + `frontend/` | FastAPI + PostgreSQL/SQLite, React + TypeScript + Vite, Docker Compose | [Часть B](#часть-b--fastapi--react) |
+> | `backend/app/` + `frontend/` | FastAPI + PostgreSQL/SQLite, React + TypeScript + Vite, Docker Compose | [Часть B](#часть-b--fastapi--react) |
+> | `backend/auth/` + `backend/main.py` | Автономный модуль авторизации: JWT (RS256) + RSA, OIDC-подобные маршруты | [AGENTS.md](AGENTS.md) |
 >
 > **Что у них общего:** деньги хранятся в **евроцентах** (100 = €1) и
 > конвертируются один раз на границе API/UI; скоринг — **объяснимая взвешенная
@@ -185,28 +188,10 @@ revenue_at_risk = eligible_renewal_amount × risk_score / 100
 - Модель риска — эвристическая и объяснимая, **не** обученная ML-модель.
 - Хранилище — SQLite (встроенное); при необходимости заменяется через
   `AEZA_DATABASE_URL`.
+- `favicon.ico` не отдаётся (безвредный 404 в консоли).
 
-### Документация части A
-
-| Документ | Содержание |
-| --- | --- |
-| [`docs/REQUIREMENTS_TRACEABILITY.md`](docs/REQUIREMENTS_TRACEABILITY.md) | соответствие требованиям |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | компоненты и потоки данных |
-| [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md) | поля, типы, единицы |
-| [`docs/SCHEMA_MAPPING.md`](docs/SCHEMA_MAPPING.md) | источник → модель приложения |
-| [`docs/ANALYTICS_METHODOLOGY.md`](docs/ANALYTICS_METHODOLOGY.md) | формула риска, веса, confidence |
-| [`docs/REVENUE_METHODOLOGY.md`](docs/REVENUE_METHODOLOGY.md) | выручка под риском |
-| [`docs/IMPORT_AND_DATA_AUDIT.md`](docs/IMPORT_AND_DATA_AUDIT.md) | импорт и профиль данных |
-| [`docs/API.md`](docs/API.md) | эндпоинты и схемы |
-| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | разработка и соглашения |
-| [`docs/TESTING.md`](docs/TESTING.md) | тесты и проверки |
-| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | запуск и развёртывание |
-| [`docs/SECURITY.md`](docs/SECURITY.md) | безопасность и ограничения |
-| [`docs/AUTH_MODULE.md`](docs/AUTH_MODULE.md) | модуль аутентификации (OIDC, JWT) |
-| [`docs/IMPLEMENTATION_AUDIT.md`](docs/IMPLEMENTATION_AUDIT.md) | аудит всех реализаций в репозитории |
-| [`docs/ARCHITECTURE_DECISION.md`](docs/ARCHITECTURE_DECISION.md) | выбор основного продукта |
-| [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) | сценарий демонстрации жюри |
-| [`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md) | реализованное и идеи |
+Полный отчёт аудита данных и найденные дефекты исходных данных —
+[`docs/DATA_AUDIT.md`](docs/DATA_AUDIT.md).
 
 
 ---
@@ -394,6 +379,23 @@ docs/             документация по данным, модели, им
 | [`docs/import.md`](docs/import.md) | Формат снимка, правила валидации, атомарность |
 | [`docs/demo.md`](docs/demo.md) | Сценарий демонстрации на 3–5 минут |
 | [`docs/readiness.md`](docs/readiness.md) | Отчёт о готовности: что проверено и что осталось |
+| [`docs/REQUIREMENTS_TRACEABILITY.md`](docs/REQUIREMENTS_TRACEABILITY.md) | Матрица соответствия официальному ТЗ |
+| [`docs/IMPLEMENTATION_AUDIT.md`](docs/IMPLEMENTATION_AUDIT.md) | Аудит всех реализаций в репозитории |
+| [`docs/ARCHITECTURE_DECISION.md`](docs/ARCHITECTURE_DECISION.md) | Выбор основного продукта и судьба остальных |
+| [`docs/TESTING.md`](docs/TESTING.md) | Фактические команды, тесты и результаты |
+| [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) | Пошаговый сценарий защиты |
+| [`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md) | Реализованное и идеи на будущее |
+| [`docs/AUTH_MODULE.md`](docs/AUTH_MODULE.md) | Модуль аутентификации (OIDC, JWT) |
+| [`docs/API.md`](docs/API.md) | Эндпоинты части A и схемы |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Устройство части A |
+| [`docs/ANALYTICS_METHODOLOGY.md`](docs/ANALYTICS_METHODOLOGY.md) | Методика риска части A |
+| [`docs/REVENUE_METHODOLOGY.md`](docs/REVENUE_METHODOLOGY.md) | Денежная оценка части A |
+| [`docs/IMPORT_AND_DATA_AUDIT.md`](docs/IMPORT_AND_DATA_AUDIT.md) | Импорт и профиль данных части A |
+| [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md) | Словарь полей |
+| [`docs/SCHEMA_MAPPING.md`](docs/SCHEMA_MAPPING.md) | Источник → модель приложения |
+| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Разработка части A |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Развёртывание |
+| [`docs/SECURITY.md`](docs/SECURITY.md) | Безопасность |
 
 ---
 
@@ -466,6 +468,117 @@ docs/             документация по данным, модели, им
 
 `dataset/` содержит исходный комплект, предоставленный в рамках кейса UMIRHack 2026
 (синтетические данные). Проект создан для демонстрации решения кейса.
+
+---
+
+
+---
+
+# Часть C — модуль авторизации (`backend/auth/`)
+
+Автономный модуль: логин и пароль в SQLite, JWT access token, HttpOnly cookie
+серверной сессии, RS256/JWKS и OIDC-провайдер для одного доверенного сайта.
+Не зависит от частей A и B; фронтенд в этот модуль не входит.
+
+Модуль проверяет логин и пароль в SQLite, выдаёт JWT access token и устанавливает HttpOnly cookie серверной сессии. Повторные запросы используют сессию; пароль не сохраняется в кеше. Модуль выступает OIDC-провайдером для одного доверенного сайта.
+
+Добавлены зависимости **PyJWT и cryptography** для RS256/JWKS. SQLite, scrypt и кеш используют стандартную библиотеку Python. Фронтенд в этот модуль не входит.
+
+## Запуск
+
+Python 3.12+. Из корня проекта в PowerShell:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m backend.users create alice
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+Команда создания пользователя запросит пароль дважды; минимум 12 символов. База `db/auth.sqlite3` и таблица `users` создаются автоматически из `db/schema.sql`. Для создания пустой базы: `python -m backend.users init`.
+
+Открыть [API](http://localhost:8000/docs). При первом запуске автоматически создаётся RSA-ключ `db/private_key.pem`; он сохраняется между перезапусками. Базу и приватный ключ нужно хранить вне публичного доступа, с правами только для процесса приложения.
+
+Настройки перечислены в `.env.example`. Приложение читает переменные окружения; файл `.env` автоматически не загружается. Например:
+
+```powershell
+$env:AUTH_ISSUER = "https://auth.example.com"
+$env:AUTH_FRONTEND_LOGIN_URL = "https://app.example.com/login"
+$env:AUTH_COOKIE_SECURE = "true"
+$env:OIDC_CLIENT_ID = "website"
+$env:OIDC_REDIRECT_URIS = "https://app.example.com/auth/callback"
+```
+
+В локальной разработке используйте `localhost` и на фронтенде, и для API. Cookie имеют `SameSite=Lax`: фронтенд страницы входа и сервер авторизации должны быть на одном site, например `app.example.com` и `auth.example.com`. CORS разрешён только origin страницы входа, указанной в `AUTH_FRONTEND_LOGIN_URL`.
+
+## Вход с фронтенда
+
+```javascript
+const requestId = new URLSearchParams(location.search).get("request_id");
+const response = await fetch("http://localhost:8000/auth/login", {
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ login, password, request_id: requestId }),
+});
+const result = await response.json();
+if (!response.ok) throw new Error(result.error_description || "Ошибка входа");
+if (result.redirect_url) location.assign(result.redirect_url);
+```
+
+Ответ содержит `access_token`, `token_type: "Bearer"`, `expires_in`, `scope` и `user: {sub, preferred_username}`. При входе в рамках OIDC-запроса также возвращается `redirect_url` с одноразовым кодом. Access token передаётся в `Authorization: Bearer …`; cookie отправляется браузером при `credentials: "include"`.
+
+| Метод | Адрес | Назначение |
+| --- | --- | --- |
+| POST | `/auth/login` | JSON `{login, password, request_id?}`, проверка пароля, токен и cookie |
+| GET | `/auth/me` | Данные пользователя по Bearer-токену или cookie |
+| POST | `/auth/refresh` | Новый access token по действующей cookie, без повторного ввода пароля |
+| POST | `/auth/logout` | Отзыв текущей сессии и удаление cookie |
+| GET | `/.well-known/openid-configuration` | OIDC discovery |
+| GET | `/oidc/authorize` | Authorization Code + PKCE S256 |
+| POST | `/oidc/token` | Обмен кода на access token и ID token |
+| GET | `/oidc/jwks` | Публичный ключ проверки подписи JWT |
+| GET, POST | `/oidc/userinfo` | OIDC claims по Bearer access token |
+
+## Подключение сайта по OIDC
+
+Issuer по умолчанию: `http://localhost:8000`. Client ID: `website`. Зарегистрированный redirect URI: `http://localhost:3000/auth/callback`. Адрес возврата проверяется точным совпадением с одним из `OIDC_REDIRECT_URIS` через запятую.
+
+1. Сайт генерирует криптографически случайные `state`, `nonce` и `code_verifier` длиной 43–128 символов. Хранит их в контексте текущей попытки входа.
+2. Вычисляет `code_challenge = BASE64URL(SHA256(code_verifier))` без padding и направляет браузер на `/oidc/authorize` с параметрами `client_id`, `redirect_uri`, `response_type=code`, `scope=openid profile`, `state`, `nonce`, `code_challenge`, `code_challenge_method=S256`.
+3. При наличии сессии сервер сразу перенаправляет на callback сайта с `code` и исходным `state`. Без сессии перенаправляет на `AUTH_FRONTEND_LOGIN_URL?request_id=…`; фронтенд выполняет описанный выше POST `/auth/login` и переходит по `redirect_url`. Попытка входа привязана к браузеру отдельной HttpOnly cookie.
+4. Сайт проверяет `state` и обменивает код через POST `/oidc/token`, Content-Type `application/x-www-form-urlencoded`:
+
+```text
+grant_type=authorization_code
+client_id=website
+code=<полученный код>
+redirect_uri=http://localhost:3000/auth/callback
+code_verifier=<исходный verifier>
+```
+
+5. OIDC-библиотека сайта проверяет подпись ID token по JWKS, `iss`, `aud`, `exp` и сохранённый `nonce`, затем создаёт сессию сайта. Самостоятельно декодировать JWT без проверки подписи недостаточно.
+
+Для браузерного клиента `OIDC_CLIENT_SECRET` остаётся пустым: используется public client с обязательным PKCE. Для сайта с сервером задайте секрет и используйте HTTP Basic на `/oidc/token`; секрет должен быть только на сервере сайта. PKCE обязателен в обоих режимах. Поддерживаются scopes `openid`, `profile`, параметры `prompt=none`, `prompt=login`, `max_age`; refresh token и динамическая регистрация клиентов не реализованы.
+
+`/auth/login` выдаёт access token для API. OIDC ID token сайт получает при обмене кода: для входа на сайт необходимо пройти описанный OIDC-поток.
+
+## Кеш и сроки действия
+
+- Пароли в SQLite представлены scrypt-хешами с уникальной солью, `N=131072, r=8, p=1`.
+- Сессия живёт 8 часов, access token — 15 минут, код — 60 секунд, попытка OIDC-входа — 5 минут. Срок токена ограничен остатком жизни сессии.
+- Профиль кешируется на 30 секунд; после этого перечитывается из SQLite. `is_active=0` или изменение `auth_version` отзывают доступ при следующем обновлении профиля.
+- `/auth/logout` немедленно прекращает использование токенов этой сессии на `/auth/me` и `/oidc/userinfo`. Уже выданные JWT, проверяемые сторонним сайтом автономно, действуют до своего `exp`; собственную сессию сайт завершает сам.
+- Кеш ограничен 10 000 записей на тип. Коды потребляются атомарно один раз. Не более 10 попыток входа с IP за окно 60 секунд; одновременно выполняются до 4 проверок scrypt.
+- Кеш находится в памяти одного процесса: используйте `--workers 1`. Перезапуск завершает все сессии и незавершённые OIDC-попытки. Для нескольких процессов понадобится общее хранилище с атомарным потреблением кодов.
+
+## Проверки
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+Проверяются вход, кеш профиля, обновление токена, отзыв сессии, подписи и сроки JWT, OIDC-переход, PKCE, одноразовое потребление кода в двух потоках, привязка к браузеру, redirect URI, клиентский секрет, scopes, CORS/Origin и ограничения попыток входа.
 
 ---
 
