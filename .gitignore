@@ -33,6 +33,7 @@ npm-debug.log*
 # Local data / runtime state (backend)
 backend/data/aeza.db
 backend/data/*.db
+/db/postgres/
 
 # Secrets and local env
 .env
