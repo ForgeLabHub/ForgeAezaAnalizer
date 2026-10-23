@@ -60,7 +60,11 @@ def compute_service_exposure(
 
     if not risk.eligible or risk.score is None:
         return None
-    if service.price <= 0:
+    # An unknown price or expiry cannot be turned into a monetary exposure: a
+    # missing value is not zero, and the snapshot offers no basis to guess.
+    if service.price is None or service.price <= 0:
+        return None
+    if service.expires_at is None:
         return None
 
     horizon_end = now + timedelta(days=horizon_days)
@@ -148,13 +152,19 @@ def build_recommendations(risk: ServiceRisk, account, service) -> list[Recommend
         if not factor.available or not factor.value or factor.value <= 0:
             continue
         if factor.key == "insufficient_balance":
+            balance_text = (
+                format_eur(account.balance) if account.balance is not None else "неизвестен"
+            )
+            price_text = (
+                format_eur(service.price) if service.price is not None else "неизвестна"
+            )
             out.append(
                 Recommendation(
                     code="check_balance",
                     title="Проверить достаточность баланса",
                     detail=(
-                        f"Баланс {format_eur(account.balance)} не покрывает продление "
-                        f"({format_eur(service.price)}). Предложите пополнение или смену тарифа."
+                        f"Баланс {balance_text} не покрывает продление "
+                        f"({price_text}). Предложите пополнение или смену тарифа."
                     ),
                     priority=2,
                 )

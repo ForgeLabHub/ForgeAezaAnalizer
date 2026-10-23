@@ -37,8 +37,17 @@ CONCLUDED_STATUSES: frozenset[str] = frozenset({"deleted", "blocked"})
 #: Number of failed renewals that saturates the ``failed_renewals`` factor.
 FAILED_RENEWAL_SATURATION = 2.0
 
-#: Trailing window (days) used when counting recent failed renewals.
+#: Default trailing window (days) used when counting recent failed renewals.
+#: ``None`` means "the whole snapshot", which is what the pre-window behaviour
+#: did.  The default stays at 90 because the dataset shows the difference is
+#: material: of the 23 failed prolongations in the organiser snapshot, 14 fall
+#: inside 90 days and 9 are older, so the window genuinely changes the score
+#: rather than decorating it.
 FAILED_RENEWAL_WINDOW_DAYS = 90
+
+#: Upper bound accepted for a custom window.  Bounded so the setting cannot be
+#: used to smuggle an unbounded look-back into the methodology.
+FAILED_RENEWAL_WINDOW_MAX = 3650
 
 
 @dataclass(frozen=True)
@@ -90,10 +99,14 @@ FACTORS: tuple[FactorDefinition, ...] = (
     FactorDefinition(
         key="failed_renewals",
         label="Неуспешные продления",
-        description="Есть транзакции продления со статусом not_performed.",
-        how_computed="количество not_performed продлений (за всё время снимка)",
+        description="Есть транзакции продления со статусом not_performed в пределах окна наблюдения.",
+        how_computed="количество not_performed продлений, созданных не раньше now - failedRenewalWindowDays",
         normalization="min(1, count / 2): два и более неуспеха дают 1",
         default_weight=2.0,
+        missing_data_behaviour=(
+            "если по услуге нет продлений в окне, фактор исключается и веса "
+            "перенормируются (неизвестное значение не считается нулём)"
+        ),
     ),
     FactorDefinition(
         key="suspended_status",
@@ -135,6 +148,9 @@ class RiskSettings:
     weights: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_WEIGHTS))
     low_max: int = DEFAULT_LOW_MAX
     medium_max: int = DEFAULT_MEDIUM_MAX
+    #: Trailing window for counting failed renewals.  ``None`` restores the
+    #: whole-snapshot behaviour.
+    failed_renewal_window_days: int | None = FAILED_RENEWAL_WINDOW_DAYS
 
     def __post_init__(self) -> None:
         validate_settings(self)
@@ -154,6 +170,14 @@ def validate_settings(settings: RiskSettings) -> None:
 
     if not 1 <= settings.horizon_days <= 365:
         raise RiskConfigError("horizon_days must be between 1 and 365")
+    window = settings.failed_renewal_window_days
+    if window is not None:
+        if isinstance(window, bool) or not isinstance(window, int):
+            raise RiskConfigError("failed_renewal_window_days must be an integer or null")
+        if not 1 <= window <= FAILED_RENEWAL_WINDOW_MAX:
+            raise RiskConfigError(
+                f"failed_renewal_window_days must be between 1 and {FAILED_RENEWAL_WINDOW_MAX}, or null"
+            )
     if not 0 <= settings.low_max < settings.medium_max <= 100:
         raise RiskConfigError("thresholds must satisfy 0 <= low_max < medium_max <= 100")
     unknown = set(settings.weights) - set(FACTOR_BY_KEY)
@@ -228,7 +252,9 @@ def compute_service_risk(
 
     status = service.status
     eligible = status in ELIGIBLE_STATUSES
-    days_left = _days_to_expiry(service.expires_at, now)
+    days_left = (
+        _days_to_expiry(service.expires_at, now) if service.expires_at is not None else None
+    )
 
     if not eligible:
         note = (
@@ -256,7 +282,16 @@ def compute_service_risk(
     horizon = float(settings.horizon_days)
 
     # --- expiry proximity -------------------------------------------------
-    if days_left <= 0:
+    # ``expiresAt`` is optional in the source contract.  A missing expiry is
+    # *unknown*, not "expires now", so the factor is excluded and its weight is
+    # renormalised away instead of being scored as the most urgent case.
+    if days_left is None:
+        raw["expiry_proximity"] = None
+        missing.append("expiry_proximity")
+        reasons["expiry_proximity"] = (
+            "Дата окончания услуги отсутствует в снимке — фактор не рассчитан."
+        )
+    elif days_left <= 0:
         raw["expiry_proximity"] = 1.0
         reasons["expiry_proximity"] = (
             f"Услуга истекла {-days_left:.1f} дн. назад и не продлена."
@@ -273,15 +308,29 @@ def compute_service_risk(
         )
 
     # --- auto prolong -----------------------------------------------------
-    raw["auto_prolong_disabled"] = 0.0 if service.auto_prolong else 1.0
-    reasons["auto_prolong_disabled"] = (
-        "Автопродление включено."
-        if service.auto_prolong
-        else "Автопродление отключено — продление зависит от ручного решения."
-    )
+    # A missing flag is unknown: assuming "disabled" would invent a risk signal.
+    if service.auto_prolong is None:
+        raw["auto_prolong_disabled"] = None
+        missing.append("auto_prolong_disabled")
+        reasons["auto_prolong_disabled"] = (
+            "Признак автопродления отсутствует в снимке — фактор не рассчитан."
+        )
+    else:
+        raw["auto_prolong_disabled"] = 0.0 if service.auto_prolong else 1.0
+        reasons["auto_prolong_disabled"] = (
+            "Автопродление включено."
+            if service.auto_prolong
+            else "Автопродление отключено — продление зависит от ручного решения."
+        )
 
     # --- balance vs price -------------------------------------------------
-    if service.price <= 0:
+    if service.price is None or account.balance is None:
+        raw["insufficient_balance"] = None
+        missing.append("insufficient_balance")
+        reasons["insufficient_balance"] = (
+            "Цена услуги или баланс отсутствуют в снимке — фактор не рассчитан."
+        )
+    elif service.price <= 0:
         raw["insufficient_balance"] = None
         missing.append("insufficient_balance")
         reasons["insufficient_balance"] = "Цена услуги равна нулю, фактор неприменим."
@@ -316,25 +365,39 @@ def compute_service_risk(
     )
 
     # --- transaction history ---------------------------------------------
+    # Only renewals inside the configured trailing window count.  A window of
+    # ``None`` reproduces the original whole-snapshot behaviour.  The window is
+    # applied to *both* the failure count and the failure rate so the two
+    # factors stay consistent with each other.
     prolongs = [t for t in transactions if t.type == "prolong"]
+    window = settings.failed_renewal_window_days
+    if window is not None:
+        window_start = now - timedelta(days=window)
+        prolongs = [t for t in prolongs if t.created_at >= window_start]
     failed = [t for t in prolongs if t.status == "not_performed"]
+
+    window_note = (
+        "за всё время снимка"
+        if window is None
+        else f"за последние {window} дн."
+    )
 
     if not prolongs:
         raw["failed_renewals"] = None
         raw["renewal_failure_rate"] = None
         missing.extend(["failed_renewals", "renewal_failure_rate"])
-        reasons["failed_renewals"] = "История продлений отсутствует в снимке."
-        reasons["renewal_failure_rate"] = "История продлений отсутствует в снимке."
+        reasons["failed_renewals"] = f"История продлений отсутствует в снимке ({window_note})."
+        reasons["renewal_failure_rate"] = f"История продлений отсутствует в снимке ({window_note})."
     else:
         raw["failed_renewals"] = min(1.0, len(failed) / FAILED_RENEWAL_SATURATION)
         raw["renewal_failure_rate"] = len(failed) / len(prolongs)
         reasons["failed_renewals"] = (
-            f"Неуспешных продлений: {len(failed)} из {len(prolongs)}."
+            f"Неуспешных продлений: {len(failed)} из {len(prolongs)} ({window_note})."
             if failed
-            else f"Неуспешных продлений нет (проверено {len(prolongs)} попыток)."
+            else f"Неуспешных продлений нет (проверено {len(prolongs)} попыток {window_note})."
         )
         reasons["renewal_failure_rate"] = (
-            f"Доля неуспешных продлений {len(failed) / len(prolongs) * 100:.0f}%."
+            f"Доля неуспешных продлений {len(failed) / len(prolongs) * 100:.0f}% ({window_note})."
         )
 
     # --- weighted aggregation --------------------------------------------

@@ -1,8 +1,14 @@
-"""Analytics orchestration: turns stored rows into risk and revenue answers.
+"""Analytics orchestration: turns a source snapshot into risk and revenue answers.
 
 This module is the single place where risk, exposure and recommendations are
-computed, so the API layer stays thin and every endpoint reports consistent
-numbers.
+combined, so the HTTP layer stays thin and every endpoint reports consistent
+numbers.  It performs no I/O of its own: it consumes a
+:class:`~app.domain.source_view.SourceView` built from an already validated
+snapshot, which keeps it testable and free of database coupling.
+
+The risk, exposure and recommendation formulas themselves live in
+:mod:`app.domain.risk` and :mod:`app.domain.revenue` and are never re-implemented
+here — this module only aggregates them.
 """
 
 from __future__ import annotations
@@ -10,11 +16,6 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
-
-from app.config import get_settings
-from app.db import AccountRow, ServiceRow
 from app.domain.money import cents_to_eur
 from app.domain.revenue import (
     CustomerExposure,
@@ -31,6 +32,7 @@ from app.domain.risk import (
     compute_customer_risk,
     compute_service_risk,
 )
+from app.domain.source_view import AccountView, ServiceView, SourceView
 
 STATUS_LABELS = {
     "active": "Активна",
@@ -57,49 +59,52 @@ TERM_LABELS = {
     "year": "Год",
 }
 
+CATEGORY_ORDER = ("low", "medium", "high", "insufficient_data", "not_applicable")
+
 
 @dataclass
 class ServiceAnalysis:
-    service: ServiceRow
+    service: ServiceView
     risk: ServiceRisk
     exposure: RenewalExposure | None
-    recommendations: list
+    recommendations: list = field(default_factory=list)
 
 
 @dataclass
 class CustomerAnalysis:
-    account: AccountRow
+    account: AccountView
     risk: CustomerRisk
     exposure: CustomerExposure
     services: list[ServiceAnalysis] = field(default_factory=list)
     recommendations: list = field(default_factory=list)
 
 
+def _known_sum(values) -> int:
+    """Sum only the values that are known.
+
+    Unknown amounts are skipped rather than treated as zero; callers label the
+    resulting figure as a partial aggregate.
+    """
+
+    return sum(value for value in values if value is not None)
+
+
 class AnalyticsService:
     """Computes the full analytical model for a given settings object."""
 
-    def __init__(self, session: Session, settings: RiskSettings, now: dt.datetime | None = None):
-        self.session = session
+    def __init__(self, view: SourceView, settings: RiskSettings, now: dt.datetime):
+        self.view = view
         self.settings = settings
-        self.now = now or get_settings().reference_now()
+        self.now = now
 
-    def _load_accounts(self) -> list[AccountRow]:
-        return list(
-            self.session.scalars(
-                select(AccountRow).options(
-                    selectinload(AccountRow.services).selectinload(ServiceRow.transactions)
-                )
-            )
-        )
-
-    def analyze_customer(self, account: AccountRow) -> CustomerAnalysis:
+    def analyze_customer(self, account: AccountView) -> CustomerAnalysis:
         service_analyses: list[ServiceAnalysis] = []
         exposures: list[RenewalExposure] = []
-        for service in account.services:
+        for service in self.view.services_of(account.id):
             risk = compute_service_risk(
                 service=service,
                 account=account,
-                transactions=list(service.transactions),
+                transactions=self.view.transactions_of(service.id),
                 settings=self.settings,
                 now=self.now,
             )
@@ -147,36 +152,37 @@ class AnalyticsService:
         )
 
     def analyze_all(self) -> list[CustomerAnalysis]:
-        return [self.analyze_customer(a) for a in self._load_accounts()]
+        return [self.analyze_customer(a) for a in self.view.accounts]
 
-    def summary(self) -> dict:
-        analyses = self.analyze_all()
-        by_category = {"low": 0, "medium": 0, "high": 0, "insufficient_data": 0, "not_applicable": 0}
+    def summary(self, analyses: list[CustomerAnalysis] | None = None) -> dict:
+        analyses = self.analyze_all() if analyses is None else analyses
+        by_category = {name: 0 for name in CATEGORY_ORDER}
         for analysis in analyses:
             by_category[analysis.risk.category] = by_category.get(analysis.risk.category, 0) + 1
 
-        active_services = 0
+        open_services = 0
         status_counts: dict[str, int] = {}
         concluded_counts: dict[str, int] = {}
         revenue_at_risk = 0
         upcoming = 0
-        customers_at_risk: set[int] = set()
+        customers_with_exposure = 0
         services_at_risk = 0
         reason_counter: dict[str, int] = {}
         upcoming_renewals: list[dict] = []
 
         for analysis in analyses:
+            if analysis.exposure.revenue_at_risk_cents > 0:
+                customers_with_exposure += 1
             for sa in analysis.services:
                 status_counts[sa.service.status] = status_counts.get(sa.service.status, 0) + 1
                 if sa.service.status in ELIGIBLE_STATUSES:
-                    active_services += 1
+                    open_services += 1
                 else:
                     concluded_counts[sa.service.status] = (
                         concluded_counts.get(sa.service.status, 0) + 1
                     )
                 if sa.risk.category == "high":
                     services_at_risk += 1
-                    customers_at_risk.add(analysis.account.id)
                 for factor in sa.risk.factors:
                     if factor.available and factor.value and factor.value > 0:
                         reason_counter[factor.label] = reason_counter.get(factor.label, 0) + 1
@@ -188,7 +194,7 @@ class AnalyticsService:
                             "customerId": analysis.account.id,
                             "serviceId": sa.service.id,
                             "serviceName": sa.service.name,
-                            "renewalAt": sa.service.expires_at.isoformat(),
+                            "renewalAt": sa.exposure.renewal_at.isoformat(),
                             "amountCents": sa.exposure.amount_cents,
                             "amountEur": str(cents_to_eur(sa.exposure.amount_cents)),
                             "riskScore": sa.risk.score,
@@ -197,9 +203,9 @@ class AnalyticsService:
                         }
                     )
 
-        upcoming_renewals.sort(key=lambda r: r["renewalAt"])
+        upcoming_renewals.sort(key=lambda r: (r["renewalAt"], r["customerId"], r["serviceId"]))
 
-        total_replenished = sum(a.account.total_replenished for a in analyses)
+        total_replenished = _known_sum(a.account.total_replenished for a in analyses)
 
         return {
             "generatedAt": self.now.isoformat(),
@@ -210,26 +216,26 @@ class AnalyticsService:
                 "highRisk": by_category.get("high", 0),
                 "mediumRisk": by_category.get("medium", 0),
                 "insufficientData": by_category.get("insufficient_data", 0),
-                "withRevenueAtRisk": len(customers_at_risk),
+                "withRevenueAtRisk": customers_with_exposure,
             },
             "services": {
                 "total": sum(a.risk.service_count for a in analyses),
-                "open": active_services,
+                "open": open_services,
                 "concluded": sum(concluded_counts.values()),
                 "byStatus": status_counts,
                 "highRisk": services_at_risk,
             },
             "revenue": {
-                "revenueAtRiskEur": str(cents_to_eur(revenue_at_risk)),
                 "revenueAtRiskCents": revenue_at_risk,
-                "upcomingRenewalsEur": str(cents_to_eur(upcoming)),
+                "revenueAtRiskEur": str(cents_to_eur(revenue_at_risk)),
                 "upcomingRenewalsCents": upcoming,
-                "historicalReplenishedEur": str(cents_to_eur(total_replenished)),
+                "upcomingRenewalsEur": str(cents_to_eur(upcoming)),
                 "historicalReplenishedCents": total_replenished,
+                "historicalReplenishedEur": str(cents_to_eur(total_replenished)),
             },
             "topRiskReasons": [
                 {"label": label, "count": count}
-                for label, count in sorted(reason_counter.items(), key=lambda kv: -kv[1])[:8]
+                for label, count in sorted(reason_counter.items(), key=lambda kv: (-kv[1], kv[0]))[:8]
             ],
             "upcomingRenewals": upcoming_renewals[:10],
             "historyAvailable": False,
