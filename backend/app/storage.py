@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy import String, cast, func, or_, select, update
 
 from core import Analysis, NotReadyError, ResourceNotFoundError, State
-from backend.app.db import AnalysisRow, AuditRow, CurrentRow, CustomerRow, Database, ModelRow, ObservationRow, ServiceIndexRow, SourceRow
+from backend.app.db import AnalysisRow, AuditRow, CurrentRow, CustomerRow, Database, ModelRow, ObservationRow, RecommendationStatusRow, ServiceIndexRow, SourceRow
 
 EMPTY_SOURCE = {"accounts": [], "services": [], "transactions": []}
+
+#: Allowed playbook workflow states. The lifecycle is intentionally small:
+#: a recommendation is new, being worked on, or done. "done" can be reopened
+#: because a retention action can be found to be premature.
+RECOMMENDATION_STATUSES = ("new", "in_progress", "done")
 
 
 class Storage:
@@ -122,6 +129,55 @@ class Storage:
             analysis = session.get(AnalysisRow, generation)
             row = session.get(ModelRow, analysis.model_version)
             return {"settings": row.payload, "updatedAt": row.created_at.isoformat(), **analysis.summary["version"]}
+
+    # ------------------------------------------------------- retention playbooks
+    def recommendation_statuses(self, customer_id: int) -> dict[str, dict]:
+        """Return the stored workflow status per recommendation code.
+
+        Only codes that have been touched by an operator are returned; a missing
+        code means "new", so an untouched playbook needs no row and no write.
+        """
+
+        with self.database.sessions() as session:
+            rows = session.scalars(
+                select(RecommendationStatusRow).where(
+                    RecommendationStatusRow.customer_id == customer_id
+                )
+            ).all()
+            return {
+                row.code: {
+                    "status": row.status,
+                    "updatedAt": row.updated_at.isoformat(),
+                    "updatedBy": row.updated_by,
+                }
+                for row in rows
+            }
+
+    def set_recommendation_status(
+        self, customer_id: int, code: str, status: str, actor: str
+    ) -> dict:
+        """Set one playbook's status, leaving every other row untouched.
+
+        The upsert is a plain read-then-write inside a single transaction, which
+        is idempotent: applying the same status twice converges on the same row
+        rather than creating a duplicate.
+        """
+
+        now = datetime.now(timezone.utc)
+        with self.database.transaction() as session:
+            row = session.get(RecommendationStatusRow, (customer_id, code))
+            if row is None:
+                session.add(
+                    RecommendationStatusRow(
+                        customer_id=customer_id, code=code, status=status,
+                        updated_at=now, updated_by=actor,
+                    )
+                )
+            else:
+                row.status = status
+                row.updated_at = now
+                row.updated_by = actor
+        return {"code": code, "status": status, "updatedAt": now.isoformat(), "updatedBy": actor}
 
     def source(self, generation=None) -> dict:
         with self.database.sessions() as session:
