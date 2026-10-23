@@ -37,6 +37,7 @@ from .revenue import build_recommendations, compute_customer_exposure, compute_s
 from .risk import (
     DEFAULT_WEIGHTS,
     FACTORS,
+    FAILED_RENEWAL_WINDOW_DAYS,
     RiskConfigError,
     RiskSettings,
     compute_customer_risk,
@@ -156,6 +157,10 @@ class AézaAnalyticsModule:
                 "weights": {k: float(v) for k, v in DEFAULT_WEIGHTS.items()},
                 "lowMax": 34,
                 "mediumMax": 64,
+                # Without this the platform's SettingsPayload would fill the
+                # field with its own default and the approved 90-day window
+                # would silently become "whole snapshot" on a fresh database.
+                "failedRenewalWindowDays": FAILED_RENEWAL_WINDOW_DAYS,
             },
             factors=tuple(_factor_info()),
             version=MODEL_VERSION,
