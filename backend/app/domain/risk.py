@@ -306,16 +306,28 @@ def compute_service_risk(
     # unknown bonusState is treated as *not* available, so missing data can
     # never inflate the customer's capacity.  withdrawBalance is referral money
     # meant for withdrawal and is deliberately excluded.
+    #
+    # A missing balance is unknown, not zero: scoring it as "no funds" would
+    # invent a risk signal out of absent data.
+    balance = getattr(account, "balance", None)
     bonus_available = (
-        account.bonus_balance if getattr(account, "bonus_state", None) == "unlocked" else 0
+        getattr(account, "bonus_balance", None) or 0
+        if getattr(account, "bonus_state", None) == "unlocked"
+        else 0
     )
-    spendable = account.balance + bonus_available
 
-    if service.price <= 0:
+    if balance is None:
+        raw["insufficient_balance"] = None
+        missing.append("insufficient_balance")
+        reasons["insufficient_balance"] = (
+            "Баланс аккаунта в снимке отсутствует — достаточность средств не определена."
+        )
+    elif service.price <= 0:
         raw["insufficient_balance"] = None
         missing.append("insufficient_balance")
         reasons["insufficient_balance"] = "Цена услуги равна нулю, фактор неприменим."
     else:
+        spendable = balance + bonus_available
         ratio = spendable / service.price
         feature = max(0.0, min(1.0, 1.0 - ratio))
         raw["insufficient_balance"] = feature
