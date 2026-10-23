@@ -37,6 +37,7 @@ def _payload(settings: RiskSettings) -> ModelSettingsPayload:
         weights={k: float(v) for k, v in settings.weights.items()},
         lowMax=settings.low_max,
         mediumMax=settings.medium_max,
+        failedRenewalWindowDays=settings.failed_renewal_window_days,
     )
 
 
@@ -95,6 +96,13 @@ def patch_model_settings(
     )
     candidate_low = patch.lowMax if patch.lowMax is not None else current.low_max
     candidate_medium = patch.mediumMax if patch.mediumMax is not None else current.medium_max
+    # ``None`` is a meaningful value for the window (whole snapshot), so the
+    # default of None cannot mean "absent".  ``model_fields_set`` tells the two
+    # apart: only an explicitly supplied field overrides the stored setting.
+    if "failedRenewalWindowDays" in patch.model_fields_set:
+        candidate_window = patch.failedRenewalWindowDays
+    else:
+        candidate_window = current.failed_renewal_window_days
 
     # RiskSettings validates on construction, so the whole merge must be inside
     # the guard to turn a bad payload into a 422 rather than a 500.
@@ -104,6 +112,7 @@ def patch_model_settings(
             weights=candidate_weights,
             low_max=candidate_low,
             medium_max=candidate_medium,
+            failed_renewal_window_days=candidate_window,
         )
         validate_settings(candidate)
     except RiskConfigError as exc:

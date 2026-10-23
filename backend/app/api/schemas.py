@@ -44,6 +44,8 @@ class ModelSettingsPayload(BaseModel):
     weights: dict[str, float] = Field(default_factory=dict)
     lowMax: int = Field(default=34, ge=0, le=100)
     mediumMax: int = Field(default=64, ge=0, le=100)
+    #: Trailing window for failed renewals. ``None`` means the whole snapshot.
+    failedRenewalWindowDays: int | None = Field(default=90, ge=1, le=3650)
 
 
 class ModelSettingsResponse(BaseModel):
@@ -62,6 +64,7 @@ class SettingsPatch(BaseModel):
     weights: dict[str, float] | None = None
     lowMax: int | None = Field(default=None, ge=0, le=100)
     mediumMax: int | None = Field(default=None, ge=0, le=100)
+    failedRenewalWindowDays: int | None = Field(default=None, ge=1, le=3650)
 
 
 class ImportReport(BaseModel):

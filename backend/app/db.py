@@ -114,6 +114,9 @@ class ModelSettingsRow(Base):
     low_max: Mapped[int] = mapped_column(Integer, nullable=False, default=34)
     medium_max: Mapped[int] = mapped_column(Integer, nullable=False, default=64)
     weights_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    #: Trailing window (days) for failed renewals.  ``NULL`` means the whole
+    #: snapshot, which is a valid configuration, so the column is nullable.
+    failed_renewal_window_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     updated_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
 
 
@@ -189,5 +192,34 @@ def reset_engine_for_tests() -> None:
     _SessionLocal = None
 
 
+def _ensure_columns() -> None:
+    """Add columns introduced after a database was first created.
+
+    ``create_all`` only creates missing *tables*, so an existing SQLite file
+    would keep the old ``model_settings`` shape and every query would fail with
+    "no such column".  Adding the column when absent keeps old stores usable
+    instead of forcing a re-import.
+    """
+
+    engine = get_engine()
+    if engine.dialect.name != "sqlite":
+        return
+    with engine.connect() as connection:
+        existing = {
+            row[1]
+            for row in connection.exec_driver_sql(
+                "PRAGMA table_info(model_settings)"
+            ).fetchall()
+        }
+        if not existing:
+            return
+        if "failed_renewal_window_days" not in existing:
+            connection.exec_driver_sql(
+                "ALTER TABLE model_settings ADD COLUMN failed_renewal_window_days INTEGER"
+            )
+            connection.commit()
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=get_engine())
+    _ensure_columns()

@@ -21,6 +21,26 @@ def money(cents: int) -> dict:
     return {"cents": cents, "eur": str(cents_to_eur(cents))}
 
 
+def horizon_payload(horizon) -> dict:
+    return {
+        "horizonDays": horizon.horizon_days,
+        "renewalCount": horizon.renewal_count,
+        "upcomingRenewals": money(horizon.upcoming_renewals_cents),
+        "revenueAtRisk": money(horizon.revenue_at_risk_cents),
+    }
+
+
+def overdue_payload(item) -> dict:
+    return {
+        "serviceId": item.service_id,
+        "status": item.status,
+        "expiredAt": item.expired_at.isoformat(),
+        "daysOverdue": round(item.days_overdue, 2),
+        "amount": money(item.amount_cents),
+        "lifecycleInconsistent": item.lifecycle_inconsistent,
+    }
+
+
 def factor_payload(factor) -> dict:
     return {
         "key": factor.key,
@@ -30,6 +50,9 @@ def factor_payload(factor) -> dict:
         "contribution": round(factor.contribution, 4),
         "available": factor.available,
         "reason": factor.reason,
+        # Additive: existing consumers ignore it, new ones can tell a live
+        # rating factor from a diagnostic one kept for compatibility.
+        "deprecated": factor.deprecated,
     }
 
 
@@ -82,10 +105,17 @@ def customer_summary_payload(analysis: CustomerAnalysis) -> dict:
         "serviceCount": risk.service_count,
         "eligibleServiceCount": risk.eligible_service_count,
         "highRiskServiceCount": risk.high_risk_service_count,
+        "highRiskShare": round(risk.high_risk_share, 4),
+        "overdueServiceCount": risk.overdue_service_count,
         "concludedStates": risk.concluded_states,
         "stateNote": risk.state_note,
         "revenueAtRisk": money(analysis.exposure.revenue_at_risk_cents),
         "upcomingRenewals": money(analysis.exposure.upcoming_renewals_cents),
+        "overdueOperational": money(analysis.exposure.overdue_operational_cents),
+        "lifecycleInconsistentCount": analysis.exposure.lifecycle_inconsistent_count,
+        "exposureByHorizon": [
+            horizon_payload(h) for _, h in sorted(analysis.exposure.horizons.items())
+        ],
         "topReasons": risk.reasons[:3],
         "missingData": risk.missing_data,
     }
@@ -111,6 +141,7 @@ def customer_detail_payload(analysis: CustomerAnalysis) -> dict:
                 }
                 for r in analysis.exposure.renewals
             ],
+            "overdueDetails": [overdue_payload(o) for o in analysis.exposure.overdue],
         }
     )
     return payload
