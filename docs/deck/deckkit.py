@@ -19,7 +19,7 @@ from pptx.util import Emu, Inches, Pt
 # ---------------------------------------------------------------- palette ---
 # Aéza house colours, read from aeza.net: near-black canvas, orange accent.
 # Contrast on the two canvases was checked before choosing each value:
-#   ORANGE on INK 6.67:1 · ORANGE_DEEP on PAPER 4.89:1 · DIM on INK 5.67:1
+#   ORANGE on INK 6.51:1 · ORANGE_DEEP on PAPER 4.75:1 · DIM on INK 5.67:1
 INK = RGBColor(0x13, 0x13, 0x13)        # Aéza canvas black
 INK_2 = RGBColor(0x1F, 0x1F, 0x1F)      # dark background level two
 PAPER = RGBColor(0xF4, 0xF4, 0xF4)      # Aéza light surface
@@ -27,8 +27,8 @@ WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 TEXT = RGBColor(0x1A, 0x1A, 0x1A)       # primary text
 MUTED = RGBColor(0x66, 0x66, 0x66)      # secondary text on light backgrounds
 DIM = RGBColor(0x8E, 0x8E, 0x8E)        # secondary text on dark backgrounds
-CORAL = RGBColor(0xF9, 0x74, 0x15)      # Aéza orange, for dark backgrounds
-CORAL_DEEP = RGBColor(0xB3, 0x4A, 0x0A)  # same accent, readable on light
+CORAL = RGBColor(0xFF, 0x6B, 0x00)      # product accent (--brand-500)
+CORAL_DEEP = RGBColor(0xB8, 0x4A, 0x00)  # same accent, readable on light
 MINT = RGBColor(0x83, 0xCD, 0xB7)       # neutral positive accent
 LINE = RGBColor(0xE1, 0xE1, 0xE1)       # hairlines
 LINE_DARK = RGBColor(0x33, 0x33, 0x33)
