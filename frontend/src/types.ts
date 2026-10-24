@@ -161,3 +161,72 @@ export interface ModelSettings {
   updatedAt: string | null
   isDefault: boolean
 }
+
+// ------------------------------------------------------------------ AI Analyst
+export type AIStatusValue = 'disabled' | 'ready' | 'unavailable'
+
+export interface AIStatus {
+  status: AIStatusValue
+  provider: string
+  model: string
+  enabled: boolean
+  reason: string
+  reachable: boolean
+  rag_indexed: boolean
+  rag_chunks: number
+}
+
+export interface AICitation {
+  kind: 'fact' | 'document'
+  source: string
+  detail: string
+}
+
+export interface AIAnswer {
+  summary: string
+  facts: string[]
+  factor_explanation: string
+  recommendations: string[]
+  limitations: string
+  citations: AICitation[]
+}
+
+export interface AIResponse {
+  task: 'chat' | 'customer_explain' | 'scenario_explain' | 'report_summary'
+  model: string
+  provider: string
+  grounded: boolean
+  warnings: string[]
+  citations: AICitation[]
+  answer: AIAnswer
+  context: {
+    facts?: string
+    documents?: string
+    latencyMs?: number
+    completionTokens?: number | null
+    riskScore?: number | null
+  }
+}
+
+export type ActionStatus = 'open' | 'in_progress' | 'done' | 'dismissed'
+
+export interface RetentionAction {
+  id: number
+  customerId: number
+  serviceId: number | null
+  code: string
+  title: string
+  detail: string
+  status: ActionStatus
+  note: string | null
+  generation: number
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface RetentionActionList {
+  items: RetentionAction[]
+  statuses: ActionStatus[]
+  note: string
+}

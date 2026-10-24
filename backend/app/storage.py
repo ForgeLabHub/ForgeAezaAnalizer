@@ -3,7 +3,8 @@ from __future__ import annotations
 from sqlalchemy import String, cast, func, or_, select, update
 
 from core import Analysis, NotReadyError, ResourceNotFoundError, State
-from backend.app.db import AnalysisRow, AuditRow, CurrentRow, CustomerRow, Database, ModelRow, ObservationRow, ServiceIndexRow, SourceRow
+from backend.app.db import ActionRow, AnalysisRow, AuditRow, CurrentRow, CustomerRow, Database, ModelRow, ObservationRow, ServiceIndexRow, SourceRow
+from backend.app.domain import actions as actions_domain
 
 EMPTY_SOURCE = {"accounts": [], "services": [], "transactions": []}
 
@@ -143,3 +144,59 @@ class Storage:
                 "observedAt": row.observed_at.isoformat(),
                 "previousObservedAt": row.previous_observed_at.isoformat() if row.previous_observed_at else None,
                 "eventAt": None} for row in rows]
+
+    # ------------------------------------------------------------------ actions
+    @staticmethod
+    def _action_payload(row) -> dict:
+        return {
+            "id": row.id,
+            "customerId": row.customer_id,
+            "serviceId": row.service_id,
+            "code": row.code,
+            "title": row.title,
+            "detail": row.detail,
+            "status": row.status,
+            "note": row.note,
+            "generation": row.generation,
+            "createdBy": row.created_by,
+            "createdAt": row.created_at.isoformat(),
+            "updatedAt": row.updated_at.isoformat(),
+        }
+
+    def actions(self, *, customer_id: int | None = None, status: str | None = None) -> list[dict]:
+        with self.database.sessions() as session:
+            statement = select(ActionRow)
+            if customer_id is not None:
+                statement = statement.where(ActionRow.customer_id == customer_id)
+            if status is not None:
+                statement = statement.where(ActionRow.status == status)
+            rows = session.scalars(
+                statement.order_by(ActionRow.created_at.desc(), ActionRow.id.desc())
+            ).all()
+            return [self._action_payload(row) for row in rows]
+
+    def create_action(self, *, customer_id: int, service_id: int | None, code: str, title: str,
+                      detail: str, note: str | None, generation: int, actor: str) -> dict:
+        stamp = actions_domain.now()
+        with self.database.transaction() as session:
+            row = ActionRow(
+                customer_id=customer_id, service_id=service_id, code=code, title=title, detail=detail,
+                status="open", note=note, generation=generation, created_by=actor,
+                created_at=stamp, updated_at=stamp,
+            )
+            session.add(row)
+            session.flush()
+            return self._action_payload(row)
+
+    def update_action(self, action_id: int, *, status: str | None, note: str | None) -> dict:
+        with self.database.transaction() as session:
+            row = session.get(ActionRow, action_id)
+            if row is None:
+                raise ResourceNotFoundError(f"Действие {action_id} не найдено")
+            if status is not None:
+                row.status = status
+            if note is not None:
+                row.note = note.strip() or None
+            row.updated_at = actions_domain.now()
+            session.flush()
+            return self._action_payload(row)

@@ -1549,3 +1549,374 @@ th.sortable:hover {
     padding-left: 120px;
   }
 }
+
+/* ---------------------------------------------------------------- AI Analyst
+   The AI panel is part of the product surface, not a separate app: it reuses
+   the card, pill and neutral-ramp conventions above and adds only what the
+   answer hierarchy needs (status chip, thread, citation chips). */
+
+.ai-panel {
+  padding: 20px 22px 18px;
+}
+
+.ai-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ai-panel-head h3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+
+.ai-panel-head .muted {
+  margin: 0;
+  max-width: 60ch;
+}
+
+.ai-status {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.ai-status-ready {
+  background: var(--risk-low-bg);
+  color: var(--risk-low-fg);
+}
+
+.ai-status-disabled {
+  background: var(--risk-na-bg);
+  color: var(--risk-na-fg);
+}
+
+.ai-status-unavailable {
+  background: var(--risk-med-bg);
+  color: var(--risk-med-fg);
+}
+
+.ai-status-note {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-md, 10px);
+  background: var(--surface-muted);
+  border: 1px solid var(--n-200);
+  color: var(--n-700);
+  font-size: 13px;
+}
+
+.ai-thread {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ai-turn {
+  border-top: 1px solid var(--n-100);
+  padding-top: 14px;
+}
+
+.ai-turn:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.ai-question {
+  margin: 0 0 10px;
+  font-weight: 600;
+  color: var(--n-800);
+}
+
+.ai-answer {
+  background: var(--surface-muted);
+  border: 1px solid var(--n-200);
+  border-radius: var(--radius-md, 10px);
+  padding: 14px 16px;
+}
+
+.ai-summary {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--n-900);
+}
+
+.ai-section {
+  margin-top: 12px;
+}
+
+.ai-section h4 {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--n-500);
+  margin: 0 0 6px;
+}
+
+.ai-section ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ai-section p,
+.ai-section li {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--n-700);
+}
+
+.ai-limitations {
+  border-left: 3px solid var(--risk-med-line);
+  padding-left: 10px;
+}
+
+.ai-warnings {
+  border-left: 3px solid var(--risk-high-line);
+  padding-left: 10px;
+}
+
+.ai-citations code {
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--n-200);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+.ai-cite-kind {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.ai-cite-fact {
+  background: var(--brand-50);
+  color: var(--brand-700);
+}
+
+.ai-cite-document {
+  background: var(--n-100);
+  color: var(--n-600);
+}
+
+.ai-meta {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--n-200);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--n-500);
+}
+
+.ai-grounded {
+  color: var(--risk-low-fg);
+  font-weight: 600;
+}
+
+.ai-ungrounded {
+  color: var(--risk-high-fg);
+  font-weight: 600;
+}
+
+.ai-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.ai-example {
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--n-200);
+  background: var(--surface);
+  color: var(--n-700);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.ai-example:hover:not(:disabled) {
+  border-color: var(--brand-300);
+  color: var(--brand-700);
+}
+
+.ai-example:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.ai-input {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.ai-input input {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .ai-panel {
+    padding: 16px 14px;
+  }
+
+  .ai-input input {
+    flex: 1 1 100%;
+  }
+}
+
+/* ---------------------------------------------------------- retention actions */
+.btn-sm {
+  height: 32px;
+  padding: 0 14px;
+  font-size: 12.5px;
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: var(--n-200);
+  font-weight: 500;
+}
+
+.rec-actions {
+  margin-top: 10px;
+}
+
+.rec-done {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--risk-low-fg, #15803d);
+}
+
+.action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.action-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border: 1px solid var(--n-200);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--surface);
+}
+
+.action-item.status-done,
+.action-item.status-dismissed {
+  opacity: 0.72;
+}
+
+.action-main {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.action-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--n-900);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.action-note {
+  font-size: 12.5px;
+  color: var(--n-700);
+  margin-top: 6px;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-chip-open {
+  background: var(--n-100);
+  color: var(--n-700);
+}
+
+.status-chip-in_progress {
+  background: var(--brand-50, #eef2ff);
+  color: var(--brand-600, #4338ca);
+}
+
+.status-chip-done {
+  background: #e7f6ec;
+  color: #15803d;
+}
+
+.status-chip-dismissed {
+  background: var(--n-100);
+  color: var(--n-500);
+}
+
+/* ------------------------------------------------- AI answer -> data links */
+.ai-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.ai-links-label {
+  font-size: 12px;
+  color: var(--n-500);
+}
+
+.ai-link {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--brand-600, #4338ca);
+  text-decoration: none;
+  border: 1px solid var(--n-200);
+  border-radius: var(--radius-pill);
+  padding: 3px 12px;
+  background: var(--surface);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.ai-link:hover {
+  background: var(--n-50);
+  border-color: var(--n-300);
+}

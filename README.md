@@ -428,6 +428,11 @@ docs/             документация по данным, модели, им
 | `GET` | `/metrics` | Метрики Prometheus |
 | `GET` | `/health` | Проверка живости |
 | `GET` | `/api/v1/docs` | Swagger UI |
+| `GET` | `/api/v1/ai/status` | Состояние AI Analyst: `disabled` / `ready` / `unavailable` |
+| `POST` | `/api/v1/ai/chat` | Вопрос по портфелю |
+| `POST` | `/api/v1/ai/customers/{id}/explain` | Объяснение риска клиента |
+| `POST` | `/api/v1/ai/scenarios/explain` | Объяснение what-if сценария |
+| `POST` | `/api/v1/ai/reports/summary` | Краткий отчёт для аналитика |
 
 Параметры `/api/v1/customers`: `search`, `riskCategory`, `serviceStatus`, `sortBy`
 (`id`, `email`, `riskScore`, `balance`, `totalReplenished`), `sortDir`
@@ -452,11 +457,34 @@ docs/             документация по данным, модели, им
 | `AEZA_SEED_DEMO_DATA` | `0` | Загружать JSON-снимок при пустой БД; Compose использует SQL seed |
 | `AEZA_AS_OF` | `2026-10-19T15:00:00+00:00` | Опорный момент расчёта; `now` — по стенным часам |
 | `AEZA_CORS_ORIGINS` | `*` | Разрешённые источники через запятую |
+| `AEZA_AI_ENABLED` | `0` | Включить локальный AI Analyst |
+| `AEZA_AI_PROVIDER` | `mock` | `ollama` (локальный runtime) или `mock` |
+| `AEZA_AI_MODEL` | `qwen2.5:3b-instruct` | Имя локальной модели |
+| `AEZA_AI_BASE_URL` | `http://127.0.0.1:11434` | Адрес Ollama; внешние URL отклоняются |
+| `AEZA_AI_RAG_INDEX_PATH` | `backend/data/rag_index.json` | Локальный индекс документации |
 
 **Опорный момент.** Снимок Aéza — это состояние на фиксированный момент, и статусы
 услуг в нём не меняются со временем. Поэтому `AEZA_AS_OF` по умолчанию равен
 документированному моменту снимка: так «дней до окончания» и все баллы
 воспроизводимы. Значение `now` включает живой режим по стенным часам.
+
+---
+
+## AI Analyst (локальная LLM)
+
+Модуль `backend/app/ai/` объясняет уже посчитанные оценки Risk Engine через
+локальную модель (Ollama), локальный RAG по документации проекта и read-only
+инструменты backend. Числа берутся из backend, модель их не вычисляет; ответы
+проверяются на неподтверждённые данные. Выключен по умолчанию
+(`AEZA_AI_ENABLED=0`) — продукт работает и без него.
+
+Цикл «риск → объяснение → решение человека» замкнут: рекомендацию Risk Engine
+можно подтвердить в карточке клиента, действие сохраняется (`/api/v1/actions`) и
+становится видно и аналитику, и AI-аналитику. Записывает действие только человек
+через API — у AI-модуля маршрута записи нет.
+
+Установка, запуск модели, пересборка RAG-индекса, API и диагностика:
+[docs/AI_ANALYST.md](docs/AI_ANALYST.md).
 
 ---
 
