@@ -3,7 +3,6 @@ import { Link, useParams } from 'react-router-dom'
 import { ApiError, api } from '../lib/api'
 import { useAnalysis } from '../lib/realtime'
 import type { CustomerDetail, OverdueDetailItem, ServiceItem } from '../types'
-import { AIAnalystPanel } from '../components/AIAnalystPanel'
 import { RetentionActions } from '../components/RetentionActions'
 import {
   EmptyState,
@@ -239,6 +238,7 @@ export default function CustomerDetailPage() {
         <div>
           <div className="row page-title-row" style={{ gap: 10 }}>
             <h1>Клиент #{customer.id}</h1>
+            <span className="badge neutral">{customer.email}</span>
             <RiskBadge category={customer.riskCategory} label={customer.riskCategoryLabel} />
             {inconsistentCount > 0 ? (
               <span className="badge risk-high">
@@ -247,11 +247,6 @@ export default function CustomerDetailPage() {
               </span>
             ) : null}
           </div>
-          <p>
-            {customer.email} · {customer.serviceCount} услуг, из них {customer.eligibleServiceCount}{' '}
-            пригодны для прогноза оттока
-            {customer.generation ? ` · поколение #${customer.generation}` : ''}
-          </p>
         </div>
         <div className="row">
           <Link className="btn" to="/priority">
@@ -502,8 +497,6 @@ export default function CustomerDetailPage() {
               заблокированы.
             </div>
           ) : null}
-
-          <AIAnalystPanel customerId={customer.id} />
         </div>
       </div>
     </div>

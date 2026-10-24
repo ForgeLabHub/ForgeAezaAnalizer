@@ -60,7 +60,7 @@ FACTORS: tuple[FactorDefinition, ...] = (
     FactorDefinition(
         key="expiry_proximity",
         label="Близость даты окончания",
-        description="Услуга истекает в пределах горизонта прогноза или уже истекла.",
+        description="До окончания оплаченного периода осталось мало времени или срок уже вышел.",
         how_computed="days_left = (expiresAt - now) в сутках; линейный спад до нуля на границе горизонта",
         normalization="0 при days_left >= horizon; 1 при days_left <= 0; иначе 1 - days_left/horizon",
         default_weight=3.0,
@@ -68,7 +68,7 @@ FACTORS: tuple[FactorDefinition, ...] = (
     FactorDefinition(
         key="auto_prolong_disabled",
         label="Автопродление отключено",
-        description="Услуга не продлится автоматически, поэтому решение о продлении не принято заранее.",
+        description="Клиенту нужно продлевать услугу вручную.",
         how_computed="autoProlong == false",
         normalization="1 если автопродление отключено, иначе 0",
         default_weight=2.0,
@@ -76,7 +76,7 @@ FACTORS: tuple[FactorDefinition, ...] = (
     FactorDefinition(
         key="insufficient_balance",
         label="Недостаточно средств для продления",
-        description="Доступного баланса аккаунта не хватает для оплаты ближайшего продления.",
+        description="На балансе не хватает средств для оплаты следующего продления.",
         how_computed="ratio = balance / price; при price = 0 фактор неприменим",
         normalization="clip(1 - ratio, 0, 1): 1 при нулевом балансе, 0 при balance >= price",
         default_weight=2.0,
@@ -84,7 +84,7 @@ FACTORS: tuple[FactorDefinition, ...] = (
     FactorDefinition(
         key="prolong_wait_status",
         label="Ожидание продления",
-        description="Услуга находится в статусе prolong_wait, то есть продление не завершено.",
+        description="Срок оплаты подошёл, услуга ожидает списания средств.",
         how_computed="status == 'prolong_wait'",
         normalization="1 если статус prolong_wait, иначе 0",
         default_weight=2.5,
@@ -92,10 +92,7 @@ FACTORS: tuple[FactorDefinition, ...] = (
     FactorDefinition(
         key="failed_renewals",
         label="Неуспешные продления",
-        description=(
-            "Число транзакций продления со статусом not_performed. Диагностический "
-            "показатель: сигнал уже учтён в renewal_failure_rate и в рейтинг не входит."
-        ),
+        description="Количество неудачных попыток оплаты за всё время (справочно, не влияет на балл).",
         how_computed="количество not_performed продлений в пределах окна",
         normalization="не участвует в рейтинге (вес 0)",
         default_weight=0.0,
@@ -105,10 +102,7 @@ FACTORS: tuple[FactorDefinition, ...] = (
     FactorDefinition(
         key="suspended_status",
         label="Услуга приостановлена",
-        description=(
-            "Статус suspended означает отключение по требованию клиента, при этом "
-            "начисления продолжаются, поэтому это сигнал внимания, а не оттока."
-        ),
+        description="Работа услуги временно приостановлена.",
         how_computed="status == 'suspended'",
         normalization="1 если статус suspended, иначе 0",
         default_weight=1.0,
@@ -116,7 +110,7 @@ FACTORS: tuple[FactorDefinition, ...] = (
     FactorDefinition(
         key="renewal_failure_rate",
         label="Доля неуспешных продлений",
-        description="Доля неуспешных продлений от всех попыток продления по услуге.",
+        description="Как часто попытки продлить услугу завершались ошибкой оплаты.",
         how_computed="not_performed / все продления услуги в пределах окна",
         normalization="0..1; 0 если по услуге нет продлений",
         default_weight=2.5,
