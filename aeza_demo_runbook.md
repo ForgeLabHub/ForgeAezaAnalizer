@@ -8,8 +8,8 @@
 > (`app.main:app` из `backend/` падает с `ModuleNotFoundError: core`).
 > Адреса вида `*.prod-runtime.all-hands.dev` — временные адреса песочницы, они
 > больше не работают; актуальный стенд — <https://aeza-sentinel.pixel-minds.ru/>.
-> Актуальные значения и команды: `README.md`, `docs/TESTING.md`,
-> `docs/DATA_AND_RISK_MODEL.md`.
+> Актуальные команды и устройство авторизации: `README.md`,
+> `docs/PROJECT_GUIDE.md`, `docs/AUTH_MODULE.md`.
 
 Обязательный сценарий организатора: **найти клиента под риском → объяснить причины →
 показать денежную оценку → изменить коэффициент → показать обновление результата.**
@@ -23,19 +23,18 @@
 1. Поднять стек по README (backend + frontend) и убедиться, что снимок загружен:
    ```bash
    # из КОРНЯ репозитория (main.py лежит в корне, core.py тоже)
-   export AEZA_JWT_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
-   export AEZA_ADMIN_EMAIL="analyst@aeza.test"
-   export AEZA_ADMIN_PASSWORD="demo123"
    export AEZA_DATABASE_URL="sqlite:///$(pwd)/data/analytics.sqlite"
-   export AEZA_AUTH_DATABASE_URL="sqlite:///$(pwd)/db/auth.sqlite3"
+   export AUTH_DATABASE="$(pwd)/db/auth.sqlite3"
+   export AUTH_PRIVATE_KEY="$(pwd)/db/private_key.pem"
    export AEZA_ANALYTICS_FACTORY="backend.app.domain.module:create"
    export AEZA_SEED_DEMO_DATA=1
+   python -m backend.users create analyst@aeza.test
    python -m uvicorn main:app --host 127.0.0.1 --port 8000
    # во втором терминале:
    cd frontend && npm install && npm run dev   # http://127.0.0.1:5173
    ```
    Полный стек с PostgreSQL — `docker compose up --build` (интерфейс `:8080`).
-2. Открыть два окна браузера и войти под учёткой из `AEZA_ADMIN_EMAIL` / `AEZA_ADMIN_PASSWORD` (в демо-среде — `analyst@aeza.test` / `demo123`; пароль задаётся переменной окружения, дефолта в коде нет):
+2. Открыть два окна браузера и войти под учётной записью, созданной вручную командой `backend.users create` (пароль задаётся в консоли и не хранится в конфигурации Compose):
    - окно A: демо-стенд — для показа (в текущей среде проверен
      `https://work-1-vllmnzyteekiqwpn.prod-runtime.all-hands.dev/`, HTTP 200);
    - окно B: тот же стенд — резерв, если окно A потеряет состояние.

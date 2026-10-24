@@ -22,6 +22,7 @@ from backend.app.ai.rag import build_index
 from backend.app.config import Settings
 from backend.app.domain import actions as actions_domain
 from backend.app.main import create_app
+from backend.tests.conftest import TEST_LOGIN, TEST_PASSWORD, make_test_auth_settings
 
 ROOT = Path(__file__).resolve().parents[2]
 AS_OF = "2026-10-19T15:00:00+00:00"
@@ -52,17 +53,17 @@ def actions_settings(tmp_path):
 def _client(tmp_path, *, seed: bool = True) -> TestClient:
     settings = Settings(
         database_url=f"sqlite:///{(tmp_path / 'act.db').as_posix()}",
-        auth_database_url=f"sqlite:///{(tmp_path / 'act_auth.db').as_posix()}",
-        jwt_secret="test-secret-key", bootstrap_admin_password="demo123", seed_demo_data=seed,
+        seed_demo_data=seed,
         snapshot_path=str(ROOT / "dataset/data.json"), as_of=AS_OF,
     )
-    app = create_app(settings)
+    auth_settings = make_test_auth_settings(tmp_path / "act_auth.db")
+    app = create_app(settings, auth_settings=auth_settings)
     return TestClient(app, raise_server_exceptions=False)
 
 
 def _headers(client: TestClient) -> dict:
     token = client.post("/api/v1/auth/login",
-                        json={"email": "analyst@aeza.test", "password": "demo123"}).json()["access_token"]
+                        json={"email": TEST_LOGIN, "password": TEST_PASSWORD}).json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
 

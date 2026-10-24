@@ -22,14 +22,21 @@ import type {
 } from '../types'
 
 const TOKEN_KEY = 'aeza.token'
+let accessToken: string | null = null
+let refreshRequest: Promise<string | null> | null = null
+
+try {
+  localStorage.removeItem(TOKEN_KEY)
+} catch {
+  // Storage may be unavailable in restricted browser contexts.
+}
 
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY)
+  return accessToken
 }
 
 export function setToken(token: string | null) {
-  if (token) localStorage.setItem(TOKEN_KEY, token)
-  else localStorage.removeItem(TOKEN_KEY)
+  accessToken = token
 }
 
 type UnauthorizedListener = () => void
@@ -80,17 +87,15 @@ function notifyGenerationFromResponse(response: Response) {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = getToken()
   const headers: Record<string, string> = {
     Accept: 'application/json',
     ...((init.headers as Record<string, string>) ?? {}),
   }
   if (init.body !== undefined) headers['Content-Type'] = 'application/json'
-  if (token) headers['Authorization'] = `Bearer ${token}`
 
   let response: Response
   try {
-    response = await fetch(path, { ...init, headers })
+    response = await authenticatedFetch(path, { ...init, headers })
   } catch {
     throw new ApiError(0, 'Не удалось связаться с сервером. Проверьте, что API запущен.')
   }
@@ -117,6 +122,45 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   return payload as T
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (!refreshRequest) {
+    refreshRequest = fetch('/api/v1/auth/refresh', {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+      credentials: 'same-origin',
+      cache: 'no-store',
+    })
+      .then(async response => {
+        if (!response.ok) return null
+        const payload = (await response.json()) as { access_token?: string }
+        return payload.access_token ?? null
+      })
+      .catch(() => null)
+      .finally(() => {
+        refreshRequest = null
+      })
+  }
+  return refreshRequest
+}
+
+async function authenticatedFetch(path: string, init: RequestInit): Promise<Response> {
+  const headers = init.headers as Record<string, string>
+  let token = getToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  const send = () => fetch(path, { ...init, headers, credentials: 'same-origin' })
+  let response = await send()
+  if (response.status === 401 && token && !path.endsWith('/auth/login') && !path.endsWith('/auth/refresh')) {
+    token = await refreshAccessToken()
+    if (token) {
+      setToken(token)
+      headers.Authorization = `Bearer ${token}`
+      response = await send()
+    }
+  }
+  return response
 }
 
 function withQuery(base: string, params: Record<string, string | number | undefined | null>): string {
@@ -146,6 +190,11 @@ export const api = {
     request<{ access_token: string; token_type: string; expires_in: number }>(
       '/api/v1/auth/login',
       { method: 'POST', body: JSON.stringify({ email, password }) },
+    ),
+
+  refresh: () =>
+    request<{ access_token: string; token_type: string; expires_in: number }>(
+      '/api/v1/auth/refresh', { method: 'POST' },
     ),
 
   me: () => request<{ email: string }>('/api/v1/auth/me'),
@@ -189,9 +238,7 @@ export const api = {
     sortBy: string
     sortDir: 'asc' | 'desc'
   }): Promise<CsvExportResult> => {
-    const token = getToken()
     const headers: Record<string, string> = { Accept: 'text/csv, application/json' }
-    if (token) headers['Authorization'] = `Bearer ${token}`
 
     const url = withQuery('/api/v1/export/customers.csv', {
       generation: params.generation,
@@ -204,7 +251,7 @@ export const api = {
 
     let response: Response
     try {
-      response = await fetch(url, { method: 'GET', headers })
+      response = await authenticatedFetch(url, { method: 'GET', headers })
     } catch {
       throw new ApiError(0, 'Не удалось связаться с сервером для экспорта CSV.')
     }
@@ -344,18 +391,14 @@ export const api = {
     onOpen?: () => void
     onUpdate: (eventId: number, version: VersionInfo) => void
   }): Promise<void> => {
-    const token = getToken()
-    if (!token) return
-
     const headers: Record<string, string> = {
       Accept: 'text/event-stream',
-      Authorization: `Bearer ${token}`,
     }
     if (options.lastEventId !== undefined && options.lastEventId !== null) {
       headers['Last-Event-ID'] = String(options.lastEventId)
     }
 
-    const response = await fetch('/api/v1/analytics/events', {
+    const response = await authenticatedFetch('/api/v1/analytics/events', {
       method: 'GET',
       headers,
       signal: options.signal,

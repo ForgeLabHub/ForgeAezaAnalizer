@@ -10,7 +10,7 @@ from starlette.concurrency import run_in_threadpool
 
 from backend.app.api.deps import RuntimeDep, UserDep, version_headers
 from backend.app.api.schemas import PublishedSummary
-from backend.app.auth.security import Unauthorized
+from backend.auth.service import AuthError
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -26,8 +26,8 @@ async def events(runtime, token: str, request: Request, last_id: int | None):
     heartbeat = 0
     while not await request.is_disconnected():
         try:
-            await run_in_threadpool(runtime.auth.authenticate, token)
-        except Unauthorized:
+            await run_in_threadpool(runtime.auth.bearer, f"Bearer {token}")
+        except AuthError:
             return
         summary = await run_in_threadpool(runtime.storage.summary)
         generation = summary["generation"]

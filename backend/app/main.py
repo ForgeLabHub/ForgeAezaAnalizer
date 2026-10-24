@@ -21,13 +21,15 @@ from core import ConflictError, Core, InvalidInput, NotReadyError, ResourceNotFo
 from backend.app.api import routes_actions, routes_ai, routes_analytics, routes_auth, routes_customers, routes_export, routes_insights, routes_model, routes_source
 from backend.app.api.deps import Runtime, RuntimeDep
 from backend.app.api.schemas import ErrorResponse
-from backend.app.auth.security import AuthService, RateLimited, Unauthorized
 from backend.app.ai.service import AIDisabled, AIService, AIUnavailable
 from backend.app.config import Settings, get_settings
 from backend.app.db import Database
 from backend.app.metrics import Metrics
 from backend.app.modules import AnalyticsModule, CalculationAdapter, ModuleContractError, UnavailableAnalytics, load_module
 from backend.app.storage import Storage
+from backend.auth.service import AuthError, AuthService
+from backend.config import Settings as AuthSettings
+from backend.database import UserRepository
 
 logger = logging.getLogger("aeza")
 
@@ -58,17 +60,19 @@ def build_ai(storage: Storage, calculation: CalculationAdapter) -> AIService | N
         return None
 
 
-def create_app(settings: Settings | None = None, analytics: AnalyticsModule | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, analytics: AnalyticsModule | None = None,
+               auth_settings: AuthSettings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    auth_settings = auth_settings or AuthSettings.from_env()
     module = analytics if analytics is not None else load_module(os.getenv("AEZA_ANALYTICS_FACTORY", ""))
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         database = Database(settings.database_url)
-        auth_database = Database(settings.auth_database_url)
         storage = Storage(database)
         calculation = CalculationAdapter(module)
-        auth = AuthService(auth_database, settings)
+        users = UserRepository(auth_settings.database)
+        auth = AuthService(auth_settings, users)
         runtime = Runtime(settings, database, storage, auth, calculation,
             Core(storage, calculation, settings.reference_now), ai=None)
         stop = asyncio.Event()
@@ -76,8 +80,7 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
 
         def initialize():
             database.initialize()
-            auth_database.initialize_auth()
-            auth.bootstrap()
+            users.initialize()
             if isinstance(module, UnavailableAnalytics):
                 return
             state = storage.load()
@@ -102,7 +105,6 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
             if task is not None:
                 await task
             database.engine.dispose()
-            auth_database.engine.dispose()
 
     app = FastAPI(title=settings.app_name, version="2.0.0", lifespan=lifespan,
         docs_url="/api/v1/docs", openapi_url="/api/v1/openapi.json", redoc_url=None,
@@ -128,14 +130,9 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
                 route = getattr(request.scope.get("route"), "path", "unmatched")
                 request.app.state.metrics.observe(route, request.method, status_code, time.perf_counter() - started)
 
-    @app.exception_handler(Unauthorized)
-    async def unauthorized(request: Request, error: Unauthorized):
-        return JSONResponse({"detail": str(error)}, status_code=401, headers={"WWW-Authenticate": "Bearer"})
-
-    @app.exception_handler(RateLimited)
-    async def rate_limited(request: Request, error: RateLimited):
-        return JSONResponse({"detail": str(error)}, status_code=429,
-            headers={"Retry-After": str(error.retry_after)})
+    @app.exception_handler(AuthError)
+    async def auth_error(request: Request, error: AuthError):
+        return JSONResponse({"detail": error.description}, status_code=error.status, headers=error.headers or {})
 
     @app.exception_handler(InvalidInput)
     async def invalid_input(request: Request, error: InvalidInput):
@@ -194,12 +191,12 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
         header = request.headers.get("authorization", "")
         if settings.metrics_token:
             if not hmac.compare_digest(header.encode(), f"Bearer {settings.metrics_token}".encode()):
-                raise Unauthorized("Требуется токен метрик")
+                raise AuthError(401, "invalid_token", "Требуется токен метрик", {"WWW-Authenticate": "Bearer"})
         else:
             scheme, _, token = header.partition(" ")
             if scheme.lower() != "bearer" or not token:
-                raise Unauthorized("Требуется авторизация")
-            runtime.auth.authenticate(token)
+                raise AuthError(401, "invalid_token", "Требуется авторизация", {"WWW-Authenticate": "Bearer"})
+            runtime.auth.bearer(header)
         return Response(request.app.state.metrics.render(), headers={"Content-Type": CONTENT_TYPE_LATEST})
 
     for router in (routes_auth.router, routes_customers.router, routes_analytics.router,

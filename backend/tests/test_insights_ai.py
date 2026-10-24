@@ -21,7 +21,7 @@ from backend.app.domain import llm
 from backend.app.main import create_app
 from backend.app.modules import load_module
 
-from backend.tests.conftest import ROOT
+from backend.tests.conftest import ROOT, TEST_LOGIN, TEST_PASSWORD, make_test_auth_settings
 
 ENDPOINT = "/api/v1/insights/ai"
 
@@ -29,9 +29,6 @@ ENDPOINT = "/api/v1/insights/ai"
 def _settings(**overrides) -> Settings:
     base = dict(
         database_url="sqlite://",
-        auth_database_url="sqlite://",
-        jwt_secret="test-secret-key",
-        bootstrap_admin_password="demo123",
         seed_demo_data=True,
         snapshot_path=str(ROOT / "dataset/data.json"),
         llm_enabled=True,
@@ -73,7 +70,6 @@ def ai_client(tmp_path, monkeypatch):
     def make(handler, **setting_overrides):
         settings = _settings(
             database_url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}",
-            auth_database_url=f"sqlite:///{(tmp_path / 'auth.db').as_posix()}",
             **setting_overrides,
         )
         original_init = llm.OllamaClient.__init__
@@ -83,10 +79,11 @@ def ai_client(tmp_path, monkeypatch):
 
         monkeypatch.setattr(llm.OllamaClient, "__init__", patched)
         module = load_module("backend.app.domain.module:create")
-        with TestClient(create_app(settings, module), raise_server_exceptions=False) as client:
+        auth_settings = make_test_auth_settings(tmp_path / "auth.db")
+        with TestClient(create_app(settings, module, auth_settings), raise_server_exceptions=False) as client:
             login = client.post(
                 "/api/v1/auth/login",
-                json={"email": "analyst@aeza.test", "password": "demo123"},
+                json={"email": TEST_LOGIN, "password": TEST_PASSWORD},
             )
             headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
             yield client, headers

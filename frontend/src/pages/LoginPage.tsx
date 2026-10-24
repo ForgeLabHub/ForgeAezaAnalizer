@@ -7,7 +7,7 @@ import { AezaWordmark } from '../components/AezaLogo'
 
 export default function LoginPage() {
   const { login } = useAuth()
-  const [email, setEmail] = useState('analyst@aeza.test')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -65,10 +65,6 @@ export default function LoginPage() {
         <button className="btn primary" style={{ width: '100%', marginTop: 6 }} disabled={busy}>
           {busy ? 'Вход…' : 'Войти'}
         </button>
-        <p className="hint" style={{ marginTop: 14 }}>
-          Демо-доступ задаётся переменными окружения <code>AEZA_ADMIN_EMAIL</code> и{' '}
-          <code>AEZA_ADMIN_PASSWORD</code> (см. README).
-        </p>
       </form>
     </div>
   )

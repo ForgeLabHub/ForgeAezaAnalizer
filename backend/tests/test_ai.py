@@ -26,6 +26,7 @@ from backend.app.ai.schemas import AIAnswer
 from backend.app.ai.service import AIDisabled, AIService, AIUnavailable
 from backend.app.config import Settings
 from backend.app.main import create_app
+from backend.tests.conftest import TEST_LOGIN, TEST_PASSWORD, make_test_auth_settings
 
 ROOT = Path(__file__).resolve().parents[2]
 AS_OF = "2026-10-19T15:00:00+00:00"
@@ -209,14 +210,14 @@ def test_truncated_generation_is_reported_not_hidden(ai_settings, tmp_path):
 
     settings = Settings(
         database_url=f"sqlite:///{(tmp_path / 'trunc.db').as_posix()}",
-        auth_database_url=f"sqlite:///{(tmp_path / 'trunc_auth.db').as_posix()}",
-        jwt_secret="test-secret-key", bootstrap_admin_password="demo123", seed_demo_data=True,
+        seed_demo_data=True,
         snapshot_path=str(ROOT / "dataset/data.json"), as_of=AS_OF,
     )
-    app = create_app(settings)
+    auth_settings = make_test_auth_settings(tmp_path / "trunc_auth.db")
+    app = create_app(settings, auth_settings=auth_settings)
     with TestClient(app, raise_server_exceptions=False) as client:
         runtime = app.state.runtime
-        token = client.post("/api/v1/auth/login", json={"email": "analyst@aeza.test", "password": "demo123"}).json()
+        token = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD}).json()
         headers = {"Authorization": f"Bearer {token['access_token']}"}
 
         class TruncatingProvider(MockProvider):
@@ -324,18 +325,18 @@ def ai_settings(tmp_path):
 def ai_client(ai_settings, tmp_path):
     settings = Settings(
         database_url=f"sqlite:///{(tmp_path / 'ai.db').as_posix()}",
-        auth_database_url=f"sqlite:///{(tmp_path / 'ai_auth.db').as_posix()}",
-        jwt_secret="test-secret-key", bootstrap_admin_password="demo123", seed_demo_data=True,
+        seed_demo_data=True,
         snapshot_path=str(ROOT / "dataset/data.json"), as_of=AS_OF,
     )
-    app = create_app(settings)
+    auth_settings = make_test_auth_settings(tmp_path / "ai_auth.db")
+    app = create_app(settings, auth_settings=auth_settings)
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client
 
 
 @pytest.fixture
 def ai_headers(ai_client):
-    response = ai_client.post("/api/v1/auth/login", json={"email": "analyst@aeza.test", "password": "demo123"})
+    response = ai_client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
     assert response.status_code == 200, response.text
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
@@ -416,14 +417,14 @@ def test_ungrounded_model_output_is_repaired_not_served(ai_settings, tmp_path):
 
     settings = Settings(
         database_url=f"sqlite:///{(tmp_path / 'bad.db').as_posix()}",
-        auth_database_url=f"sqlite:///{(tmp_path / 'bad_auth.db').as_posix()}",
-        jwt_secret="test-secret-key", bootstrap_admin_password="demo123", seed_demo_data=True,
+        seed_demo_data=True,
         snapshot_path=str(ROOT / "dataset/data.json"), as_of=AS_OF,
     )
-    app = create_app(settings)
+    auth_settings = make_test_auth_settings(tmp_path / "bad_auth.db")
+    app = create_app(settings, auth_settings=auth_settings)
     with TestClient(app, raise_server_exceptions=False) as client:
         runtime = app.state.runtime
-        token = client.post("/api/v1/auth/login", json={"email": "analyst@aeza.test", "password": "demo123"}).json()
+        token = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD}).json()
         headers = {"Authorization": f"Bearer {token['access_token']}"}
 
         # Swap in a misbehaving provider on the live service.

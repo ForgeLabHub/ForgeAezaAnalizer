@@ -14,6 +14,7 @@ from backend.app.api.routes_analytics import events
 from backend.app.db import AnalysisRow, CustomerRow, SourceRow
 from backend.app.main import create_app
 from backend.app.modules import ModuleContractError
+from backend.tests.conftest import TEST_LOGIN, TEST_PASSWORD
 
 
 def test_import_idempotency_and_validation(client, auth_headers, snapshot_payload, analytics):
@@ -63,11 +64,11 @@ def test_module_cannot_mutate_published_inputs(client, analytics):
     assert runtime.storage.load() == before
 
 
-def test_live_clock_recalculates_without_source_change(settings, analytics, monkeypatch):
+def test_live_clock_recalculates_without_source_change(settings, analytics, auth_settings, monkeypatch):
     from threading import Event
     completed = Event()
     live = replace(settings, as_of="now", recalculate_seconds=1)
-    with TestClient(create_app(live, analytics)) as running:
+    with TestClient(create_app(live, analytics, auth_settings)) as running:
         storage = running.app.state.runtime.storage
         publish = storage.publish
         def observe(previous, candidate, result, actor):
@@ -81,9 +82,9 @@ def test_live_clock_recalculates_without_source_change(settings, analytics, monk
         assert state.generation >= 2 and state.source_version == 1 and state.model_version == 1
 
 
-def test_metrics_support_dedicated_collector_token(settings, analytics):
+def test_metrics_support_dedicated_collector_token(settings, analytics, auth_settings):
     configured = replace(settings, metrics_token="collector-token")
-    with TestClient(create_app(configured, analytics)) as client:
+    with TestClient(create_app(configured, analytics, auth_settings)) as client:
         assert client.get("/metrics").status_code == 401
         assert client.get("/metrics", headers={"Authorization": "Bearer collector-token"}).status_code == 200
 
@@ -142,19 +143,28 @@ def test_stale_result_cannot_replace_newer_result(client):
     assert runtime.storage.load() == new
 
 
-def test_settings_sessions_and_saved_reads_survive_restart(client, auth_headers, settings, analytics):
-    client.patch("/api/v1/model/settings", json={"horizonDays": 7}, headers=auth_headers)
-    calls = analytics.calls
-    with TestClient(create_app(settings, analytics)) as restarted:
-        assert restarted.get("/api/v1/auth/me", headers=auth_headers).status_code == 200
-        body = restarted.get("/api/v1/model/settings", headers=auth_headers).json()
+def test_settings_survive_restart_and_auth_sessions_expire(settings, auth_settings, analytics):
+    with TestClient(create_app(settings, analytics, auth_settings)) as client:
+        login = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
+        headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        updated = client.patch("/api/v1/model/settings", json={"horizonDays": 7}, headers=headers)
+        assert updated.status_code == 200, updated.text
+        calls = analytics.calls
+    with TestClient(create_app(settings, analytics, auth_settings)) as restarted:
+        assert restarted.get("/api/v1/auth/me", headers=headers).status_code == 401
+        login = restarted.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
+        assert login.status_code == 200
+        headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        body = restarted.get("/api/v1/model/settings", headers=headers).json()
         assert body["settings"]["horizonDays"] == 7 and body["generation"] == 2
         assert analytics.calls == calls
-    with TestClient(create_app(settings)) as without_module:
+    with TestClient(create_app(settings, auth_settings=auth_settings)) as without_module:
         assert without_module.get("/ready").status_code == 503
-        assert without_module.get("/api/v1/customers", headers=auth_headers).status_code == 200
-        assert without_module.get("/api/v1/model/settings", headers=auth_headers).status_code == 200
-        assert without_module.patch("/api/v1/model/settings", json={"horizonDays": 8}, headers=auth_headers).status_code == 503
+        login = without_module.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
+        fresh_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        assert without_module.get("/api/v1/customers", headers=fresh_headers).status_code == 200
+        assert without_module.get("/api/v1/model/settings", headers=fresh_headers).status_code == 200
+        assert without_module.patch("/api/v1/model/settings", json={"horizonDays": 8}, headers=fresh_headers).status_code == 503
 
 
 def test_observations_do_not_invent_event_times(client, auth_headers, snapshot_payload):
@@ -190,7 +200,8 @@ def test_sse_sends_current_version_on_reconnect_and_stops_after_logout(client, a
         chunk = await anext(stream)
         assert "id: 1" in chunk and "analysis.updated" in chunk
         await stream.aclose()
-        runtime.auth.logout(runtime.auth.authenticate(token))
+        session, _, _ = runtime.auth.bearer(f"Bearer {token}")
+        runtime.auth.sessions.pop(session.id)
         stream = events(runtime, token, Connected(), 1)
         try:
             await anext(stream)

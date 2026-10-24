@@ -16,8 +16,21 @@ from core import Analysis
 from backend.app.config import Settings
 from backend.app.main import create_app
 from backend.app.modules import ModelDefinition
+from backend.config import Settings as AuthSettings
+from backend.database import UserRepository
 
 AS_OF = "2026-10-19T15:00:00+00:00"
+TEST_LOGIN = "analyst@aeza.test"
+TEST_PASSWORD = "analyst-test-password"
+
+
+def make_test_auth_settings(path: Path) -> AuthSettings:
+    settings = AuthSettings(database=path, private_key=path.with_name("private_key.pem"))
+    users = UserRepository(path)
+    users.initialize()
+    if users.credentials(TEST_LOGIN) is None:
+        users.create(TEST_LOGIN, TEST_PASSWORD)
+    return settings
 
 
 def amount(value):
@@ -92,8 +105,6 @@ def snapshot_payload():
 @pytest.fixture
 def settings(tmp_path):
     return Settings(database_url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}",
-        auth_database_url=f"sqlite:///{(tmp_path / 'auth.db').as_posix()}",
-        jwt_secret="test-secret-key", bootstrap_admin_password="demo123",
         seed_demo_data=True, snapshot_path=str(ROOT / "dataset/data.json"), as_of=AS_OF)
 
 
@@ -103,8 +114,13 @@ def analytics():
 
 
 @pytest.fixture
-def app(settings, analytics):
-    return create_app(settings, analytics)
+def auth_settings(tmp_path):
+    return make_test_auth_settings(tmp_path / "auth.db")
+
+
+@pytest.fixture
+def app(settings, analytics, auth_settings):
+    return create_app(settings, analytics, auth_settings)
 
 
 @pytest.fixture
@@ -115,7 +131,7 @@ def client(app):
 
 @pytest.fixture
 def auth_headers(client):
-    response = client.post("/api/v1/auth/login", json={"email": "analyst@aeza.test", "password": "demo123"})
+    response = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
     assert response.status_code == 200, response.text
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 

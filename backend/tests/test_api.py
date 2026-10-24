@@ -7,14 +7,16 @@ from fastapi.testclient import TestClient
 from sqlalchemy.engine import make_url
 
 from backend.app.main import create_app
+from backend.config import Settings as AuthSettings
+from backend.tests.conftest import TEST_LOGIN, TEST_PASSWORD
 
 
-def test_stub_starts_auth_and_reports_missing_module(settings):
-    with TestClient(create_app(settings)) as client:
+def test_stub_starts_auth_and_reports_missing_module(settings, auth_settings):
+    with TestClient(create_app(settings, auth_settings=auth_settings)) as client:
         assert client.get("/health").json() == {"status": "ok"}
         assert client.get("/ready").status_code == 503
         assert client.get("/api/v1/docs").status_code == 200
-        login = client.post("/api/v1/auth/login", json={"email": "analyst@aeza.test", "password": "demo123"})
+        login = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
         assert login.status_code == 200
         headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
         assert client.get("/api/v1/analytics/summary", headers=headers).status_code == 503
@@ -48,22 +50,51 @@ def test_secret_not_echoed_on_validation_failure(client):
     assert "private-password" not in response.text
 
 
-def test_authentication_tables_are_separate_from_analytics(client, settings):
-    def tables(url):
-        with sqlite3.connect(make_url(url).database) as connection:
+def test_authentication_tables_are_separate_from_analytics(client, settings, auth_settings):
+    def tables(path):
+        with sqlite3.connect(path) as connection:
             return {row[0] for row in connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'")}
 
-    analytics_tables = tables(settings.database_url)
-    auth_tables = tables(settings.auth_database_url)
+    analytics_tables = tables(make_url(settings.database_url).database)
+    auth_tables = tables(auth_settings.database)
     assert "analyzer_current" in analytics_tables
-    assert "analyzer_users" not in analytics_tables
-    assert "analyzer_users" in auth_tables
+    assert "users" not in analytics_tables
+    assert "users" in auth_tables
     assert "analyzer_current" not in auth_tables
 
 
+def test_api_does_not_create_a_bootstrap_user(tmp_path, settings):
+    database = tmp_path / "empty-auth.sqlite3"
+    auth_settings = AuthSettings(database=database, private_key=tmp_path / "private.pem")
+    with TestClient(create_app(settings, auth_settings=auth_settings)) as client:
+        response = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
+        assert response.status_code == 401
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT count(*) FROM users").fetchone()[0] == 0
+
+
+def test_auth_session_cookie_refresh_and_trusted_origin(client):
+    rejected = client.post("/api/v1/auth/login", headers={"Origin": "https://attacker.test"}, json={
+        "email": TEST_LOGIN, "password": TEST_PASSWORD,
+    })
+    assert rejected.status_code == 403
+    assert "auth_session" not in client.cookies
+
+    login = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
+    assert login.status_code == 200
+    cookie_header = login.headers["set-cookie"].lower()
+    assert "httponly" in cookie_header and "samesite=lax" in cookie_header
+    assert "path=/api/v1/auth" in cookie_header
+
+    refreshed = client.post("/api/v1/auth/refresh")
+    assert refreshed.status_code == 200, refreshed.text
+    headers = {"Authorization": f"Bearer {refreshed.json()['access_token']}"}
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+
+
 def test_logout_revokes_only_current_session(client, auth_headers):
-    other = client.post("/api/v1/auth/login", json={"email": "analyst@aeza.test", "password": "demo123"}).json()
+    other = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD}).json()
     assert client.post("/api/v1/auth/logout", headers=auth_headers).status_code == 204
     assert client.get("/api/v1/auth/me", headers=auth_headers).status_code == 401
     assert client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {other['access_token']}"}).status_code == 200

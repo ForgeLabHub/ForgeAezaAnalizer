@@ -11,10 +11,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY core.py main.py ./
 COPY backend/__init__.py ./backend/__init__.py
+COPY backend/auth ./backend/auth
+COPY backend/config.py backend/database.py backend/users.py ./backend/
 COPY backend/app ./backend/app
 COPY backend/scripts ./backend/scripts
+COPY db/schema.sql ./backend/auth_schema.sql
 
-# Run as an unprivileged user; the auth database is mounted under /app/db.
+# Run as an unprivileged user; auth storage is mounted under /app/db.
 RUN useradd --create-home --uid 10001 aeza \
     && mkdir -p /app/data /app/db \
     && chown -R aeza:aeza /app
