@@ -28,6 +28,16 @@ class Settings:
     as_of: str = field(default_factory=lambda: os.getenv("AEZA_AS_OF", DEFAULT_AS_OF))
     recalculate_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_RECALCULATE_SECONDS", "60")))
     metrics_token: str = field(default_factory=lambda: os.getenv("AEZA_METRICS_TOKEN", ""))
+    telegram_bot_enabled: bool = field(default_factory=lambda: flag("AEZA_TELEGRAM_BOT_ENABLED", False))
+    telegram_bot_token: str = field(default_factory=lambda: os.getenv("AEZA_TELEGRAM_BOT_TOKEN", ""))
+    telegram_webhook_secret: str = field(default_factory=lambda: os.getenv("AEZA_TELEGRAM_WEBHOOK_SECRET", ""))
+    telegram_mini_app_url: str = field(default_factory=lambda: os.getenv("AEZA_TELEGRAM_MINI_APP_URL", ""))
+    telegram_auth_max_age_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_TELEGRAM_AUTH_MAX_AGE_SECONDS", "86400")))
+    telegram_session_ttl_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_TELEGRAM_SESSION_TTL_SECONDS", "3600")))
+    telegram_otp_ttl_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_TELEGRAM_OTP_TTL_SECONDS", "600")))
+    telegram_otp_resend_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_TELEGRAM_OTP_RESEND_SECONDS", "60")))
+    telegram_otp_max_attempts: int = field(default_factory=lambda: int(os.getenv("AEZA_TELEGRAM_OTP_MAX_ATTEMPTS", "5")))
+    telegram_worker_interval_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_TELEGRAM_WORKER_INTERVAL_SECONDS", "180")))
     # --- Local LLM (Ollama) ---------------------------------------------------
     # Disabled by default: an unavailable model must never be presented as if it
     # had answered. The provider URL is configuration, never a hardcoded host.
@@ -55,6 +65,18 @@ class Settings:
     def __post_init__(self):
         if not 1 <= self.recalculate_seconds <= 3600:
             raise ValueError("AEZA_RECALCULATE_SECONDS must be between 1 and 3600")
+        for name, value, maximum in (
+            ("AEZA_TELEGRAM_AUTH_MAX_AGE_SECONDS", self.telegram_auth_max_age_seconds, 86400),
+            ("AEZA_TELEGRAM_SESSION_TTL_SECONDS", self.telegram_session_ttl_seconds, 86400),
+            ("AEZA_TELEGRAM_OTP_TTL_SECONDS", self.telegram_otp_ttl_seconds, 3600),
+            ("AEZA_TELEGRAM_OTP_RESEND_SECONDS", self.telegram_otp_resend_seconds, 3600),
+            ("AEZA_TELEGRAM_OTP_MAX_ATTEMPTS", self.telegram_otp_max_attempts, 10),
+            ("AEZA_TELEGRAM_WORKER_INTERVAL_SECONDS", self.telegram_worker_interval_seconds, 3600),
+        ):
+            if not 1 <= value <= maximum:
+                raise ValueError(f"{name} must be between 1 and {maximum}")
+        if self.telegram_bot_enabled and (not self.telegram_bot_token or not self.telegram_webhook_secret):
+            raise ValueError("Telegram bot requires AEZA_TELEGRAM_BOT_TOKEN and AEZA_TELEGRAM_WEBHOOK_SECRET")
         if self.llm_enabled:
             if not self.llm_base_url.startswith(("http://", "https://")):
                 raise ValueError("AEZA_LLM_BASE_URL must be an http(s) URL")
