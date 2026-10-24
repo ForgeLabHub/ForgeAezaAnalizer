@@ -89,3 +89,24 @@ AI Analyst использует документацию из `docs/`; Dockerfil
   гейта аналитика и использует отдельный клиентский токен (`clientRequest`), не
   сессию аналитика.
 - Клиенту не показываются risk score, причины риска и рекомендации — по плану.
+
+## Публикация в main и deploy (2026-10-24)
+
+**Опубликовано:** `main` = `3bddd25` (проверено через GitHub API и `ls-remote`).
+Токен: classic PAT с полным `repo` (передаётся per-command, в конфиг не пишется).
+Токены из окружения агента (`GITHUB_TOKEN`, `GITHUB_PERSONAL_ACCESS_TOKEN`) —
+read-only (403).
+
+**Deploy на стенд — ЗАБЛОКИРОВАН.** Стенд `aeza-sentinel.pixel-minds.ru`
+резолвится в `158.160.212.225` (не в старый `84.201.150.227`). SSH (порт 22)
+принимает **только publickey**; приватного ключа в окружении агента нет, а
+учётные данные владельца — это логины аккаунтов (GitHub/почта), не SSH-ключи.
+Автоматического пути тоже нет: в репозитории нет `render.yaml`/deploy-скрипта,
+у репозитория нет webhooks, в GitHub Actions нет secrets.
+
+Что нужно от владельца: добавить публичный ключ агента в
+`~/.ssh/authorized_keys` на сервере (или выдать deploy-ключ), затем
+`git pull` в каталоге проекта + `docker compose up -d --build`.
+
+Проверка, какая версия развёрнута (404 = ещё старая):
+`curl -s -o /dev/null -w '%{http_code}' https://aeza-sentinel.pixel-minds.ru/api/v1/email/status`
