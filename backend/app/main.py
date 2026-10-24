@@ -17,8 +17,8 @@ from prometheus_client import CONTENT_TYPE_LATEST
 from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
 
-from core import Analysis, ConflictError, Core, InvalidInput, NotReadyError, ResourceNotFoundError
-from backend.app.api import routes_actions, routes_ai, routes_analytics, routes_auth, routes_customers, routes_export, routes_insights, routes_model, routes_source, routes_telegram
+from core import ConflictError, Core, InvalidInput, NotReadyError, ResourceNotFoundError
+from backend.app.api import routes_actions, routes_ai, routes_analytics, routes_auth, routes_customers, routes_export, routes_insights, routes_model, routes_source
 from backend.app.api.deps import Runtime, RuntimeDep
 from backend.app.api.schemas import ErrorResponse
 from backend.app.ai.service import AIDisabled, AIService, AIUnavailable
@@ -34,83 +34,6 @@ from backend.database import UserRepository
 logger = logging.getLogger("aeza")
 
 
-def dispatch_notifications(runtime: Runtime, previous: Analysis | None = None) -> None:
-    """Push notifications for the newly published generation to linked chats.
-
-    Called after a recalculation publishes a new generation, so alerts follow the
-    data instead of a timer that might race it. Failures are swallowed and
-    logged: a Telegram problem must never affect the analytics run that produced
-    the generation.
-
-    ``previous`` is the analysis published *before* the current one. Passing it is
-    what lets the event builder tell a transition (a customer that just became
-    high-risk) from a steady state (one that has been high-risk for days), so a
-    standing condition does not re-alert on every recalculation.
-    """
-
-    service = getattr(runtime, "telegram", None)
-    if service is None:
-        return
-    try:
-        from backend.app.integrations.telegram import notifications
-
-        analysis = runtime.calculation.calculate(runtime.storage.load())
-        for chat_id in service.linked_chats():
-            notifications.dispatch(
-                service, analysis, settings=runtime.settings, previous=previous, chat_id=chat_id
-            )
-    except Exception:
-        logger.exception("telegram notification dispatch failed; analytics unaffected")
-
-
-def send_due_digests(runtime: Runtime) -> list[dict]:
-    """Send the daily digest once per UTC day to chats that enabled it.
-
-    Kept separate from the event dispatch because it is time-driven, not
-    generation-driven. The per-day dedupe key makes it safe to call as often as
-    the scheduler likes.
-    """
-
-    service = getattr(runtime, "telegram", None)
-    if service is None:
-        return []
-    from backend.app.integrations.telegram import notifications
-
-    if not notifications.digest_due(runtime.settings):
-        return []
-    try:
-        # Retention is applied on the same periodic tick as the digest: the
-        # delivery table is the dedupe store, so it must not grow forever.
-        service.purge_old_deliveries()
-        analysis = runtime.calculation.calculate(runtime.storage.load())
-        return notifications.dispatch_digests(
-            service, analysis, settings=runtime.settings
-        )
-    except Exception:
-        logger.exception("daily digest dispatch failed; analytics unaffected")
-        return []
-
-
-async def digest_scheduler(runtime: Runtime, stop: asyncio.Event):
-    """Wake periodically and send the digest when its hour has arrived.
-
-    This runs whenever the Telegram integration is on, independently of
-    ``AEZA_AS_OF``: the reference instant only affects *scoring*, not whether
-    notifications may be delivered. The per-day dedupe key in the delivery table
-    is what guarantees at-most-once delivery, so a restart mid-day cannot resend.
-    """
-
-    while True:
-        try:
-            await asyncio.wait_for(stop.wait(), timeout=runtime.settings.telegram_digest_check_seconds)
-            return
-        except asyncio.TimeoutError:
-            try:
-                await run_in_threadpool(send_due_digests, runtime)
-            except Exception:
-                logger.exception("digest scheduler iteration failed")
-
-
 async def recalculate(runtime: Runtime, stop: asyncio.Event):
     while True:
         try:
@@ -118,14 +41,7 @@ async def recalculate(runtime: Runtime, stop: asyncio.Event):
             return
         except asyncio.TimeoutError:
             try:
-                # Capture the published analysis *before* the tick so the dispatch
-                # can compare against it. A tick that changes nothing returns the
-                # same generation, and then nothing is dispatched.
-                before = runtime.storage.load()
-                previous_analysis = runtime.storage.published_analysis(before.generation) if before.generation else None
-                state = await run_in_threadpool(runtime.core.update, actor="clock")
-                if state.generation != before.generation:
-                    await run_in_threadpool(dispatch_notifications, runtime, previous_analysis)
+                await run_in_threadpool(runtime.core.update, actor="clock")
             except Exception:
                 logger.exception("scheduled calculation failed; previous result retained")
 
@@ -141,33 +57,6 @@ def build_ai(storage: Storage, calculation: CalculationAdapter) -> AIService | N
         return AIService(storage, calculation)
     except Exception:
         logger.exception("AI Analyst could not be initialised; continuing without it")
-        return None
-
-
-def build_telegram(settings: Settings, database: Database):
-    """Build the Telegram service, or ``None`` when the feature is off.
-
-    Same contract as the AI layer: an optional integration must never stop the
-    analytics product from starting. A misconfiguration is logged and the
-    integration is simply absent, which the API reports as ``enabled: false``.
-    """
-
-    if not settings.telegram_enabled:
-        return None
-    if not settings.telegram_bot_token.strip():
-        # Enabling the feature without a token is a configuration mistake that
-        # must not stop the product. Say so once, loudly, and carry on.
-        logger.error(
-            "TELEGRAM_ENABLED=1 but TELEGRAM_BOT_TOKEN is empty; "
-            "the Telegram integration is disabled. Set the token on the server."
-        )
-        return None
-    try:
-        from backend.app.integrations.telegram.service import TelegramService
-
-        return TelegramService(database, settings)
-    except Exception:
-        logger.exception("Telegram integration could not be initialised; continuing without it")
         return None
 
 
@@ -188,11 +77,6 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
             Core(storage, calculation, settings.reference_now), ai=None)
         stop = asyncio.Event()
         task = None
-        # Bound before the try block: the finally clause awaits it, and if
-        # startup failed earlier an unbound name here would replace the real
-        # exception with an UnboundLocalError.
-        digest_task = None
-
         def initialize():
             database.initialize()
             users.initialize()
@@ -210,29 +94,15 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
         try:
             await run_in_threadpool(initialize)
             runtime.ai = build_ai(storage, calculation)
-            runtime.telegram = build_telegram(settings, database)
             application.state.runtime = runtime
             application.state.metrics = Metrics(storage)
             if settings.as_of.lower() == "now" and not isinstance(module, UnavailableAnalytics):
                 task = asyncio.create_task(recalculate(runtime, stop))
-            # The digest scheduler runs whenever Telegram is on, independently of
-            # AEZA_AS_OF: the pinned reference instant only affects scoring, not
-            # whether notifications may be delivered.
-            if runtime.telegram is not None:
-                # Register the webhook before scheduling anything. The bot only
-                # receives updates through it, so a deployment that skips this
-                # looks healthy while silently receiving nothing.
-                registration = await run_in_threadpool(runtime.telegram.ensure_webhook)
-                if not registration.get("registered"):
-                    logger.warning("telegram webhook is not registered: %s", registration)
-                digest_task = asyncio.create_task(digest_scheduler(runtime, stop))
             yield
         finally:
             stop.set()
             if task is not None:
                 await task
-            if digest_task is not None:
-                await digest_task
             database.engine.dispose()
 
     app = FastAPI(title=settings.app_name, version="2.0.0", lifespan=lifespan,
@@ -330,7 +200,6 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
 
     for router in (routes_auth.router, routes_customers.router, routes_analytics.router,
                    routes_model.router, routes_source.router, routes_insights.router,
-                   routes_export.router, routes_ai.router, routes_actions.router,
-                   routes_telegram.router):
+                   routes_export.router, routes_ai.router, routes_actions.router):
         app.include_router(router, prefix=settings.api_prefix)
     return app

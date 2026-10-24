@@ -491,7 +491,6 @@ db/               PostgreSQL seed и SQLite-база авторизации
 | [`docs/DEPLOYMENT_PART_B.md`](docs/DEPLOYMENT_PART_B.md) | Развёртывание канонического продукта |
 | [`docs/AI_ANALYST.md`](docs/AI_ANALYST.md) | AI Analyst: локальная LLM, RAG, инструменты, безопасность |
 | [`docs/AI_ASSISTANT.md`](docs/AI_ASSISTANT.md) | Агрегатный AI-ассистент (`/api/v1/insights/ai`) |
-| [`docs/TELEGRAM.md`](docs/TELEGRAM.md) | Уведомления о риске оттока в Telegram |
 | [`docs/AUTH_MODULE.md`](docs/AUTH_MODULE.md) | Модуль авторизации (OIDC, JWT) |
 | [`docs/API_PART_A_LEGACY.md`](docs/API_PART_A_LEGACY.md) | API части A (устаревшее) |
 | [`docs/audits/`](docs/audits/) | Аудиты конкретных состояний кода и окружения |

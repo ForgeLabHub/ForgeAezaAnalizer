@@ -11,11 +11,6 @@ import type {
   QualityReport,
   RetentionAction,
   RetentionActionList,
-  TelegramDiagnostics,
-  TelegramLinkCode,
-  TelegramStatus,
-  TelegramSubscription,
-  TelegramThresholds,
   ScenarioComparisonResponse,
   ScenarioOverrides,
   SettingsPatch,
@@ -364,35 +359,6 @@ export const api = {
     ),
 
   quality: () => request<QualityReport>('/api/v1/quality'),
-
-  // ---- Telegram integration (management only; the bot talks to /telegram/webhook)
-  telegramStatus: () => request<TelegramStatus>('/api/v1/telegram/status'),
-
-  /** Create a one-time link code. The plaintext code is returned once. */
-  telegramLinkCode: () =>
-    request<TelegramLinkCode>('/api/v1/telegram/link-code', { method: 'POST' }),
-
-  telegramDisconnect: () =>
-    request<{ disconnected: number; detail: string }>('/api/v1/telegram/disconnect', {
-      method: 'POST',
-    }),
-
-  telegramSubscription: () => request<TelegramSubscription>('/api/v1/telegram/subscription'),
-
-  telegramPatchSubscription: (patch: {
-    kinds?: string[]
-    thresholds?: Partial<TelegramThresholds>
-    dailyDigest?: boolean
-  }) =>
-    request<TelegramSubscription>('/api/v1/telegram/subscription', {
-      method: 'PATCH',
-      body: JSON.stringify(patch),
-    }),
-
-  telegramSendTest: () =>
-    request<{ sent: boolean; detail: string }>('/api/v1/telegram/test', { method: 'POST' }),
-
-  telegramDiagnostics: () => request<TelegramDiagnostics>('/api/v1/telegram/diagnostics'),
 
   compareScenario: (name: string, overrides: ScenarioOverrides) =>
     request<ScenarioComparisonResponse>('/api/v1/scenarios/compare', {

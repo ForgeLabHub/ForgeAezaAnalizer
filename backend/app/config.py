@@ -49,30 +49,6 @@ class Settings:
                                                                  or os.getenv("AEZA_LLM_TEMPERATURE", "0.2")))
     cors_origins: tuple[str, ...] = field(default_factory=lambda: tuple(
         origin.strip() for origin in os.getenv("AEZA_CORS_ORIGINS", "http://localhost:8080,http://localhost:5173").split(",") if origin.strip()))
-    # --- Telegram integration -------------------------------------------------
-    # Off by default and never fatal: a missing bot token must not stop the
-    # analytics app from starting. The token is read from the environment only —
-    # never from the database, the repo or the frontend.
-    telegram_enabled: bool = field(default_factory=lambda: flag("TELEGRAM_ENABLED", False))
-    telegram_bot_token: str = field(default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN", ""))
-    #: Shared secret Telegram echoes back in X-Telegram-Bot-Api-Secret-Token.
-    telegram_webhook_secret: str = field(default_factory=lambda: os.getenv("TELEGRAM_WEBHOOK_SECRET", ""))
-    telegram_webhook_url: str = field(default_factory=lambda: os.getenv("TELEGRAM_WEBHOOK_URL", ""))
-    telegram_api_base: str = field(default_factory=lambda: os.getenv("TELEGRAM_API_BASE", "https://api.telegram.org"))
-    telegram_timeout_seconds: int = field(default_factory=lambda: int(os.getenv("TELEGRAM_TIMEOUT_SECONDS", "10")))
-    telegram_link_code_ttl_seconds: int = field(default_factory=lambda: int(os.getenv("TELEGRAM_LINK_CODE_TTL_SECONDS", "600")))
-    telegram_link_max_attempts: int = field(default_factory=lambda: int(os.getenv("TELEGRAM_LINK_MAX_ATTEMPTS", "5")))
-    #: Minimum seconds between two messages to the same chat, to bound spam.
-    telegram_min_send_interval_seconds: int = field(default_factory=lambda: int(os.getenv("TELEGRAM_MIN_SEND_INTERVAL_SECONDS", "3")))
-    telegram_max_retries: int = field(default_factory=lambda: int(os.getenv("TELEGRAM_MAX_RETRIES", "2")))
-    #: Public base URL used to build deep links back into the Sentinel UI.
-    telegram_app_base_url: str = field(default_factory=lambda: os.getenv("TELEGRAM_APP_BASE_URL", "http://localhost:8080"))
-    #: How often the digest scheduler checks whether a digest is due. Small
-    #: enough to be punctual, large enough not to spin. The digest itself is
-    #: deduplicated per UTC day, so a check that is too frequent is harmless.
-    telegram_digest_check_seconds: int = field(default_factory=lambda: int(os.getenv("TELEGRAM_DIGEST_CHECK_SECONDS", "300")))
-    #: UTC hour at which the daily digest is sent.
-    telegram_digest_hour_utc: int = field(default_factory=lambda: int(os.getenv("TELEGRAM_DIGEST_HOUR_UTC", "9")))
     api_prefix: str = "/api/v1"
     app_name: str = "Aéza Analyzer"
 
@@ -90,28 +66,6 @@ class Settings:
                 raise ValueError("AEZA_LLM_MAX_TOKENS must be between 16 and 8192")
             if not 0.0 <= self.llm_temperature <= 2.0:
                 raise ValueError("AEZA_LLM_TEMPERATURE must be between 0 and 2")
-        # Telegram: an incomplete configuration must degrade the integration, not
-        # the product. A missing token while TELEGRAM_ENABLED=1 is an operator
-        # mistake, but refusing to start the whole analytics app over an optional
-        # channel is worse. In that case the service is simply not built (the API
-        # reports enabled:false) and build_telegram logs the reason.
-        if self.telegram_enabled and self.telegram_bot_token.strip():
-            if not self.telegram_webhook_secret.strip():
-                raise ValueError("TELEGRAM_WEBHOOK_SECRET is required when TELEGRAM_ENABLED=1")
-            if not self.telegram_api_base.startswith(("http://", "https://")):
-                raise ValueError("TELEGRAM_API_BASE must be an http(s) URL")
-            if not 1 <= self.telegram_timeout_seconds <= 120:
-                raise ValueError("TELEGRAM_TIMEOUT_SECONDS must be between 1 and 120")
-            if not 30 <= self.telegram_link_code_ttl_seconds <= 3600:
-                raise ValueError("TELEGRAM_LINK_CODE_TTL_SECONDS must be between 30 and 3600")
-            if not 1 <= self.telegram_link_max_attempts <= 20:
-                raise ValueError("TELEGRAM_LINK_MAX_ATTEMPTS must be between 1 and 20")
-            if not 0 <= self.telegram_max_retries <= 5:
-                raise ValueError("TELEGRAM_MAX_RETRIES must be between 0 and 5")
-            if not 30 <= self.telegram_digest_check_seconds <= 86400:
-                raise ValueError("TELEGRAM_DIGEST_CHECK_SECONDS must be between 30 and 86400")
-            if not 0 <= self.telegram_digest_hour_utc <= 23:
-                raise ValueError("TELEGRAM_DIGEST_HOUR_UTC must be between 0 and 23")
         self.reference_now()
 
     def reference_now(self) -> datetime:
