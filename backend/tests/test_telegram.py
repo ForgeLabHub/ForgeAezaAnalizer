@@ -118,9 +118,12 @@ def test_app_starts_without_a_token_when_disabled(monkeypatch):
     assert settings.telegram_bot_token == ""
 
 
-def test_enabling_telegram_without_a_token_is_rejected():
-    with pytest.raises(ValueError):
-        Settings(telegram_enabled=True, telegram_bot_token="", telegram_webhook_secret="s")
+def test_enabling_telegram_without_a_token_disables_only_the_integration(tmp_path):
+    from backend.app.main import build_telegram
+
+    settings = Settings(telegram_enabled=True, telegram_bot_token="", telegram_webhook_secret="s")
+    database = Database(f"sqlite:///{(tmp_path / 'a.db').as_posix()}")
+    assert build_telegram(settings, database) is None
 
 
 def test_enabling_telegram_without_a_webhook_secret_is_rejected():
@@ -661,7 +664,6 @@ def test_scheduler_runs_with_a_pinned_as_of(tmp_path):
     from backend.database import UserRepository
     from core import Core
 
-    auth_settings = _auth_settings(tmp_path)
     storage = Storage(database)
     calculation = CalculationAdapter(module)
     auth_settings = make_test_auth_settings(tmp_path / "auth.db")
