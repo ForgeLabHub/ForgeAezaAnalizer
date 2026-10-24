@@ -26,6 +26,14 @@ def import_source(payload: Snapshot, runtime: RuntimeDep, user: UserDep, respons
         previous = counts
     else:
         previous = runtime.storage.source(state.generation - 1)["counts"] if state.generation > 1 else dict.fromkeys(counts, 0)
+    # A new generation was published, so evaluate notifications for it. The route
+    # is synchronous, so FastAPI already runs it in a worker thread; a Telegram
+    # failure is swallowed inside dispatch_notifications and cannot fail the
+    # import response.
+    if state.generation != before.generation:
+        from backend.app.main import dispatch_notifications
+
+        dispatch_notifications(runtime)
     return version_headers(response, {"snapshot": {"status": "accepted", **counts},
         "report": {"status": "succeeded", "accepted": counts, "rejected": 0, "duplicates": 0,
             "previous": previous, "message": "Снимок и расчёт опубликованы атомарно"}, **state.metadata()})

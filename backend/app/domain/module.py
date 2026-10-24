@@ -33,6 +33,7 @@ from decimal import Decimal
 from core import Analysis, InvalidInput, State
 
 from .money import cents_to_eur
+from .provenance import classify_email, summarize as summarize_provenance
 from .revenue import build_recommendations, compute_customer_exposure, compute_service_exposure
 from .risk import (
     DEFAULT_WEIGHTS,
@@ -47,7 +48,10 @@ from .schema import Snapshot
 
 #: Bumped whenever the scoring algorithm changes, so the platform recalculates
 #: stored results instead of serving numbers produced by older code.
-MODEL_VERSION = "aeza-heuristic-1.3.0"
+#: 1.3.1 clamps every weighted feature to [0, 1] and drops deprecated factors
+#: from the sum. 1.4.0 adds the provenance and per-customer horizon fields, which
+#: only appear once a generation is recomputed.
+MODEL_VERSION = "aeza-heuristic-1.4.0"
 
 STATUS_LABELS = {
     "active": "Активна",
@@ -56,6 +60,15 @@ STATUS_LABELS = {
     "blocked": "Заблокирована",
     "deleted": "Удалена",
 }
+
+def _synthetic_flag(email: str | None) -> bool:
+    """True when the address cannot belong to a real customer."""
+    return classify_email(email)[0]
+
+
+def _synthetic_reason(email: str | None) -> str | None:
+    return classify_email(email)[1]
+
 
 CATEGORY_LABELS = {
     "low": "Низкий",
@@ -335,6 +348,8 @@ class AézaAnalyticsModule:
                 {
                     "id": account.id,
                     "email": account.email,
+                    "isSynthetic": _synthetic_flag(account.email),
+                    "syntheticReason": _synthetic_reason(account.email),
                     "balance": money(account.balance),
                     "withdrawBalance": money(account.withdraw_balance),
                     "totalReplenished": money(account.total_replenished),
@@ -368,6 +383,7 @@ class AézaAnalyticsModule:
                     # Additive fields the platform preserves: concentration and
                     # the operational backlog, kept apart from the score itself.
                     "highRiskShare": round(customer_risk.high_risk_share, 4),
+                    "horizonDays": settings.horizon_days,
                     "overdueServiceCount": customer_risk.overdue_service_count,
                     "overdueOperational": money(customer_exposure.overdue_operational_cents),
                     "lifecycleInconsistentCount": customer_exposure.lifecycle_inconsistent_count,
@@ -411,6 +427,10 @@ class AézaAnalyticsModule:
                 "historicalReplenishedCents": historical_total,
                 "historicalReplenishedEur": str(cents_to_eur(historical_total)),
             },
+            # Provenance of the loaded base. Derived from the addresses, so a
+            # real customer base reports "real" and the synthetic demo cohort
+            # can never be mistaken for Aéza customers.
+            "provenance": summarize_provenance(account.email for account in snapshot.accounts),
             "topRiskReasons": [
                 {"label": label, "count": count}
                 for label, count in sorted(reason_counter.items(), key=lambda kv: -kv[1])[:8]

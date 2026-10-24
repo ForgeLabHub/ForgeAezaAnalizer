@@ -18,7 +18,7 @@ from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
 
 from core import ConflictError, Core, InvalidInput, NotReadyError, ResourceNotFoundError
-from backend.app.api import routes_actions, routes_ai, routes_analytics, routes_auth, routes_customers, routes_export, routes_insights, routes_model, routes_source
+from backend.app.api import routes_actions, routes_ai, routes_analytics, routes_auth, routes_customers, routes_export, routes_insights, routes_model, routes_source, routes_telegram
 from backend.app.api.deps import Runtime, RuntimeDep
 from backend.app.api.schemas import ErrorResponse
 from backend.app.ai.service import AIDisabled, AIService, AIUnavailable
@@ -34,6 +34,75 @@ from backend.database import UserRepository
 logger = logging.getLogger("aeza")
 
 
+def dispatch_notifications(runtime: Runtime) -> None:
+    """Push notifications for the newly published generation to linked chats.
+
+    Called after a recalculation publishes a new generation, so alerts follow the
+    data instead of a timer that might race it. Failures are swallowed and
+    logged: a Telegram problem must never affect the analytics run that produced
+    the generation.
+    """
+
+    service = getattr(runtime, "telegram", None)
+    if service is None:
+        return
+    try:
+        from backend.app.integrations.telegram import notifications
+
+        analysis = runtime.calculation.calculate(runtime.storage.load())
+        for chat_id in service.linked_chats():
+            notifications.dispatch(
+                service, analysis, settings=runtime.settings, chat_id=chat_id
+            )
+    except Exception:
+        logger.exception("telegram notification dispatch failed; analytics unaffected")
+
+
+def send_due_digests(runtime: Runtime) -> list[dict]:
+    """Send the daily digest once per UTC day to chats that enabled it.
+
+    Kept separate from the event dispatch because it is time-driven, not
+    generation-driven. The per-day dedupe key makes it safe to call as often as
+    the scheduler likes.
+    """
+
+    service = getattr(runtime, "telegram", None)
+    if service is None:
+        return []
+    from backend.app.integrations.telegram import notifications
+
+    if not notifications.digest_due(runtime.settings):
+        return []
+    try:
+        analysis = runtime.calculation.calculate(runtime.storage.load())
+        return notifications.dispatch_digests(
+            service, analysis, settings=runtime.settings
+        )
+    except Exception:
+        logger.exception("daily digest dispatch failed; analytics unaffected")
+        return []
+
+
+async def digest_scheduler(runtime: Runtime, stop: asyncio.Event):
+    """Wake periodically and send the digest when its hour has arrived.
+
+    This runs whenever the Telegram integration is on, independently of
+    ``AEZA_AS_OF``: the reference instant only affects *scoring*, not whether
+    notifications may be delivered. The per-day dedupe key in the delivery table
+    is what guarantees at-most-once delivery, so a restart mid-day cannot resend.
+    """
+
+    while True:
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=runtime.settings.telegram_digest_check_seconds)
+            return
+        except asyncio.TimeoutError:
+            try:
+                await run_in_threadpool(send_due_digests, runtime)
+            except Exception:
+                logger.exception("digest scheduler iteration failed")
+
+
 async def recalculate(runtime: Runtime, stop: asyncio.Event):
     while True:
         try:
@@ -42,6 +111,7 @@ async def recalculate(runtime: Runtime, stop: asyncio.Event):
         except asyncio.TimeoutError:
             try:
                 await run_in_threadpool(runtime.core.update, actor="clock", recalculate=True)
+                await run_in_threadpool(dispatch_notifications, runtime)
             except Exception:
                 logger.exception("scheduled calculation failed; previous result retained")
 
@@ -60,8 +130,31 @@ def build_ai(storage: Storage, calculation: CalculationAdapter) -> AIService | N
         return None
 
 
+<<<<<<< HEAD
 def create_app(settings: Settings | None = None, analytics: AnalyticsModule | None = None,
                auth_settings: AuthSettings | None = None) -> FastAPI:
+=======
+def build_telegram(settings: Settings, database: Database):
+    """Build the Telegram service, or ``None`` when the feature is off.
+
+    Same contract as the AI layer: an optional integration must never stop the
+    analytics product from starting. A misconfiguration is logged and the
+    integration is simply absent, which the API reports as ``enabled: false``.
+    """
+
+    if not settings.telegram_enabled:
+        return None
+    try:
+        from backend.app.integrations.telegram.service import TelegramService
+
+        return TelegramService(database, settings)
+    except Exception:
+        logger.exception("Telegram integration could not be initialised; continuing without it")
+        return None
+
+
+def create_app(settings: Settings | None = None, analytics: AnalyticsModule | None = None) -> FastAPI:
+>>>>>>> 8bee307f006ccfac1e70afb61de23a22375b331e
     settings = settings or get_settings()
     auth_settings = auth_settings or AuthSettings.from_env()
     module = analytics if analytics is not None else load_module(os.getenv("AEZA_ANALYTICS_FACTORY", ""))
@@ -95,15 +188,24 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
         try:
             await run_in_threadpool(initialize)
             runtime.ai = build_ai(storage, calculation)
+            runtime.telegram = build_telegram(settings, database)
             application.state.runtime = runtime
             application.state.metrics = Metrics(storage)
             if settings.as_of.lower() == "now" and not isinstance(module, UnavailableAnalytics):
                 task = asyncio.create_task(recalculate(runtime, stop))
+            # The digest scheduler runs whenever Telegram is on, independently of
+            # AEZA_AS_OF: the pinned reference instant only affects scoring, not
+            # whether notifications may be delivered.
+            digest_task = None
+            if runtime.telegram is not None:
+                digest_task = asyncio.create_task(digest_scheduler(runtime, stop))
             yield
         finally:
             stop.set()
             if task is not None:
                 await task
+            if digest_task is not None:
+                await digest_task
             database.engine.dispose()
 
     app = FastAPI(title=settings.app_name, version="2.0.0", lifespan=lifespan,
@@ -201,6 +303,7 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
 
     for router in (routes_auth.router, routes_customers.router, routes_analytics.router,
                    routes_model.router, routes_source.router, routes_insights.router,
-                   routes_export.router, routes_ai.router, routes_actions.router):
+                   routes_export.router, routes_ai.router, routes_actions.router,
+                   routes_telegram.router):
         app.include_router(router, prefix=settings.api_prefix)
     return app
