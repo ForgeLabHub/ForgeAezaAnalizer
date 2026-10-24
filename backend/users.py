@@ -7,15 +7,43 @@ from backend.database import UserRepository
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Initialize SQLite or create an auth user")
-    parser.add_argument("command", choices=("init", "create"))
+    parser = argparse.ArgumentParser(description="Initialize SQLite or manage auth users")
+    parser.add_argument("command", choices=("init", "create", "list", "show"))
     parser.add_argument("login", nargs="?")
     arguments = parser.parse_args()
     repository = UserRepository(Settings.from_env().database)
     repository.initialize()
+
     if arguments.command == "init":
         print(f"Database initialized: {repository.path}")
         return
+
+    if arguments.command == "list":
+        # Exists so an operator can confirm a created account is really stored,
+        # in the same file the API reads. Without it the only check available was
+        # find(), which takes a user id and silently returns None for a login —
+        # that mismatch once looked like data loss.
+        rows = repository.all()
+        print(f"Database: {repository.path}")
+        if not rows:
+            print("No users.")
+            return
+        for user in rows:
+            state = "active" if user.is_active else "disabled"
+            print(f"{user.login}\t{user.id}\t{state}")
+        return
+
+    if arguments.command == "show":
+        if not arguments.login:
+            parser.error("show requires a login")
+        found = repository.credentials(arguments.login)
+        if found is None:
+            parser.error(f"user not found: {arguments.login}")
+        user = found[0]
+        state = "active" if user.is_active else "disabled"
+        print(f"login: {user.login}\nid: {user.id}\nstate: {state}")
+        return
+
     if not arguments.login:
         parser.error("create requires a login")
     password = getpass.getpass("Password: ")

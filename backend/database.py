@@ -60,6 +60,19 @@ class UserRepository:
             ).fetchone()
         return self._user(row) if row else None
 
+    def all(self) -> list[User]:
+        """Every account, for operator inspection via the CLI.
+
+        Deliberately returns no password hash: this exists so an operator can
+        confirm a created account is stored, not to expose credentials.
+        """
+
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT id, login, is_active, auth_version FROM users ORDER BY login"
+            ).fetchall()
+        return [self._user(row) for row in rows]
+
     def create(self, login: str, password: str) -> User:
         if not re.fullmatch(r"[A-Za-z0-9_.@-]{3,128}", login):
             raise ValueError("Login must contain 3 to 128 letters, digits, or _.@-")

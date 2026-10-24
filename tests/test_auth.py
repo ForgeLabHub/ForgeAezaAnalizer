@@ -253,6 +253,85 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(self.login(login="' OR 1=1 --").status_code, 401)
 
 
+class UserStorageTests(unittest.TestCase):
+    """The account store: what an operator can verify, and what must persist.
+
+    These exist because a diagnostic once reported "user created but not found".
+    The cause was calling ``find()`` with a login: it takes a user id and returns
+    None for anything else. The account was there the whole time. ``list``/``show``
+    and the tests below make that distinction explicit.
+    """
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.path = Path(self.directory.name) / "auth.sqlite3"
+        self.users = UserRepository(self.path)
+        self.users.initialize()
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def test_find_takes_an_id_and_credentials_takes_a_login(self):
+        user = self.users.create("analyst@aeza.test", "a long enough password")
+
+        # find() is by id; passing a login is a category error, not missing data.
+        self.assertIsNone(self.users.find("analyst@aeza.test"))
+        self.assertEqual(self.users.find(user.id).login, "analyst@aeza.test")
+
+        # The lookup the login path actually uses resolves the same account.
+        found, _hash = self.users.credentials("analyst@aeza.test")
+        self.assertEqual(found.id, user.id)
+
+    def test_all_lists_accounts_without_exposing_hashes(self):
+        self.users.create("second@example.test", "another long password")
+        self.users.create("first@example.test", "yet another long password")
+
+        logins = [user.login for user in self.users.all()]
+        self.assertEqual(logins, ["first@example.test", "second@example.test"])
+        # all() returns User objects, which carry no password field at all.
+        self.assertFalse(hasattr(self.users.all()[0], "password_hash"))
+
+    def test_account_survives_a_new_repository_over_the_same_file(self):
+        """A restart opens the same file with a fresh object; the account stays."""
+
+        created = self.users.create("persist@example.test", "a long enough password")
+        reopened = UserRepository(self.path)
+        reopened.initialize()  # the API calls initialize() on every startup
+
+        found, _hash = reopened.credentials("persist@example.test")
+        self.assertEqual(found.id, created.id)
+        self.assertTrue(found.is_active)
+
+    def test_initialize_is_idempotent_and_keeps_existing_rows(self):
+        self.users.create("keep@example.test", "a long enough password")
+        for _ in range(3):
+            self.users.initialize()
+        self.assertEqual(len(self.users.all()), 1)
+
+    def test_cli_list_and_show_report_the_stored_account(self):
+        from backend.users import main as cli
+
+        user = self.users.create("cli@example.test", "a long enough password")
+        with patch.dict("os.environ", {"AUTH_DATABASE": str(self.path)}, clear=False):
+            for arguments, expected in (
+                (["list"], user.login),
+                (["show", user.login], user.id),
+            ):
+                with patch("sys.argv", ["backend.users", *arguments]):
+                    with patch("sys.stdout") as out:
+                        cli()
+                    printed = "".join(call.args[0] for call in out.write.call_args_list)
+                self.assertIn(expected, printed)
+
+    def test_cli_show_rejects_an_unknown_login(self):
+        from backend.users import main as cli
+
+        with patch.dict("os.environ", {"AUTH_DATABASE": str(self.path)}, clear=False):
+            with patch("sys.argv", ["backend.users", "show", "missing@example.test"]):
+                with self.assertRaises(SystemExit):
+                    cli()
+
+
 class CacheTests(unittest.TestCase):
     def test_expiration_and_capacity(self):
         now = [100.0]
