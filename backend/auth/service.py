@@ -82,7 +82,8 @@ class AuthService:
         self.dummy_hash = hash_password(secrets.token_urlsafe(32))
 
     def authenticate(self, login: str, password: str, address: str) -> User:
-        if not self.limiter.check(address) or not self.password_slots.acquire(blocking=False):
+        limit_key = f"{address}\0{login.casefold()}"
+        if not self.limiter.check(limit_key) or not self.password_slots.acquire(blocking=False):
             raise AuthError(429, "too_many_requests", "Try again later", {"Retry-After": "60"})
         try:
             record = self.users.credentials(login)
@@ -90,6 +91,7 @@ class AuthService:
             if not valid or record is None or not record[0].is_active:
                 raise AuthError(401, "invalid_credentials", "Invalid login or password")
             user = record[0]
+            self.limiter.reset(limit_key)
             self.profiles.put(user.id, user, self.settings.user_cache_ttl)
             return user
         finally:

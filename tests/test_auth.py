@@ -115,7 +115,7 @@ class AuthenticationTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 403)
         for _ in range(10):
-            self.assertTrue(self.auth.limiter.check("testclient"))
+            self.assertTrue(self.auth.limiter.check("testclient\0alice"))
         self.assertEqual(self.login().status_code, 429)
         self.assertEqual(self.client.post("/auth/logout", headers={"Origin": "null"}).status_code, 403)
 

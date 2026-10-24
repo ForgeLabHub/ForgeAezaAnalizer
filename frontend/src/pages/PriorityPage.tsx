@@ -101,11 +101,6 @@ export default function PriorityPage() {
       <div className="page-head">
         <div>
           <h1>Очередь приоритетных действий</h1>
-          <p>
-            Независимая триаж-очередь для операторов удержания: балл риска, финансовая экспозиция на
-            выбранном горизонте, операционная просрочка и сигналы качества данных показаны раздельно
-            и не сводятся в единую вероятность.
-          </p>
         </div>
         <div className="tabs" role="tablist" aria-label="Горизонт экспозиции">
           {HORIZON_OPTIONS.map((h) => (
@@ -156,11 +151,7 @@ export default function PriorityPage() {
           <Metric
             label="Замечаний к данным"
             value={qualityAlerts}
-            foot={
-              <Link to="/data?tab=quality">
-                критичных: {data.qualityCounts.critical} · предупреждений: {data.qualityCounts.warning} →
-              </Link>
-            }
+            foot={`критичных: ${data.qualityCounts.critical} · предупреждений: ${data.qualityCounts.warning}`}
           />
         </div>
       ) : null}
