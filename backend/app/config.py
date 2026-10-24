@@ -32,6 +32,10 @@ class Settings:
     telegram_bot_token: str = field(default_factory=lambda: os.getenv("AEZA_TELEGRAM_BOT_TOKEN", ""))
     telegram_webhook_secret: str = field(default_factory=lambda: os.getenv("AEZA_TELEGRAM_WEBHOOK_SECRET", ""))
     telegram_mini_app_url: str = field(default_factory=lambda: os.getenv("AEZA_TELEGRAM_MINI_APP_URL", ""))
+    #: Public HTTPS URL of this API plus /telegram/webhook. Registration is an
+    #: explicit operator action (POST /telegram/webhook/register), never automatic
+    #: on startup, so a restart cannot race another instance or drop updates.
+    telegram_webhook_url: str = field(default_factory=lambda: os.getenv("AEZA_TELEGRAM_WEBHOOK_URL", ""))
     telegram_auth_max_age_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_TELEGRAM_AUTH_MAX_AGE_SECONDS", "86400")))
     telegram_session_ttl_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_TELEGRAM_SESSION_TTL_SECONDS", "3600")))
     telegram_otp_ttl_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_TELEGRAM_OTP_TTL_SECONDS", "600")))
@@ -105,6 +109,8 @@ class Settings:
                 raise ValueError("SMTP_BZ_API_URL must use HTTPS; HTTP is allowed only on loopback")
             if "@" not in self.smtp_bz_from_email:
                 raise ValueError("SMTP_BZ_FROM_EMAIL must be a valid e-mail address")
+        if self.telegram_webhook_url and not self.telegram_webhook_url.startswith("https://"):
+            raise ValueError("AEZA_TELEGRAM_WEBHOOK_URL must be an https:// URL (Telegram requires HTTPS)")
         if self.llm_enabled:
             if not self.llm_base_url.startswith(("http://", "https://")):
                 raise ValueError("AEZA_LLM_BASE_URL must be an http(s) URL")
