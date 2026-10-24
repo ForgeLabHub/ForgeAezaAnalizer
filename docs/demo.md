@@ -3,33 +3,46 @@
 Все шаги выполняются на **реальных данных кейса** — тех самых 10 аккаунтах, 30 услугах
 и 100 транзакциях из `dataset/data.json`. Синтетические данные не подмешиваются.
 
+> **Актуальные контрольные значения** (проверено 2026-10-24): клиент **#10 → 71.4**
+> (высокий), `revenueAtRisk` **5.80 €**. Значения `73,3` / `5,74 €` в более старых
+> фрагментах этого документа относятся к прежней конфигурации и **не воспроизводятся**;
+> актуальная методика описана в `docs/DATA_AND_RISK_MODEL.md`.
+
 ## Готовый демонстрационный стенд
 
-Стек уже поднят, открывать ничего собирать не нужно:
+Публичный стенд: **<https://aeza-sentinel.pixel-minds.ru/>** — nginx с валидным
+Let's Encrypt сертификатом (до 2027-01-22), API и SPA на одном origin.
 
 | Что | Адрес |
 | --- | --- |
-| Интерфейс (nginx, production-сборка) | <https://work-1-mxzlgbuemrxujutc.prod-runtime.all-hands.dev/> |
-| API (Swagger UI) | <https://work-2-mxzlgbuemrxujutc.prod-runtime.all-hands.dev/api/v1/docs> |
-| Метрики Prometheus | <https://work-2-mxzlgbuemrxujutc.prod-runtime.all-hands.dev/metrics> |
+| Интерфейс | <https://aeza-sentinel.pixel-minds.ru/> |
+| Swagger UI | <https://aeza-sentinel.pixel-minds.ru/api/v1/docs> |
+| Метрики Prometheus | <https://aeza-sentinel.pixel-minds.ru/metrics> (нужен токен) |
 
-Вход: `analyst@aeza.test` / `demo123`.
+Вход: `analyst@aeza.test` / `demo123` (если владелец не сменил пароль).
 
-Стенд собран из `docker-compose.yml` (Postgres + API + nginx) с временным override-файлом
-для портов 12000/12001; override не входит в репозиторий. Это демонстрационный контур:
-перед реальной эксплуатацией пароль Postgres и `AEZA_JWT_SECRET` нужно заменить.
+**Важно о версии стенда.** Стенд развёрнут с `origin/main` и содержит **18 путей** в
+OpenAPI. Маршруты Retention Playbooks
+(`/api/v1/customers/{id}/recommendations`) на нём **отсутствуют** и отвечают 404, пока
+не развёрнута ветка `feat/deployment-readiness`. Поэтому шаг с сохранением статуса
+рекомендации демонстрируется **локально**, а не на публичном стенде. Детали и команды
+для владельца — `docs/audits/production-readiness-audit.md` §7.
 
 ## Локальный запуск
 
-Подготовка:
+Подготовка (команды backend — **из корня репозитория**):
 
 ```bash
 # Терминал 1
-cd backend
 export AEZA_JWT_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
 export AEZA_ADMIN_EMAIL="analyst@aeza.test"
 export AEZA_ADMIN_PASSWORD="demo123"
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+export AEZA_DATABASE_URL="sqlite:///$(pwd)/data/analytics.sqlite"
+export AEZA_AUTH_DATABASE_URL="sqlite:///$(pwd)/db/auth.sqlite3"
+export AEZA_ANALYTICS_FACTORY="backend.app.domain.module:create"
+export AEZA_SEED_DEMO_DATA=1
+mkdir -p data
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
 
 # Терминал 2
 cd frontend && npm run dev
@@ -77,7 +90,7 @@ cd frontend && npm run dev
 
 ## 3. Клиент высокого риска (≈45 сек)
 
-Нажать **«Клиенты высокого риска»** → в таблице клиент **#10** (балл 73,3).
+Нажать **«Клиенты высокого риска»** → в таблице клиент **#10** (балл 71,4).
 
 Обратить внимание на сортировку: таблица отсортирована по риску по убыванию. Показать,
 что сортировка числовая, а не лексикографическая — нажать на заголовок **«Всего
@@ -90,7 +103,7 @@ cd frontend && npm run dev
 
 ## 4. Причины риска на уровне услуг (≈60 сек)
 
-В карточке — три услуги клиента. У услуги **service-0030** балл **73,3** (высокий).
+В карточке — три услуги клиента. У услуги **service-0030** балл **71,4** (высокий).
 
 Пять причин, каждая с числами из данных:
 
