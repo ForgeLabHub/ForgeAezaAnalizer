@@ -27,6 +27,9 @@ class Runtime:
     #: Optional local AI Analyst. ``None`` when the feature is not built, which
     #: is distinct from "enabled but unreachable".
     ai: object | None = None
+    #: Telegram integration service. ``None`` when TELEGRAM_ENABLED=0, which is
+    #: distinct from "enabled but the Bot API is unreachable".
+    telegram: object | None = None
 
 
 @dataclass(frozen=True)

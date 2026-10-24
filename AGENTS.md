@@ -31,9 +31,17 @@ aeza_analyzer/
     service.py     customer risk, revenue at risk, dashboard
   api/app.py       FastAPI endpoints
   static/          vanilla-JS SPA (index.html, app.js, styles.css)
+<<<<<<< HEAD
 tests/             pytest suite (48 tests)
 docs/              PROJECT_GUIDE.md, AI_ANALYST.md, AI_ASSISTANT.md, AUTH_MODULE.md,
                    audits/, research/, deck/
+=======
+tests/             pytest suite (52 tests)
+docs/              REQUIREMENTS_TRACEABILITY.md, ARCHITECTURE.md, DATA_DICTIONARY.md,
+                   ANALYTICS_METHODOLOGY.md, REVENUE_METHODOLOGY.md, IMPORT_AND_DATA_AUDIT.md,
+                   API_PART_A_LEGACY.md, DEVELOPMENT.md, TESTING.md, DEPLOYMENT.md, SECURITY.md,
+                   SCHEMA_MAPPING.md   (docs/API.md documents the canonical part-B API)
+>>>>>>> 8bee307f006ccfac1e70afb61de23a22375b331e
 ```
 
 ## Commands
@@ -83,6 +91,23 @@ git push https://<TOKEN>@github.com/Pixelminds-hub/aeza-analizer.git main
 ```
 
 Never commit a token, and never leave one in the remote URL.
+
+**Verified 2026-10-24:** the credentials injected into the agent environment
+(`GITHUB_TOKEN`, `GITHUB_PERSONAL_ACCESS_TOKEN`) are **read-only** on this repo
+— every write path returns 403, including `create_branch` and the Contents API.
+A **classic** PAT with the `repo` scope is required. With one, the push works:
+
+```bash
+git push https://<user>:<CLASSIC_PAT>@github.com/Pixelminds-hub/aeza-analizer.git HEAD:main
+```
+
+Two things bite when pushing to `main`:
+
+- **`main` moves under you.** Other contributors push to it directly, so a push
+  is often rejected as non-fast-forward. Fetch, merge (never force-push — there
+  are 40+ commits from other authors), re-run the tests, then push.
+- **Do not `git push --force`.** `main` is shared; a force-push destroys other
+  people's work.
 
 ## Gotchas that already bit us
 
@@ -225,6 +250,171 @@ No frontend test runner is configured (`frontend/package.json` has no `test`
 script and no vitest/jest/playwright dependency). Verify the UI manually before
 release; the current user-facing overview is in `docs/PROJECT_GUIDE.md`.
 
+## Push access to this checkout (updated 2026-10-24)
+
+**Publishing now works, but only with a classic PAT supplied per command.**
+The credentials injected into the agent environment (`GITHUB_TOKEN`,
+`GITHUB_PERSONAL_ACCESS_TOKEN`) are GitHub App tokens (`ghu_…`) with empty
+`x-oauth-scopes`; `GET /repos/...` still reports `permissions.push: true`, yet
+every write path returns `403 Permission … denied` (push, `create_branch`, the
+Contents API). A **classic** PAT with the `repo` scope pushes successfully:
+
+```bash
+git push https://<user>:<CLASSIC_PAT>@github.com/Pixelminds-hub/aeza-analizer.git HEAD:main
+```
+
+Three things bite, all hit in practice:
+
+- **`~/.gitconfig` injects a competing helper.** It sets
+  `credential.https://github.com.helper = !/usr/bin/gh auth git-credential`,
+  which is URL-scoped and therefore *overrides* a plain `credential.helper`.
+  A `-c credential.helper=store` flag alone is silently ignored and the 403
+  comes back. Reset the list first, then set the scoped helper:
+  `git -c credential.helper= -c credential.https://github.com.helper='store --file=<f>' push …`
+- **`main` moves under you.** Other contributors push directly, so a push is
+  often rejected as non-fast-forward. Fetch, merge (never force-push — there are
+  40+ commits from other authors), re-run the tests, then push.
+- **Never `git push --force`** and never leave a token in `.git/config` or in a
+  committed file.
+
+## Data-set provenance and seed alignment — fixed 2026-10-24
+
+`db/analytics_seed.sql` carries the **official organiser set: 10 accounts /
+30 services / 100 transactions** with one published generation, matching
+`dataset/data.json`, `README.md` and the defence decks. It previously held 60
+accounts / 115 services / 285 transactions (10 official + 50 synthetic
+`demo-customer-*`), so live row counts and scores disagreed with the decks.
+
+The seed is generated, not hand-edited: load a snapshot into a database with
+`backend/scripts/load_snapshot.py`, then dump it with
+`backend/scripts/export_seed.py`. Regenerate after changing the source data.
+History: `docs/PROVENANCE_AUDIT.md` §6.1.
+
+The seed's *model defaults* were also aligned with the code:
+`failed_renewals: 2.0` (a deprecated factor scoring ignores),
+`suspended_status: 2.0` and `renewal_failure_rate: 1.5` (code: 1.0 / 2.5) were
+corrected, and `failedRenewalWindowDays` (previously omitted, deserialising as
+`null` = "whole snapshot" instead of the approved 90-day window) is now seeded.
+`test_bundled_seed_defaults_match_code_defaults` fails if the seed drifts from
+`DEFAULT_WEIGHTS` / `RiskSettings()`. A fresh database serves `isDefault: true`
+and a reset is a true no-op.
+
+## Final readiness pass — 2026-10-24 (verified, not assumed)
+
+Ran against the live stack (`project-api-1` / `project-db-1` / `project-web-1`).
+
+### Documentation defects found and fixed
+- `docs/DEMO_SCRIPT.md` claimed the `expiry_proximity 3.0 → 0.5` change moves
+  high-risk customers **2 → 1**. Measured: **3 → 0**, low 0 → 1, exposure
+  **5,80 € → 4,37 €**. Corrected.
+- Same file gave the top customer score as **≈ 73.3**; the real score is
+  **71.4** (`user-0010@example.test`). Corrected.
+- `docs/demo.md` login credential was wrong (`aeza-demo-password` → 401;
+  `demo123` → 200), and the stale fallback in `backend/app/auth/security.py`
+  plus `docs/deck/capture_shots.py` carried the same bad password. Fixed.
+
+### What the live stack actually serves (baseline, generation 3)
+- 10 customers / 30 services; high 3, medium 3, low 0, not_applicable 4.
+- Revenue at risk **5,80 €**, upcoming renewals **17,03 €**, horizon 30 d.
+- `GET /model/settings` → `isDefault: true`, weights sum **13.0**.
+- `/metrics`: `aeza_customers_total 10`, `aeza_services_total 30`,
+  `aeza_services_open_total 18`, `aeza_revenue_at_risk_eur 5.8`,
+  `aeza_upcoming_renewals_eur 17.03`.
+
+Weight changes drive real recalculation: `expiry_proximity 3.0 → 9.0` bumps
+`modelVersion`, moves exposure **5,80 € → 7,72 €**, and persists across a fresh
+read. (A probe that reads `weights` at the top level of the `PATCH` response
+returns `None` — the value is nested under `settings.weights`; that is a probe
+bug, not a store bug.)
+
+### Verification commands that passed
+- `python -m pytest backend/tests -q` → **325 passed**.
+- root `python -m pytest tests -q` → **69 passed**.
+- `cd frontend && npx tsc -b && npm run build` → clean.
+- 28 OpenAPI paths in `backend/openapi.json`, matching the served schema.
+- Live API suite (auth, 401/404/422, sort validation, negative weight, unknown
+  field) → all pass.
+- Import atomicity: `PUT /source/snapshot` with `transactions[0].amount=5000`
+  (schema cap 1000) → 422, generation and counts unchanged. Re-PUT of the same
+  dataset → 200 no-op.
+- Workflow persistence: `PATCH /priority/actions` → 200, status `done`, note
+  trimmed; re-read confirms persistence; unknown customer / code → 404.
+
+### Browser (Playwright) walkthrough
+Dashboard, Customers (numeric sort by `totalReplenished`), Customer #10,
+Settings, Scenarios, AI Analyst — all render live data. Two rendering notes for
+anyone re-checking by automation:
+- The markdown content extractor can serve a stale SPA render right after a
+  click; re-read, or navigate straight to the URL, to see the settled table.
+- It also surfaces collapsed content that `innerText` omits — the "Экосистема
+  Aéza / Виртуальные серверы / …" block is the collapsed logo dropdown in
+  `frontend/src/components/AezaLogoDropdown.tsx`, not a layout change.
+
+Mobile invariant re-confirmed at 390×844: `scrollWidth == clientWidth` on all
+routes; the customers table scrolls inside `.table-wrap`.
+
+### Test-residue hygiene
+The API verification suite writes a row into `analyzer_action_status`. Delete it
+afterwards (the seed inserts no workflow rows):
+
+    sudo docker exec project-db-1 psql -U aeza -d aeza \
+      -c "DELETE FROM analyzer_action_status;"
+
+## Compose / clean-checkout fixes (verified by running the stack)
+
+These were real defects that only appear on a clean checkout or a shared host.
+
+- **Stale, wrong seed.** `db/analytics_seed.sql` held a **different** dataset
+  (60 accounts / 115 services / 285 transactions) than the official snapshot.
+  Compose used to pre-load it via an initdb bind-mount. It is no longer mounted;
+  the API now seeds `dataset/data.json` (10/30/100) through its own validated
+  importer (`AEZA_SEED_DEMO_DATA=1`, `AEZA_SNAPSHOT_PATH=/app/dataset/data.json`).
+- **Auth DB as a bind mount was wrong.** `db/auth.sqlite3` is gitignored, so a
+  file bind-mount would create a *directory* on a clean checkout, and a `./db`
+  bind-mount would impose the host uid on `/app/db` (the container runs as uid
+  10001). Both are replaced by a **named volume** `auth_data:/app/db`, seeded
+  from the image so permissions are correct. Postgres likewise uses `pg_data`.
+- **No default secrets.** Compose fails closed: `POSTGRES_PASSWORD`,
+  `AEZA_JWT_SECRET`, `AEZA_ADMIN_EMAIL`, `AEZA_ADMIN_PASSWORD` use `${VAR:?…}`.
+  `docker compose config` exits 1 without them. CORS defaults to
+  `http://localhost:8080`, never `*`.
+- **Login field is `access_token`** (snake_case), not `accessToken`.
+- **Invalid `sortBy` returns an empty page, not 422.** `GET /customers?sortBy=risk`
+  (wrong key) silently yields `items: []`. Use `riskScore`. Worth tightening.
+
+## CI
+
+`.github/workflows/ci.yml` runs backend tests, root tests, frontend
+typecheck+build, and Compose config validation (including the fail-closed check).
+There was no CI before; this is new.
+
+## Local AI Analyst — verified on live inference
+
+The AI Analyst is not a mock. It was run end-to-end against a real local model.
+
+- Ollama 0.40.10, `qwen2.5:3b-instruct` (1.9 GB, Q4), CPU only, 4 vCPU.
+- API runs in Compose; the model runs on the host. `docker-compose.yml` sets
+  `extra_hosts: host.docker.internal:host-gateway` on the `api` service, and
+  `AEZA_AI_BASE_URL` defaults to `http://host.docker.internal:11434`.
+- **Ollama must not bind loopback-only** if the API is containerised: bind the
+  docker bridge (`OLLAMA_HOST=172.17.0.1:11434 ollama serve`), not 0.0.0.0.
+  Loopback bind is the #1 cause of a misleading `unavailable` status.
+- The RAG index is built **at image build time** (`backend/Dockerfile` copies
+  `docs/` and runs `python -m backend.app.ai.rag`). It is gitignored
+  (`backend/data/rag_index.json`), so it must be produced in the image, not
+  committed. **If `docs/` is not copied the retriever indexes 0 chunks while
+  `/ai/status` still reports `ready`, and every answer silently loses grounding.**
+- Verified: money question answers "5.80 EUR" grounded with citations;
+  `customerId=5` yields `riskScore=71.4` (exactly the engine value); methodology
+  questions cite `docs/model.md`; prompt injection is refused; `/ai/*` returns
+  401 without a token; `AEZA_AI_ENABLED=0` returns 503 while analytics keeps
+  working.
+- Latency on this CPU: **37–91 s** per answer with the 3b model. A **cold**
+  explain call on `qwen2.5:7b` measured **196.6 s / 303.7 s**, warm 171.8 s —
+  which is why `AEZA_AI_TIMEOUT_SECONDS` defaults to **420**, not 180: a shorter
+  budget rejects a healthy model with 503 on the first request after a restart.
+  `AEZA_AI_MAX_CONCURRENCY=1`, so requests queue. Fine for a demo, not for
+  concurrent analysts — that needs a separate inference host.
 # Production deployment (verified against the live stand)
 
 Public stand: `https://aeza-sentinel.pixel-minds.ru/` → `84.201.150.227`
@@ -273,3 +463,20 @@ not N+1 or missing indexes.
 Running the Docker stack plus load tests in the agent sandbox has repeatedly
 triggered environment restarts. Keep sweeps short and bounded; capture each
 result as you go rather than relying on a long single run.
+
+## AI Analyst: docs must be in the image
+`backend/Dockerfile` copies `docs/` and prebuilds the RAG index
+(`python -m backend.app.ai.rag`). Without that step the retriever indexes 0
+chunks, `/api/v1/ai/status` still reports `ready`, and every answer loses its
+grounding silently. If you move `docs/` or change `AEZA_AI_DOCS_PATH`, update the
+Dockerfile in the same change.
+
+The Analyst reads `AEZA_AI_*`; the aggregate assistant (`/api/v1/insights/ai`)
+reads the older `AEZA_LLM_*`/`AEZA_OLLAMA_*` pair. `docker-compose.yml` passes
+both through, so enabling one does not enable the other.
+
+Verified locally against a real model: Ollama `qwen2.5:7b` on the host, API in
+Compose, `AEZA_AI_BASE_URL=http://172.18.0.1:11434`. `/api/v1/ai/status` →
+`ready`, 691 chunks; `POST /api/v1/ai/customers/{id}/explain` returned a grounded
+answer. CPU inference is slow (~20 s short prompt, up to ~3 min with full RAG
+context), so keep `AEZA_AI_MAX_CONCURRENCY=1` and expect the UI to wait.

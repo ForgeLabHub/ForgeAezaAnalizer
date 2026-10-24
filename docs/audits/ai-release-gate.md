@@ -124,46 +124,41 @@ cd frontend && npm install && npm run dev
   model.
 - Behaviour under concurrent AI requests (`max_concurrency` default 1).
 
-## 8. Push status (attempted, blocked)
+## 8. Push status (DONE)
 
-The owner asked for the work to be pushed to `main`. It could not be pushed, and
-this is a permissions blocker, not a code problem. Evidence:
+The work was published to `main` once a credential with write access was
+supplied by the owner.
 
 ```
 $ git push https://<token>@github.com/Pixelminds-hub/aeza-analizer.git main
-remote: Permission to Pixelminds-hub/aeza-analizer.git denied to Pavel1778.
-fatal: unable to access ...: The requested URL returned error: 403
-
-$ curl -X POST .../git/refs -d '{"ref":"refs/heads/oh-write-probe",...}'
-{"message":"Resource not accessible by personal access token","status":"403"}
+To https://github.com/Pixelminds-hub/aeza-analizer.git
+   534ca6c..c6bbff1  main -> main
 ```
 
-- Both available credentials (`GITHUB_TOKEN` = `ghu_…`, `GITHUB_PERSONAL_ACCESS_TOKEN`)
-  authenticate as **`Pavel1778`**; the repository owner is `Pixelminds-hub`.
-- `GET /repos/.../permissions` reports `push: true` for that token, but every
-  actual write — `git push`, and creating a ref through the API — returns 403.
-  The read-only `permissions` field does not reflect the fine-grained
-  `Contents: write` grant that pushing needs.
-- The credential helper resolves to the same `Pavel1778` token; bypassing the
-  helper, using `x-access-token`/`oauth2` prefixes, and the `gh` helper all fail
-  identically. No SSH key exists in this environment and the `ssh` binary is
-  absent.
+Verified afterwards:
 
-What is needed: a token with **Contents: write** on
-`Pixelminds-hub/aeza-analizer` (or a collaborator invitation for the pushing
-account), then:
+| Check | Result |
+| --- | --- |
+| `git ls-remote origin refs/heads/main` | `c6bbff19a890540c2b3c47b31d87909e420bc25e` |
+| local `HEAD` vs `origin/main` | identical, 0 ahead / 0 behind |
+| fast-forward | yes — `origin/main` was an ancestor, no history rewrite |
+| force push | none |
+| token in `.git/config` | none |
+| token in tracked files | none (checked with `git grep`) |
+| extra branches pushed | none |
 
-```bash
-git push https://<TOKEN>@github.com/Pixelminds-hub/aeza-analizer.git main
-```
+### Why the earlier attempts failed
 
-Until then the three commits below exist only in this working copy:
+Both credentials available to the agent authenticate as **`Pavel1778`**, while
+the repository is owned by **`Pixelminds-hub`**:
 
-```
-3c02d45 docs: add the AI release gate and align the timeout default
-c83d043 chore: drop the scratch vite config accidentally committed
-5525838 fix: size the AI timeout for a cold CPU-only call
-```
+- `GITHUB_TOKEN` (`ghu_…`) is a GitHub App installation token scoped to
+  `Pavel1778`'s own repositories. It *can* create refs there (verified: 201) but
+  returns `403 Resource not accessible by integration` on `aeza-analizer`.
+- `GITHUB_PERSONAL_ACCESS_TOKEN` (`github_pat_…`) is a fine-grained token with no
+  write grant; every write returned `403 Resource not accessible by personal
+  access token`, even on `Pavel1778`'s own repositories.
 
-`origin/main` is still at `534ca6c`, which already contains the AI Analyst
-backend; the timeout fix and this document are the delta.
+The classic token belonging to the repository owner has full `repo` scope and
+`admin` on the repository, and the push succeeded with it. It was used only for
+this one command and was not stored anywhere.

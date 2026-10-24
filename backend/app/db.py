@@ -148,6 +148,80 @@ class ActionRow(Base):
     __table_args__ = (Index("analyzer_actions_customer_idx", "customer_id", "created_at"),)
 
 
+class TelegramLinkCodeRow(Base):
+    """A one-time code that binds a Telegram chat to a Sentinel account.
+
+    Only a **hash** of the code is stored, so a database leak does not yield
+    usable codes. The row is consumed atomically (``consumed_at`` set once) and
+    expires quickly; ``attempts`` bounds guessing from the bot side.
+    """
+
+    __tablename__ = "analyzer_telegram_link_codes"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    #: SHA-256 hex of the code. The plaintext is shown to the user once.
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    #: The Sentinel account the code was issued to.
+    user_email: Mapped[str] = mapped_column(String(320), index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    #: Failed redemption attempts against this code, to bound brute force.
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class TelegramLinkRow(Base):
+    """A confirmed binding between one Telegram chat and one Sentinel account.
+
+    ``chat_id`` is unique: a chat belongs to exactly one account, so a second
+    link attempt cannot silently steal an existing binding. ``user_email`` is
+    indexed so a user can see and revoke their own links.
+    """
+
+    __tablename__ = "analyzer_telegram_links"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    chat_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_email: Mapped[str] = mapped_column(String(320), index=True)
+    #: Optional Telegram username, for display only — never used for identity.
+    username: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+
+class TelegramSubscriptionRow(Base):
+    """Notification preferences for one linked chat.
+
+    One row per chat. ``thresholds`` holds numeric settings (risk score, money)
+    as JSON so a new threshold does not need a schema change; the service
+    validates the keys it understands.
+    """
+
+    __tablename__ = "analyzer_telegram_subscriptions"
+    chat_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    #: Notification kinds enabled, e.g. ["high_risk", "exposure_jump", ...].
+    kinds: Mapped[list] = mapped_column(JSON, default=list)
+    thresholds: Mapped[dict] = mapped_column(JSON, default=dict)
+    daily_digest: Mapped[bool] = mapped_column(default=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class TelegramDeliveryRow(Base):
+    """Delivery log and deduplication record.
+
+    ``dedupe_key`` is unique so the same event cannot be delivered twice even if
+    two workers evaluate it concurrently; the insert is the claim. Rows are also
+    the audit trail of what was sent, without storing the message body.
+    """
+
+    __tablename__ = "analyzer_telegram_deliveries"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    dedupe_key: Mapped[str] = mapped_column(String(200), unique=True, index=True)
+    chat_id: Mapped[str] = mapped_column(String(64), index=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(16))
+    detail: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
+
+
 ANALYTICS_TABLES = (
     CurrentRow.__table__, SourceRow.__table__, ModelRow.__table__, AnalysisRow.__table__,
     CustomerRow.__table__, ServiceIndexRow.__table__, ObservationRow.__table__, AuditRow.__table__,
@@ -157,6 +231,13 @@ ANALYTICS_TABLES = (
     RecommendationStatusRow.__table__,
     # Human-confirmed retention actions, created by the same initialise() call.
     ActionRow.__table__,
+    # Telegram integration state. Grouped here for the same reason: it is
+    # created by initialise() at startup and is keyed by the account it belongs
+    # to, never by an analysis generation.
+    TelegramLinkCodeRow.__table__,
+    TelegramLinkRow.__table__,
+    TelegramSubscriptionRow.__table__,
+    TelegramDeliveryRow.__table__,
 )
 class Database:
     def __init__(self, url: str):

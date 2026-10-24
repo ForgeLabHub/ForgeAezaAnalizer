@@ -26,7 +26,7 @@ jobs:
           pip install -r requirements.txt
       - name: Run backend suite
         run: python -m pytest backend/tests -q
-      - name: Run root suite
+      - name: Run root suite (parts A + C)
         run: python -m pytest tests -q
 
   frontend:
@@ -45,7 +45,26 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
       - name: Typecheck and build
-        run: npm run build
+        run: npx tsc -b && npm run build
+
+  compose:
+    name: Compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose with required secrets
+        env:
+          POSTGRES_PASSWORD: ci-password
+          AEZA_JWT_SECRET: ci-secret-value-not-for-production
+          AEZA_ADMIN_EMAIL: ci@example.test
+          AEZA_ADMIN_PASSWORD: ci-password
+        run: docker compose config >/dev/null
+      - name: Compose must fail closed without secrets
+        run: |
+          if docker compose config >/dev/null 2>&1; then
+            echo "Compose started without required secrets; it must fail closed." >&2
+            exit 1
+          fi
 
   docs:
     name: Documentation consistency

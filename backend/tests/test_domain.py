@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
+import re
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
 from app.domain.money import MoneyError, cents_to_eur, eur_to_cents, validate_non_negative_cents
 from app.domain.risk import (
     DEFAULT_WEIGHTS,
+    DEPRECATED_KEYS,
     FACTOR_BY_KEY,
     RiskConfigError,
     RiskSettings,
+    canonical_weights,
     classify,
     compute_customer_risk,
     compute_service_risk,
@@ -562,3 +567,50 @@ def test_factor_metadata_covers_every_factor():
     assert set(FACTOR_BY_KEY) == set(DEFAULT_WEIGHTS)
     for definition in FACTOR_BY_KEY.values():
         assert definition.label and definition.description and definition.normalization
+
+
+
+
+def test_every_factor_feature_stays_in_unit_range():
+    """No live factor may report a value outside [0, 1]."""
+    service = Service.model_validate(_service())
+    result = compute_service_risk(
+        service=service,
+        account=_account(),
+        transactions=[_tx(1, "not_performed")],
+        settings=RiskSettings(),
+        now=NOW,
+    )
+    for factor in result.factors:
+        if factor.available:
+            assert 0.0 <= factor.value <= 1.0, factor.key
+
+
+
+
+def test_canonical_weights_is_pure_and_keeps_unknown_keys_out_of_the_sum():
+    assert canonical_weights({"failed_renewals": 9.0, "expiry_proximity": 3.0}) == {
+        "failed_renewals": 0.0,
+        "expiry_proximity": 3.0,
+    }
+
+
+
+
+def test_bundled_seed_defaults_match_code_defaults():
+    """The seed's advertised defaults must equal the code's.
+
+    The seeded settings row is what a fresh install serves before anyone edits
+    a weight.  If it disagrees with :data:`DEFAULT_WEIGHTS`, resetting the model
+    silently changes the baseline the operator was just looking at.
+    """
+    seed = Path(__file__).resolve().parents[2] / "db" / "analytics_seed.sql"
+    payload = json.loads(
+        re.search(r"'(\{[^']*\"weights\"[^']*\})'::json", seed.read_text(encoding="utf-8")).group(1)
+    )
+    assert payload["weights"] == pytest.approx(DEFAULT_WEIGHTS)
+    assert payload["lowMax"] == RiskSettings().low_max
+    assert payload["mediumMax"] == RiskSettings().medium_max
+    # Omitting this field would deserialise as null ("whole snapshot") and make
+    # the seeded baseline differ from a reset model.
+    assert payload["failedRenewalWindowDays"] == RiskSettings().failed_renewal_window_days
