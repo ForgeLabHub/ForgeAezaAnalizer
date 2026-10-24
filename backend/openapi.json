@@ -2020,6 +2020,91 @@
         }
       }
     },
+    "/api/v1/insights/ai": {
+      "post": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Ответ на вопрос по агрегатам расчёта с помощью локальной модели",
+        "description": "Answer a portfolio question from the published aggregates.\n\nRead-only: the model receives only aggregated figures from the published\ncalculation and the data-quality summary. Customer e-mails, individual\nrecords, the raw snapshot, the renewal list and every credential are never\nsent. The model narrates; it never computes or writes.\n\nFailure is honest: a disabled, unreachable or malformed provider returns\n**503**, and nothing is replaced by a canned answer. A response that\ninvents a number is rejected as ungrounded.",
+        "operationId": "ai_question_api_v1_insights_ai_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiQuestion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/export/customers.csv": {
       "get": {
         "tags": [
@@ -2460,6 +2545,23 @@
           "email"
         ],
         "title": "Account"
+      },
+      "AiQuestion": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 3,
+            "title": "Question"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "AiQuestion",
+        "description": "One analyst question about the published aggregates.\n\n``extra=\"forbid\"`` keeps the schema closed, so a caller cannot smuggle\nfields (settings, a snapshot, a provider URL) into the request. The length\nbound stops an unbounded prompt from reaching the model."
       },
       "AskRequest": {
         "properties": {

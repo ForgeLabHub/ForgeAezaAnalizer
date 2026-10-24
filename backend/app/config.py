@@ -43,12 +43,22 @@ class Settings:
     # --- Local LLM (Ollama) ---------------------------------------------------
     # Disabled by default: an unavailable model must never be presented as if it
     # had answered. The provider URL is configuration, never a hardcoded host.
+    #
+    # Two env-var spellings are accepted for the same provider so the AI layer
+    # has a single source of truth: AEZA_OLLAMA_* wins, AEZA_LLM_* is the older
+    # alias and still works. The default host is the address Ollama is reachable
+    # at from inside the Compose network (the Docker bridge gateway).
     llm_enabled: bool = field(default_factory=lambda: flag("AEZA_LLM_ENABLED", False))
-    llm_base_url: str = field(default_factory=lambda: os.getenv("AEZA_LLM_BASE_URL", "http://127.0.0.1:11434"))
-    llm_model: str = field(default_factory=lambda: os.getenv("AEZA_LLM_MODEL", "qwen2.5:7b"))
-    llm_timeout_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_LLM_TIMEOUT_SECONDS", "60")))
-    llm_max_tokens: int = field(default_factory=lambda: int(os.getenv("AEZA_LLM_MAX_TOKENS", "700")))
-    llm_temperature: float = field(default_factory=lambda: float(os.getenv("AEZA_LLM_TEMPERATURE", "0.2")))
+    llm_base_url: str = field(default_factory=lambda: os.getenv("AEZA_OLLAMA_URL")
+                              or os.getenv("AEZA_LLM_BASE_URL", "http://172.18.0.1:11434"))
+    llm_model: str = field(default_factory=lambda: os.getenv("AEZA_OLLAMA_MODEL")
+                           or os.getenv("AEZA_LLM_MODEL", "qwen2.5:7b"))
+    llm_timeout_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_OLLAMA_TIMEOUT_SECONDS")
+                                                                 or os.getenv("AEZA_LLM_TIMEOUT_SECONDS", "90")))
+    llm_max_tokens: int = field(default_factory=lambda: int(os.getenv("AEZA_OLLAMA_MAX_TOKENS")
+                                                            or os.getenv("AEZA_LLM_MAX_TOKENS", "700")))
+    llm_temperature: float = field(default_factory=lambda: float(os.getenv("AEZA_OLLAMA_TEMPERATURE")
+                                                                 or os.getenv("AEZA_LLM_TEMPERATURE", "0.2")))
     cors_origins: tuple[str, ...] = field(default_factory=lambda: tuple(
         origin.strip() for origin in os.getenv("AEZA_CORS_ORIGINS", "http://localhost:8080,http://localhost:5173").split(",") if origin.strip()))
     api_prefix: str = "/api/v1"
