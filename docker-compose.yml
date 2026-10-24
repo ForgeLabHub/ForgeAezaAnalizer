@@ -36,13 +36,18 @@ services:
       # The SPA is served through the same nginx origin, so the demo needs no
       # wildcard. Widen this only if you host the UI elsewhere.
       AEZA_CORS_ORIGINS: ${AEZA_CORS_ORIGINS:-http://localhost:8080}
-      # Local LLM. Off by default. host.docker.internal reaches an Ollama running
-      # on the host machine, which is where the owner started qwen2.5:7b; inside
-      # a plain Linux container 127.0.0.1 would be the container itself.
+      # Local LLM (Ollama). Off by default.
+      #
+      # AEZA_OLLAMA_URL is the canonical name and wins over the older
+      # AEZA_LLM_BASE_URL alias; both are honoured so an existing .env keeps
+      # working. The default is the Docker bridge gateway, which is where an
+      # Ollama running on the host is reachable from inside the container
+      # (172.18.0.1 on the default compose bridge; host.docker.internal also
+      # resolves via the extra_hosts entry below).
       AEZA_LLM_ENABLED: ${AEZA_LLM_ENABLED:-0}
-      AEZA_LLM_BASE_URL: ${AEZA_LLM_BASE_URL:-http://host.docker.internal:11434}
-      AEZA_LLM_MODEL: ${AEZA_LLM_MODEL:-qwen2.5:7b}
-      AEZA_LLM_TIMEOUT_SECONDS: ${AEZA_LLM_TIMEOUT_SECONDS:-60}
+      AEZA_OLLAMA_URL: ${AEZA_OLLAMA_URL:-http://172.18.0.1:11434}
+      AEZA_OLLAMA_MODEL: ${AEZA_OLLAMA_MODEL:-qwen2.5:7b}
+      AEZA_OLLAMA_TIMEOUT_SECONDS: ${AEZA_OLLAMA_TIMEOUT_SECONDS:-90}
       AEZA_LLM_MAX_TOKENS: ${AEZA_LLM_MAX_TOKENS:-700}
       AEZA_LLM_TEMPERATURE: ${AEZA_LLM_TEMPERATURE:-0.2}
     depends_on:

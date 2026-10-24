@@ -498,10 +498,10 @@ docs/             документация по данным, модели, им
 | `AEZA_SEED_DEMO_DATA` | `0` | Загружать JSON-снимок при пустой БД; Compose использует SQL seed |
 | `AEZA_AS_OF` | `2026-10-19T15:00:00+00:00` | Опорный момент расчёта; `now` — по стенным часам |
 | `AEZA_CORS_ORIGINS` | `http://localhost:8080,http://localhost:5173` | Разрешённые источники через запятую; `*` — только для демонстрации |
-| `AEZA_LLM_ENABLED` | `0` | Включить локальную ИИ-модель (Ollama). При `0` панель ИИ показывает пояснение и **не** предлагает кнопку |
-| `AEZA_LLM_BASE_URL` | `http://127.0.0.1:11434` | Адрес HTTP API Ollama; в Compose по умолчанию `host.docker.internal:11434` |
-| `AEZA_LLM_MODEL` | `qwen2.5:7b` | Имя модели Ollama |
-| `AEZA_LLM_TIMEOUT_SECONDS` | `60` | Таймаут запроса к модели |
+| `AEZA_LLM_ENABLED` | `0` | Включить локальную ИИ-модель (Ollama). При `0` ИИ-эндпоинты отвечают 503 и **не** предлагают кнопку |
+| `AEZA_OLLAMA_URL` | `http://172.18.0.1:11434` | Адрес HTTP API Ollama (каноническое имя). Алиас `AEZA_LLM_BASE_URL` тоже поддерживается |
+| `AEZA_OLLAMA_MODEL` | `qwen2.5:7b` | Имя модели Ollama (алиас `AEZA_LLM_MODEL`) |
+| `AEZA_OLLAMA_TIMEOUT_SECONDS` | `90` | Таймаут запроса к модели (алиас `AEZA_LLM_TIMEOUT_SECONDS`) |
 | `AEZA_LLM_MAX_TOKENS` | `700` | Ограничение длины ответа |
 | `AEZA_LLM_TEMPERATURE` | `0.2` | Температура генерации |
 
