@@ -1,35 +1,42 @@
-"""Outbound e-mail through the SMTP.BZ HTTP API.
+"""Outbound e-mail for the product: Yandex Cloud Postbox or the SMTP.BZ HTTP API.
 
 This is the single place in the product that talks to an e-mail provider. It is
 deliberately a thin, explicit client: the analytics engine never sends mail, and
 nothing here recomputes risk, money or scores.
 
-Contract (from the provider's own Swagger document, ``api.smtp.bz`` base path
-``/v1``):
+Two transports sit behind one contract, selected by ``AEZA_EMAIL_PROVIDER``
+(empty = auto: Postbox when configured, else SMTP.BZ). The choice is resolved
+once in :attr:`Settings.active_email_provider`; there is no runtime failover, so
+a confirmation can only ever come from the provider that was actually used.
 
-* ``POST https://api.smtp.bz/v1/smtp/send``
-* the API key travels in the ``Authorization`` header, verbatim — no ``Bearer``
-  prefix;
-* the body carries ``from``, ``name``, ``subject``, ``to`` and ``html`` (the
-  provider accepts both ``application/json`` and ``multipart/form-data``; JSON is
-  used here).
+* **Postbox** (Yandex Cloud, managed): SMTP to ``postbox.cloud.yandex.net``,
+  implicit TLS on 465 or STARTTLS on 587. The API key id is the username and its
+  secret the password; the key must carry the ``yc.postbox.send`` scope.
+* **SMTP.BZ**: ``POST https://api.smtp.bz/v1/smtp/send``; the API key travels in
+  the ``Authorization`` header verbatim (no ``Bearer`` prefix); the JSON body
+  carries ``from``, ``name``, ``subject``, ``to`` and ``html``.
 
 Rules this module enforces:
 
-1. **The key is never echoed.** It is read from configuration, placed in the
-   request header and never logged, returned or embedded in an error message.
+1. **No secret is ever echoed.** Credentials are read from configuration, placed
+   in the transport and never logged, returned or embedded in an error message.
 2. **A success is a confirmed success.** A non-2xx answer, an unreadable body, a
-   timeout or a transport failure all raise; the caller is never told a letter
-   went out when the provider did not accept it.
-3. **Absence is honest.** With no key configured the module raises
+   timeout, a transport failure or an SMTP refusal all raise; the caller is never
+   told a letter went out when the provider did not accept it.
+3. **Absence is honest.** With no provider configured the module raises
    :class:`EmailDisabled` (mapped to ``503``), exactly like the optional AI
    surfaces, so the rest of the product keeps working.
 """
 
 from __future__ import annotations
 
+import html as html_lib
 import re
-from dataclasses import dataclass
+import smtplib
+import ssl
+from dataclasses import dataclass, replace
+from email.message import EmailMessage
+from email.utils import formataddr, make_msgid
 from typing import Any
 
 import httpx
@@ -182,33 +189,40 @@ def _interpret(response: httpx.Response) -> EmailResult:
     return EmailResult(accepted=True, message_id=_extract_message_id(payload), status_code=status)
 
 
-def send_email(
-    settings: Settings,
-    *,
-    to: str,
-    subject: str,
-    html: str,
-    text: str | None = None,
-    to_name: str | None = None,
-    transport: httpx.BaseTransport | None = None,
-) -> EmailResult:
-    """Send one transactional letter and return the provider's confirmation.
-
-    Raises :class:`EmailDisabled` when unconfigured, :class:`EmailRejected` when
-    the provider refuses the message, and :class:`EmailUnavailable` when it
-    cannot be reached. The API key is only ever placed in the request header.
-    """
-
-    if not settings.email_configured:
-        raise EmailDisabled("Отправка почты не настроена (задайте SMTP_BZ_API_KEY и SMTP_BZ_FROM_EMAIL)")
+def _validate_message(settings: Settings, *, to: str, subject: str, html: str) -> tuple[str, str, str]:
+    """Validate the parts common to every transport and return (to, from, subject)."""
 
     recipient = _check_address(to, "to")
-    sender = _check_address(settings.smtp_bz_from_email, "from")
+    sender = _check_address(_from_address(settings), "from")
     checked_subject = _check_header_value((subject or "").strip(), "subject")
     if not checked_subject:
         raise EmailRejected("Тема письма не может быть пустой")
     if not (html or "").strip():
         raise EmailRejected("HTML-версия письма не может быть пустой")
+    return recipient, sender, checked_subject
+
+
+def _from_address(settings: Settings) -> str:
+    return settings.postbox_from_email if settings.active_email_provider == "postbox" else settings.smtp_bz_from_email
+
+
+def _from_name(settings: Settings) -> str:
+    return settings.postbox_from_name if settings.active_email_provider == "postbox" else settings.smtp_bz_from_name
+
+
+def _send_via_smtp_bz(
+    settings: Settings,
+    *,
+    to: str,
+    subject: str,
+    html: str,
+    text: str | None,
+    to_name: str | None,
+    transport: httpx.BaseTransport | None,
+) -> EmailResult:
+    """Send through the SMTP.BZ HTTP API. The key only ever travels in a header."""
+
+    recipient, sender, checked_subject = _validate_message(settings, to=to, subject=subject, html=html)
 
     payload: dict[str, Any] = {
         "from": sender,
@@ -240,51 +254,204 @@ def send_email(
     except httpx.HTTPError as exc:
         raise EmailUnavailable("SMTP.BZ недоступен") from exc
 
-    return _interpret(response)
+    result = _interpret(response)
+    return replace(result, provider="smtp.bz")
+
+
+def _build_message(sender: str, sender_name: str, to: str, to_name: str | None,
+                   subject: str, html: str, text: str | None) -> EmailMessage:
+    message = EmailMessage()
+    message["From"] = formataddr((sender_name, sender)) if sender_name else sender
+    message["To"] = formataddr((to_name, to)) if to_name else to
+    message["Subject"] = subject
+    message["Message-ID"] = make_msgid(domain=sender.split("@", 1)[1])
+    message.set_content(text or _html_to_text(html))
+    message.add_alternative(html, subtype="html")
+    return message
+
+
+def _html_to_text(html: str) -> str:
+    """A minimal, dependency-free text fallback: strip tags, unescape entities."""
+
+    without_tags = re.sub(r"<[^>]+>", " ", html)
+    return re.sub(r"\s+", " ", html_lib.unescape(without_tags)).strip()
+
+
+def _send_via_postbox(
+    settings: Settings,
+    *,
+    to: str,
+    subject: str,
+    html: str,
+    text: str | None,
+    to_name: str | None,
+    smtp_factory: Any | None,
+    ssl_context: ssl.SSLContext | None,
+) -> EmailResult:
+    """Send through Yandex Cloud Postbox over SMTP (implicit TLS or STARTTLS).
+
+    The API key id is the username and its secret is the password; both are read
+    from configuration and never logged. A returned ``250`` from the server's
+    ``DATA`` reply *is* the provider's acceptance — a refusal raises instead, so
+    the caller is never told a letter went out when it did not.
+    """
+
+    recipient, sender, checked_subject = _validate_message(settings, to=to, subject=subject, html=html)
+    message = _build_message(sender, settings.postbox_from_name, recipient, to_name,
+                             checked_subject, html, text)
+
+    context = ssl_context if ssl_context is not None else ssl.create_default_context()
+    connect = smtp_factory or smtplib.SMTP_SSL
+    try:
+        if settings.postbox_port == 465:
+            client = connect(settings.postbox_host, settings.postbox_port,
+                             timeout=settings.postbox_timeout_seconds, context=context)
+        else:
+            client = connect(settings.postbox_host, settings.postbox_port,
+                             timeout=settings.postbox_timeout_seconds)
+    except (smtplib.SMTPException, OSError, ssl.SSLError) as exc:
+        raise EmailUnavailable("Postbox недоступен") from exc
+
+    try:
+        if settings.postbox_port == 587:
+            try:
+                client.starttls(context=context)
+            except (smtplib.SMTPException, ssl.SSLError) as exc:
+                raise EmailUnavailable("Postbox отклонил STARTTLS") from exc
+        try:
+            client.login(settings.postbox_username, settings.postbox_password)
+        except smtplib.SMTPAuthenticationError as exc:
+            raise EmailRejected("Postbox отклонил ключ API (проверьте POSTBOX_SMTP_USERNAME/PASSWORD)") from exc
+        except smtplib.SMTPException as exc:
+            raise EmailUnavailable("Postbox не принял аутентификацию") from exc
+        try:
+            client.send_message(message)
+        except smtplib.SMTPRecipientsRefused as exc:
+            raise EmailRejected(f"Postbox отклонил получателя ({len(exc.recipients)} адрес(ов))") from exc
+        except smtplib.SMTPSenderRefused as exc:
+            # The classic unverified-domain refusal lives here.
+            raise EmailRejected(f"Postbox отклонил отправителя: {exc.smtp_error!r}") from exc
+        except smtplib.SMTPDataError as exc:
+            raise EmailRejected(f"Postbox отклонил письмо (SMTP {exc.smtp_code})") from exc
+        except smtplib.SMTPException as exc:
+            raise EmailUnavailable("Postbox не принял письмо") from exc
+    finally:
+        try:
+            client.quit()
+        except (smtplib.SMTPException, OSError):
+            pass
+
+    return EmailResult(accepted=True, message_id=message["Message-ID"], status_code=250, provider="postbox")
+
+
+def send_email(
+    settings: Settings,
+    *,
+    to: str,
+    subject: str,
+    html: str,
+    text: str | None = None,
+    to_name: str | None = None,
+    transport: httpx.BaseTransport | None = None,
+    smtp_factory: Any | None = None,
+    ssl_context: ssl.SSLContext | None = None,
+) -> EmailResult:
+    """Send one transactional letter through the active provider.
+
+    Raises :class:`EmailDisabled` when no provider is configured,
+    :class:`EmailRejected` when the provider refuses the message, and
+    :class:`EmailUnavailable` when it cannot be reached. Credentials are only
+    ever placed in the transport, never in a result or an error message.
+    """
+
+    provider = settings.active_email_provider
+    if provider == "postbox":
+        return _send_via_postbox(settings, to=to, subject=subject, html=html, text=text,
+                                 to_name=to_name, smtp_factory=smtp_factory, ssl_context=ssl_context)
+    if provider == "smtp.bz":
+        return _send_via_smtp_bz(settings, to=to, subject=subject, html=html, text=text,
+                                 to_name=to_name, transport=transport)
+    raise EmailDisabled(
+        "Отправка почты не настроена: задайте Postbox (POSTBOX_SMTP_USERNAME, "
+        "POSTBOX_SMTP_PASSWORD, POSTBOX_FROM_EMAIL) или SMTP.BZ (SMTP_BZ_API_KEY, SMTP_BZ_FROM_EMAIL)")
 
 
 def describe(settings: Settings) -> dict[str, Any]:
-    """Configuration status for operators. Never includes the API key."""
+    """Configuration status for operators. Never includes a key or a password."""
 
-    return {
+    provider = settings.active_email_provider
+    base: dict[str, Any] = {
         "configured": settings.email_configured,
-        "provider": "smtp.bz",
-        "apiUrl": settings.smtp_bz_api_url,
-        "fromEmail": settings.smtp_bz_from_email or None,
-        "fromName": settings.smtp_bz_from_name or None,
-        "timeoutSeconds": settings.smtp_bz_timeout_seconds,
-        "keyPresent": bool(settings.smtp_bz_api_key),
-        "requirements": (
-            "Адрес отправителя должен принадлежать домену, верифицированному в панели SMTP.BZ "
-            "(раздел «Домены отправителя»), а исходящий IP сервера — быть в разрешённом списке "
-            "SMTP.BZ. Иначе провайдер отклонит отправку."
-        ),
+        "provider": provider or "none",
+        "requestedProvider": settings.email_provider or "auto",
+        "fromEmail": _from_address(settings) or None,
+        "fromName": _from_name(settings) or None,
     }
+    if provider == "postbox":
+        base.update({
+            "smtpHost": settings.postbox_host,
+            "smtpPort": settings.postbox_port,
+            "encryption": "TLS" if settings.postbox_port == 465 else "STARTTLS",
+            "timeoutSeconds": settings.postbox_timeout_seconds,
+            "keyPresent": bool(settings.postbox_username and settings.postbox_password),
+            "requirements": (
+                "Адрес отправителя должен принадлежать домену, привязанному к Postbox, "
+                "а API-ключ — иметь область yc.postbox.send. Иначе сервер отклонит отправку."
+            ),
+        })
+    elif provider == "smtp.bz":
+        base.update({
+            "apiUrl": settings.smtp_bz_api_url,
+            "timeoutSeconds": settings.smtp_bz_timeout_seconds,
+            "keyPresent": bool(settings.smtp_bz_api_key),
+            "requirements": (
+                "Адрес отправителя должен принадлежать домену, верифицированному в панели SMTP.BZ "
+                "(раздел «Домены отправителя»), а исходящий IP сервера — быть в разрешённом списке "
+                "SMTP.BZ. Иначе провайдер отклонит отправку."
+            ),
+        })
+    else:
+        base.update({
+            "timeoutSeconds": None,
+            "keyPresent": False,
+            "requirements": (
+                "Почта выключена: не заданы учётные данные ни Postbox, ни SMTP.BZ. "
+                "Задайте POSTBOX_SMTP_USERNAME/POSTBOX_SMTP_PASSWORD/POSTBOX_FROM_EMAIL "
+                "или SMTP_BZ_API_KEY/SMTP_BZ_FROM_EMAIL."
+            ),
+        })
+    return base
 
 
 class SmtpBzEmailProvider:
-    """SMTP.BZ behind the Telegram flow's ``EmailProvider`` interface.
+
+    """The active e-mail transport behind the Telegram flow's ``EmailProvider``.
 
     ``TelegramService`` already calls ``email_provider.send_otp(...)`` and catches
     :class:`IntegrationNotConfigured` / :class:`DeliveryError`. This adapter
-    satisfies that contract so OTP can travel through SMTP.BZ, while keeping the
-    two responsibilities separate: this class owns the OTP *message*, the client
-    above owns the *transport*.
+    satisfies that contract so OTP can travel through whichever provider
+    :attr:`Settings.active_email_provider` selects (Postbox or SMTP.BZ), while
+    keeping the two responsibilities separate: this class owns the OTP *message*,
+    the client above owns the *transport*.
 
-    It is never wired in automatically. OTP e-mail stays disabled until the
-    partner contract is agreed and the integrator passes an instance into
-    ``create_app(email_provider=...)``.
+    The historical name is kept because it is referenced by the app wiring and
+    the tests; it is not specific to SMTP.BZ any more. When no provider is
+    configured it raises :class:`IntegrationNotConfigured` instead of pretending
+    to send, so OTP stays honestly disabled.
     """
 
-    def __init__(self, settings: Settings, *, transport: httpx.BaseTransport | None = None):
+    def __init__(self, settings: Settings, *, transport: httpx.BaseTransport | None = None,
+                 smtp_factory: Any | None = None, ssl_context: ssl.SSLContext | None = None):
         self._settings = settings
         self._transport = transport
+        self._smtp_factory = smtp_factory
+        self._ssl_context = ssl_context
 
     def send_otp(self, email: str, code: str, expires_in_seconds: int) -> None:
         if not self._settings.email_configured:
             # Maps to ``NotReadyError`` (503) in TelegramService, exactly as the
             # unconfigured stub does — no silent success.
-            raise IntegrationNotConfigured("SMTP.BZ не настроен для отправки OTP")
+            raise IntegrationNotConfigured("Почтовый провайдер не настроен для отправки OTP")
 
         minutes = max(1, int(expires_in_seconds) // 60)
         subject = "Aéza Sentinel — код подтверждения"
@@ -301,9 +468,10 @@ class SmtpBzEmailProvider:
         )
         try:
             send_email(self._settings, to=email, subject=subject, html=html, text=text,
-                       transport=self._transport)
+                       transport=self._transport, smtp_factory=self._smtp_factory,
+                       ssl_context=self._ssl_context)
         except EmailDisabled as exc:
-            raise IntegrationNotConfigured("SMTP.BZ не настроен для отправки OTP") from exc
+            raise IntegrationNotConfigured("Почтовый провайдер не настроен для отправки OTP") from exc
         except EmailError as exc:
             # The code itself is never placed in the exception text or a log line.
-            raise DeliveryError("Не удалось отправить код подтверждения через SMTP.BZ") from exc
+            raise DeliveryError("Не удалось отправить код подтверждения по почте") from exc
