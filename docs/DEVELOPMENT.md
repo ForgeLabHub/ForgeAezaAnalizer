@@ -1,94 +1,57 @@
 # Разработка
 
-## Окружение
+Основной локальный сценарий — полный стек через Docker Compose. Он поднимает PostgreSQL, FastAPI API и frontend на портах `8000` и `8080`.
 
-- Python **3.10+** (проверено на 3.13)
-- Зависимости: `requirements.txt`
-- Внешние сервисы не требуются
+## Требования
 
-```bash
-python -m venv .venv
-.venv/bin/pip install -r requirements.txt
+- Docker с поддержкой Compose
+- Python 3.12 для запуска тестов и вспомогательных скриптов
+- Node.js и npm для разработки frontend вне контейнера
+
+## Запуск приложения
+
+Из корня репозитория:
+
+```powershell
+Copy-Item .env.example .env
+docker compose up -d --build
 ```
 
-`run.sh` делает это автоматически.
+Перед запуском задайте в `.env` собственные `AEZA_JWT_SECRET` и `AEZA_ADMIN_PASSWORD`; для локального UI укажите `AEZA_CORS_ORIGINS=http://localhost:8080`. Полный список настроек и значения Compose описаны в [развёртывании](DEPLOYMENT.md).
 
-## Структура кода
+## Проверки
 
-```
-aeza_analyzer/
-  config.py            env-пути (ленивые свойства)
-  money.py             евроценты → евро
-  models.py            ORM-модели + UTCDateTime
-  db.py                engine/session, check_store(), StoreError
-  audit.py             профиль данных
-  cli.py               import / audit / serve
-  importer/
-    archive.py         безопасная распаковка
-    validation.py      валидация записей
-    loader.py          атомарная загрузка
-  analytics/
-    risk.py            факторы и скоринг
-    service.py         агрегация, выручка, dashboard
-  api/
-    app.py             эндпоинты
-    schemas.py         Pydantic-схемы
-  static/              SPA
-tests/                 pytest
+```powershell
+python -m pytest backend/tests/ -q
+python -m pytest tests/ -q
+python backend/scripts/check_docs.py
 ```
 
-## Соглашения
+Frontend:
 
-- **Деньги — только целые евроценты** внутри; евро на границе API.
-- **Неизвестное ≠ 0**: отсутствующие данные дают `None`, не `0`.
-- **Импорт атомарен**: одна транзакция, никаких частичных записей.
-- **Слои не пересекаются**: аналитика не знает про HTTP.
-- Типизация: аннотации типов на публичных функциях, `from __future__ import annotations`.
-- Комментарии — только там, где код неочевиден (инвариант, обход, компромисс).
-
-## Частые ошибки
-
-| Ошибка | Последствие | Как избежать |
-|---|---|---|
-| `from .config import settings` + reload | замороженные пути | `Settings` читает env лениво |
-| локальная переменная `service` в API | перекрывает сервис аналитики → 500 | не называть переменные `service` в обработчиках |
-| деление на `Σw` без проверки | `ZeroDivisionError` | `known_weight <= 0` → `unknown` |
-| сравнение naive/aware datetime | `TypeError` | всегда `UTCDateTime` |
-| конвертация `amount` в евро | смешение семантик | `amount` — не деньги |
-
-## Миграции
-
-Схема создаётся автоматически (`Base.metadata.create_all`). Отдельных
-миграций нет: проект использует один источник данных и пересоздаваемое
-хранилище. При смене схемы — удалить `data/aeza.sqlite` и переимпортировать.
-
-## Добавление фактора риска
-
-1. Добавить ключ и вес в `DEFAULT_WEIGHTS` (`analytics/risk.py`).
-2. Написать функцию-фактор, возвращающую `Factor`.
-3. Добавить её в список `raw` в `score_service`.
-4. Добавить заголовок в `FACTOR_TITLES`.
-5. Добавить тест в `tests/test_risk_model.py`.
-
-## Полезные команды
-
-```bash
-python -m aeza_analyzer.cli import          # импорт
-python -m aeza_analyzer.cli import --lenient  # импорт, пропуская плохие строки
-python -m aeza_analyzer.cli audit           # профиль данных
-python -m aeza_analyzer.cli serve --port 9000
-python -m pytest tests/ -q                  # тесты
-python -m pytest tests/test_risk_model.py -v
+```powershell
+cd frontend
+npm ci
+npm run build
 ```
 
-## Переменные окружения
+При ручном запуске API нужен PostgreSQL и полный набор настроек из `.env.example`: сам Python-процесс не загружает `.env`. Для обычной проверки интеграции используйте Compose.
 
-| Переменная | По умолчанию | Назначение |
-|---|---|---|
-| `AEZA_DATA_DIR` | `<root>/data` | каталог хранилища |
-| `AEZA_SOURCE_ZIP` | `<root>/датасет.zip` | исходный архив |
-| `AEZA_DATABASE_URL` | `sqlite+pysqlite:///<data>/aeza.sqlite` | переопределение хранилища |
-| `AEZA_HOST` / `AEZA_PORT` | `127.0.0.1` / `8000` | параметры `run.sh` |
-| `AEZA_VENV_DIR` | `<root>/.venv` | каталог venv для `run.sh` |
+## Структура
 
-Секретов проект не требует.
+- `backend/app/domain/` — правила расчёта и предметная логика.
+- `backend/app/api/` — HTTP-маршруты и сериализация.
+- `backend/app/ai/` — дополнительные AI-интерфейсы, выключены по умолчанию.
+- `frontend/src/` — React + TypeScript SPA.
+- `backend/tests/`, `tests/` — тесты backend-приложения и корневых компонентов.
+- `backend/scripts/` — утилиты загрузки снимка, проверки документации и ограниченного нагрузочного тестирования.
+
+## Практические правила
+
+- Храните денежные значения во внутренних расчётах в целых евроцентах.
+- Сохраняйте различие между состоянием услуги, завершёнными событиями и прогнозным риском.
+- Не описывайте score как вероятность или точность модели.
+- Не добавляйте локальные базы, секреты и результаты сборки в Git.
+- Перед тестами проверьте переменные `AEZA_*` в текущем shell: неожиданные значения меняют настройки тестового приложения.
+
+Сверяйте документацию и маршруты командой `python backend/scripts/check_docs.py`.
