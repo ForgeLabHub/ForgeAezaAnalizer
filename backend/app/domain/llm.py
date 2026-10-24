@@ -299,6 +299,7 @@ class OllamaClient:
             "model": self.settings.llm_model,
             "messages": messages,
             "stream": False,
+            "think": False,
             "options": {
                 "temperature": self.settings.llm_temperature,
                 "num_predict": self.settings.llm_max_tokens,
