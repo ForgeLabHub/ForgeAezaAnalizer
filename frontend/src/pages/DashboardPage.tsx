@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, api } from '../lib/api'
+import { useLiveGeneration } from '../lib/live'
 import type { Summary } from '../types'
 import {
   BarChart,
@@ -26,25 +27,33 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const load = useCallback(async () => {
+    setError(null)
+    try {
+      const data = await api.summary()
+      setSummary(data)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.detail : 'Не удалось загрузить сводку')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     let cancelled = false
-    async function load() {
+    async function first() {
       setLoading(true)
-      setError(null)
-      try {
-        const data = await api.summary()
-        if (!cancelled) setSummary(data)
-      } catch (err) {
-        if (!cancelled) setError(err instanceof ApiError ? err.detail : 'Не удалось загрузить сводку')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
+      if (!cancelled) await load()
     }
-    void load()
+    void first()
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [load])
+
+  // Re-fetch when the server publishes a new generation, so a coefficient
+  // change made elsewhere shows up here without a manual reload.
+  useLiveGeneration(load)
 
   if (loading) return <Loading label="Расчёт аналитики…" />
   if (error) return <ErrorBox>{error}</ErrorBox>
