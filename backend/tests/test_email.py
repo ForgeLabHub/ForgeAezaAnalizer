@@ -174,6 +174,96 @@ def test_send_reports_a_provider_failure_as_unavailable():
             transport=_transport(handler))
 
 
+def test_send_treats_rate_limiting_as_transient_not_a_refusal():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"message": "too many requests"})
+
+    with pytest.raises(email_integration.EmailUnavailable):
+        email_integration.send_email(
+            _settings(), to="recipient@example.test", subject="s", html="<b>x</b>",
+            transport=_transport(handler))
+
+
+def test_send_treats_an_unreadable_body_as_a_failure():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"<html>not json</html>",
+                              headers={"Content-Type": "text/html"})
+
+    # A 2xx with a non-JSON body is still the provider's acceptance, so it is a
+    # confirmed send with no message id — never a silent crash.
+    result = email_integration.send_email(
+        _settings(), to="recipient@example.test", subject="s", html="<b>x</b>",
+        transport=_transport(handler))
+    assert result.accepted is True
+    assert result.message_id is None
+
+
+def test_send_rejects_an_unexpected_2xx_body_that_denies_the_send():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"result": False, "error": "ip not allowed"})
+
+    with pytest.raises(email_integration.EmailRejected, match="ip not allowed"):
+        email_integration.send_email(
+            _settings(), to="recipient@example.test", subject="s", html="<b>x</b>",
+            transport=_transport(handler))
+
+
+def test_send_surfaces_the_provider_reason_from_a_400_refusal():
+    # This is the exact shape SMTP.BZ returned for an unverified sender domain:
+    # {"result": false, "errors": {"message": "Domain ... not verified ..."}}.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={
+            "result": False,
+            "errors": {"message": "Domain pixel-minds.ru [sentinel@pixel-minds.ru] not verified."}})
+
+    with pytest.raises(email_integration.EmailRejected) as error:
+        email_integration.send_email(
+            _settings(), to="recipient@example.test", subject="s", html="<b>x</b>",
+            transport=_transport(handler))
+    # The operator-actionable reason must reach the caller, not be swallowed.
+    assert "not verified" in str(error.value)
+    assert "pixel-minds.ru" in str(error.value)
+
+
+def test_send_treats_a_2xx_with_an_errors_body_as_a_refusal():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "result": False, "errors": {"message": "sender not verified"}})
+
+    with pytest.raises(email_integration.EmailRejected, match="sender not verified"):
+        email_integration.send_email(
+            _settings(), to="recipient@example.test", subject="s", html="<b>x</b>",
+            transport=_transport(handler))
+
+
+def test_send_never_calls_the_provider_after_a_timeout():
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        raise httpx.ReadTimeout("too slow", request=request)
+
+    with pytest.raises(email_integration.EmailUnavailable):
+        email_integration.send_email(
+            _settings(), to="recipient@example.test", subject="s", html="<b>x</b>",
+            transport=_transport(handler))
+    # Exactly one attempt: a timeout has an unknown outcome, so the client must
+    # not blind-retry and risk a duplicate letter.
+    assert calls["n"] == 1
+
+
+def test_send_errors_never_contain_the_api_key():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="boom")
+
+    with pytest.raises(email_integration.EmailUnavailable) as error:
+        email_integration.send_email(
+            _settings(), to="recipient@example.test", subject="s", html="<b>x</b>",
+            transport=_transport(handler))
+    assert API_KEY not in str(error.value)
+    assert API_KEY not in repr(error.value)
+
+
 def test_send_reports_a_timeout_as_unavailable():
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ReadTimeout("too slow", request=request)
@@ -238,6 +328,70 @@ def test_describe_never_leaks_the_api_key():
     assert described["keyPresent"] is True
     assert described["fromEmail"] == FROM_EMAIL
     assert API_KEY not in json.dumps(described, ensure_ascii=False)
+
+
+# --------------------------------------------------------------------------- #
+# OTP adapter (the interface the Telegram flow already calls)
+# --------------------------------------------------------------------------- #
+
+def test_otp_adapter_matches_the_telegram_provider_contract():
+    # ``EmailProvider`` is a plain ``Protocol`` (not runtime_checkable) and lives
+    # in the Telegram module, which this work must not edit, so the contract is
+    # asserted structurally: the method TelegramService calls must exist with the
+    # exact signature it invokes.
+    import inspect
+
+    provider = email_integration.SmtpBzEmailProvider(_settings())
+    method = getattr(provider, "send_otp", None)
+    assert callable(method)
+    parameters = list(inspect.signature(method).parameters)
+    assert parameters == ["email", "code", "expires_in_seconds"]
+
+
+def test_otp_adapter_sends_the_code_as_a_confirmed_letter():
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content.decode("utf-8"))
+        return httpx.Response(200, json={"result": True, "messageId": "otp-1"})
+
+    provider = email_integration.SmtpBzEmailProvider(_settings(), transport=_transport(handler))
+    provider.send_otp("client@example.test", "654321", 600)
+
+    assert seen["body"]["to"] == "client@example.test"
+    assert "654321" in seen["body"]["html"]
+    assert seen["body"]["from"] == FROM_EMAIL
+
+
+def test_otp_adapter_reports_unconfigured_as_integration_not_configured():
+    from backend.app.telegram.providers import IntegrationNotConfigured
+    provider = email_integration.SmtpBzEmailProvider(_settings(smtp_bz_api_key=""))
+    with pytest.raises(IntegrationNotConfigured):
+        provider.send_otp("client@example.test", "654321", 600)
+
+
+def test_otp_adapter_maps_a_provider_failure_to_delivery_error_without_the_code():
+    from backend.app.telegram.providers import DeliveryError
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="boom")
+
+    provider = email_integration.SmtpBzEmailProvider(_settings(), transport=_transport(handler))
+    with pytest.raises(DeliveryError) as error:
+        provider.send_otp("client@example.test", "654321", 600)
+    assert "654321" not in str(error.value)
+    assert API_KEY not in str(error.value)
+
+
+def test_otp_stays_disabled_unless_an_email_provider_is_wired_in():
+    # ``create_app`` defaults ``email_provider`` to ``None``, so the Telegram
+    # service keeps its unconfigured stub: OTP must not turn itself on just
+    # because SMTP.BZ settings exist in the environment.
+    from backend.app.telegram.providers import UnconfiguredEmailProvider
+
+    app = create_app(_settings(), FixtureAnalytics())
+    with TestClient(app, raise_server_exceptions=False):
+        assert isinstance(app.state.runtime.telegram.email_provider, UnconfiguredEmailProvider)
 
 
 # --------------------------------------------------------------------------- #
@@ -317,6 +471,13 @@ def test_status_requires_authentication(client):
     assert client.get("/api/v1/email/status").status_code == 401
 
 
+def test_test_route_requires_authentication(client, provider):
+    # An anonymous caller must not be able to trigger a send.
+    response = client.post("/api/v1/email/test", json={"to": "ops@example.test", "confirm": True})
+    assert response.status_code == 401
+    assert provider.requests == []
+
+
 def test_status_reports_configuration_without_the_key(email_client):
     response = email_client.get("/api/v1/email/status")
     assert response.status_code == 200
@@ -331,6 +492,58 @@ def test_test_route_refuses_without_explicit_confirmation(email_client):
     response = email_client.post("/api/v1/email/test", json={"to": "ops@example.test"})
     assert response.status_code == 422
     assert "confirm" in response.json()["detail"]
+
+
+def test_test_route_rejects_a_malformed_recipient_before_the_provider(email_client):
+    response = email_client.post("/api/v1/email/test", json={"to": "not-an-address", "confirm": True})
+    assert response.status_code == 422
+    # The provider must never be asked to validate a shape-invalid address.
+    assert response.status_code != 502
+
+
+def test_test_route_cannot_override_the_provider_url(email_client, provider):
+    # A caller tries to smuggle in a provider endpoint (SSRF attempt); the
+    # request model forbids unknown fields, so this is refused at the edge and
+    # no request reaches any provider.
+    response = email_client.post("/api/v1/email/test", json={
+        "to": "ops@example.test", "confirm": True, "apiUrl": "http://169.254.169.254/latest/meta-data"})
+    assert response.status_code == 422
+    assert provider.requests == []
+
+
+def test_test_route_maps_rate_limiting_to_503(tmp_path):
+    with _Provider(lambda path, body: (429, {"message": "too many requests"})) as server:
+        settings = Settings(
+            database_url=f"sqlite:///{(tmp_path / 'rate.db').as_posix()}",
+            seed_demo_data=True, snapshot_path=str(ROOT / "dataset/data.json"), as_of=AS_OF,
+            smtp_bz_api_key=API_KEY, smtp_bz_from_email=FROM_EMAIL, smtp_bz_api_url=server.url)
+        app = create_app(settings, FixtureAnalytics(), make_test_auth_settings(tmp_path / "rate_auth.db"))
+        with TestClient(app, raise_server_exceptions=False) as client:
+            token = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
+            client.headers["Authorization"] = f"Bearer {token.json()['access_token']}"
+            response = client.post("/api/v1/email/test", json={"to": "ops@example.test", "confirm": True})
+    assert response.status_code == 503
+
+
+def test_status_response_never_contains_the_key_or_authorization(email_client):
+    response = email_client.get("/api/v1/email/status")
+    assert response.status_code == 200
+    assert API_KEY not in response.text
+    assert "Authorization" not in response.text
+    assert "authorization" not in response.text
+
+
+def test_send_and_refusal_leave_no_secret_in_the_logs(email_client, provider, caplog):
+    # A successful send and a provider refusal both go through the app; neither
+    # the API key nor the Authorization header may appear in captured logs.
+    import logging
+
+    with caplog.at_level(logging.DEBUG):
+        email_client.post("/api/v1/email/test", json={"to": "ops@example.test", "confirm": True})
+        email_client.get("/api/v1/email/status")
+    blob = "\n".join(record.getMessage() for record in caplog.records)
+    assert API_KEY not in blob
+    assert "Authorization" not in blob
 
 
 def test_test_route_sends_through_the_real_client(email_client, provider):

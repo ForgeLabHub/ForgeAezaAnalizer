@@ -93,6 +93,18 @@ class Settings:
                 raise ValueError(f"{name} must be between 1 and {maximum}")
         if self.telegram_bot_enabled and (not self.telegram_bot_token or not self.telegram_webhook_secret):
             raise ValueError("Telegram bot requires AEZA_TELEGRAM_BOT_TOKEN and AEZA_TELEGRAM_WEBHOOK_SECRET")
+        # --- Outbound e-mail (SMTP.BZ) ---------------------------------------
+        # Restored after the Telegram merge dropped it: an out-of-range timeout,
+        # a plain-HTTP provider URL or a malformed sender must fail fast at
+        # startup rather than at the first send.
+        if not 1 <= self.smtp_bz_timeout_seconds <= 120:
+            raise ValueError("SMTP_BZ_TIMEOUT_SECONDS must be between 1 and 120")
+        if self.email_configured:
+            loopback = ("http://localhost", "http://127.0.0.1", "http://[::1]")
+            if not self.smtp_bz_api_url.startswith("https://") and not self.smtp_bz_api_url.startswith(loopback):
+                raise ValueError("SMTP_BZ_API_URL must use HTTPS; HTTP is allowed only on loopback")
+            if "@" not in self.smtp_bz_from_email:
+                raise ValueError("SMTP_BZ_FROM_EMAIL must be a valid e-mail address")
         if self.llm_enabled:
             if not self.llm_base_url.startswith(("http://", "https://")):
                 raise ValueError("AEZA_LLM_BASE_URL must be an http(s) URL")

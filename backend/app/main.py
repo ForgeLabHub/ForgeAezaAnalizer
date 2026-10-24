@@ -18,7 +18,7 @@ from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
 
 from core import ConflictError, Core, InvalidInput, NotReadyError, ResourceNotFoundError
-from backend.app.api import routes_actions, routes_ai, routes_analytics, routes_auth, routes_client, routes_customers, routes_export, routes_insights, routes_model, routes_source, routes_telegram
+from backend.app.api import routes_actions, routes_ai, routes_analytics, routes_auth, routes_client, routes_customers, routes_email, routes_export, routes_insights, routes_model, routes_source, routes_telegram
 from backend.app.api.deps import Runtime, RuntimeDep
 from backend.app.api.schemas import ErrorResponse
 from backend.app.ai.service import AIDisabled, AIService, AIUnavailable
@@ -237,6 +237,6 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
     for router in (routes_auth.router, routes_customers.router, routes_analytics.router,
                    routes_model.router, routes_source.router, routes_insights.router,
                    routes_export.router, routes_ai.router, routes_actions.router,
-                   routes_telegram.router, routes_client.router):
+                   routes_email.router, routes_telegram.router, routes_client.router):
         app.include_router(router, prefix=settings.api_prefix)
     return app
