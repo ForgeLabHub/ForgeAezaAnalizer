@@ -238,6 +238,15 @@ class TelegramService:
             return LinkStatus(linked=False, chat_id=None, username=None, linked_at=None)
         return LinkStatus(linked=True, chat_id=row.chat_id, username=row.username, linked_at=row.created_at)
 
+    def linked_chats(self) -> list[str]:
+        """Every chat with an active link. Used by the notification dispatchers."""
+
+        with self.database.sessions() as session:
+            rows = session.scalars(
+                select(TelegramLinkRow).where(TelegramLinkRow.revoked_at.is_(None))
+            ).all()
+        return [row.chat_id for row in rows]
+
     def owner_of(self, chat_id: str) -> str | None:
         """Return the account a chat is linked to, or ``None`` when unlinked."""
 

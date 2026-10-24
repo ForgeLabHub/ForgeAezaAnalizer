@@ -551,3 +551,178 @@ def test_customer_command_uses_the_engine_and_escapes_text(tmp_path):
     assert str(target["riskScore"]) in reply
     assert "\n" not in reply.split("Причины:")[0].replace("Клиент", "", 1).strip() or True
     assert bot._customer(lambda: analysis, settings, 10 ** 9).startswith("Клиент #")
+
+
+# --------------------------------------------------------------------------- #
+# Daily digest scheduler
+# --------------------------------------------------------------------------- #
+
+def test_digest_is_only_sent_after_the_configured_hour(service):
+    from datetime import datetime as _dt
+
+    svc, stub, settings, _ = service
+    svc.redeem_link_code(svc.create_link_code(EMAIL)["code"], "555")
+    svc.update_subscription("555", daily_digest=True)
+
+    early = _dt(2026, 10, 24, 5, 0, tzinfo=timezone.utc)
+    assert notifications.digest_due(settings, now=early) is False
+    late = _dt(2026, 10, 24, 12, 0, tzinfo=timezone.utc)
+    assert notifications.digest_due(settings, now=late) is True
+
+
+def test_digest_is_sent_once_per_day(tmp_path):
+    """Running the scheduler repeatedly must not spam the chat."""
+
+    from datetime import datetime as _dt
+
+    settings = _settings(tmp_path, telegram_digest_hour_utc=0)
+    database = Database(settings.database_url)
+    database.initialize()
+    stub = StubClient()
+    svc = TelegramService(database, settings, client=stub)
+    svc.redeem_link_code(svc.create_link_code(EMAIL)["code"], "555")
+    svc.update_subscription("555", daily_digest=True)
+
+    analysis = _analysis(settings)
+    moment = _dt(2026, 10, 24, 12, 0, tzinfo=timezone.utc)
+    first = notifications.dispatch_digests(svc, analysis, settings=settings, now=moment)
+    second = notifications.dispatch_digests(svc, analysis, settings=settings, now=moment)
+
+    assert first == [{"chatId": "555", "sent": True, "day": "2026-10-24"}]
+    assert second == [{"chatId": "555", "sent": False, "day": "2026-10-24"}]
+    assert len(stub.sent) == 1
+
+    # The next day is a new key and is delivered again.
+    tomorrow = _dt(2026, 10, 25, 12, 0, tzinfo=timezone.utc)
+    third = notifications.dispatch_digests(svc, analysis, settings=settings, now=tomorrow)
+    assert third[0]["sent"] is True
+    assert len(stub.sent) == 2
+
+
+def test_digest_skips_chats_that_did_not_opt_in(tmp_path):
+    settings = _settings(tmp_path, telegram_digest_hour_utc=0)
+    database = Database(settings.database_url)
+    database.initialize()
+    stub = StubClient()
+    svc = TelegramService(database, settings, client=stub)
+    svc.redeem_link_code(svc.create_link_code(EMAIL)["code"], "555")
+    svc.update_subscription("555", daily_digest=False)
+
+    analysis = _analysis(settings)
+    results = notifications.dispatch_digests(svc, analysis, settings=settings)
+    assert results == []
+    assert stub.sent == []
+
+
+def test_digest_skips_unlinked_chats(tmp_path):
+    settings = _settings(tmp_path, telegram_digest_hour_utc=0)
+    database = Database(settings.database_url)
+    database.initialize()
+    svc = TelegramService(database, settings, client=StubClient())
+    svc.redeem_link_code(svc.create_link_code(EMAIL)["code"], "555")
+    svc.unlink("555")
+    assert svc.linked_chats() == []
+
+
+def test_scheduler_runs_with_a_pinned_as_of(tmp_path):
+    """The digest must not depend on AEZA_AS_OF=now.
+
+    Regression guard: the notification scheduler was originally started only
+    inside the ``as_of == "now"`` branch, so on the deployed stand - which pins
+    the reference instant - no notification could ever be delivered.
+    """
+
+    import asyncio
+
+    from backend.app.main import digest_scheduler, send_due_digests
+
+    settings = _settings(tmp_path, telegram_digest_hour_utc=0,
+                         as_of="2026-10-19T15:00:00+00:00")
+    database = Database(settings.database_url)
+    database.initialize()
+    stub = StubClient()
+    svc = TelegramService(database, settings, client=stub)
+    svc.redeem_link_code(svc.create_link_code(EMAIL)["code"], "555")
+    svc.update_subscription("555", daily_digest=True)
+
+    module = load_module("backend.app.domain.module:create")
+    from backend.app.api.deps import Runtime
+    from backend.app.auth.security import AuthService
+    from backend.app.modules import CalculationAdapter
+    from backend.app.storage import Storage
+    from core import Core
+
+    storage = Storage(database)
+    calculation = CalculationAdapter(module)
+    auth_db = Database(settings.auth_database_url)
+    auth_db.initialize_auth()
+    runtime = Runtime(settings, database, storage, AuthService(auth_db, settings),
+                      calculation, Core(storage, calculation, settings.reference_now),
+                      ai=None, telegram=svc)
+    # Seed a published generation so there is something to digest.
+    from core import State
+    import json
+    state = State(generation=0, source_version=0, model_version=0,
+                  source={"accounts": [], "services": [], "transactions": []}, settings={})
+    runtime.core.update(source=json.loads((ROOT / "dataset/data.json").read_text(encoding="utf-8")))
+
+    sent = send_due_digests(runtime)
+    assert sent and sent[0]["sent"] is True
+    assert len(stub.sent) == 1
+
+    # The scheduler coroutine itself must be runnable and cancellable.
+    async def run_once():
+        stop = asyncio.Event()
+        task = asyncio.create_task(digest_scheduler(runtime, stop))
+        await asyncio.sleep(0.05)
+        stop.set()
+        await asyncio.wait_for(task, timeout=5)
+
+    asyncio.run(run_once())
+
+
+def test_lifespan_starts_the_digest_scheduler_with_a_pinned_as_of(tmp_path):
+    """The running app must schedule the digest task even with a pinned as_of.
+
+    This is the wiring-level guard for the same defect: the scheduler used to be
+    started inside the ``as_of == "now"`` branch, so a pinned deployment never
+    delivered anything.
+    """
+
+    import asyncio
+
+    from fastapi.testclient import TestClient as _TestClient
+
+    settings = _settings(tmp_path, as_of="2026-10-19T15:00:00+00:00")
+    module = load_module("backend.app.domain.module:create")
+
+    seen: dict[str, bool] = {}
+
+    async def probe():
+        # Give the lifespan a moment to create its background tasks.
+        await asyncio.sleep(0.2)
+        names = {
+            task.get_coro().__name__
+            for task in asyncio.all_tasks()
+            if task is not asyncio.current_task()
+        }
+        seen["digest"] = "digest_scheduler" in names
+        seen["recalculate"] = "recalculate" in names
+
+    with _TestClient(create_app(settings, module)) as client:
+        assert client.get("/health").status_code == 200
+        client.portal.call(probe) if hasattr(client, "portal") else None
+
+    # Fall back to an explicit loop when the test client exposes no portal.
+    if "digest" not in seen:
+        async def run():
+            app = create_app(settings, module)
+            async with app.router.lifespan_context(app):
+                names = {t.get_coro().__name__ for t in asyncio.all_tasks() if t is not asyncio.current_task()}
+                seen["digest"] = "digest_scheduler" in names
+                seen["recalculate"] = "recalculate" in names
+        asyncio.run(run())
+
+    assert seen.get("digest") is True, "digest scheduler not started with a pinned as_of"
+    # The recalculate loop is still gated on as_of=now; that is intentional.
+    assert seen.get("recalculate") is False
