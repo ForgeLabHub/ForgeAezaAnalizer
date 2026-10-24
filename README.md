@@ -417,6 +417,7 @@ docs/             документация по данным, модели, им
 | [`docs/TESTING.md`](docs/TESTING.md) | Команды и фактические результаты тестов |
 | [`docs/research/README.md`](docs/research/README.md) | Исследование: кейсы Aéza и найденные репозитории (и блокировка) |
 | [`docs/audits/final-project-completion.md`](docs/audits/final-project-completion.md) | Итоговый отчёт о завершении |
+| [`docs/audits/release-gate.md`](docs/audits/release-gate.md) | Ворота релиза: что готово, что проверяется на production, откат |
 | [`docs/audits/project-inventory.md`](docs/audits/project-inventory.md) | Инвентаризация репозитория и классификация файлов |
 | [`docs/audits/requirements-traceability.md`](docs/audits/requirements-traceability.md) | Матрица соответствия ТЗ с доказательствами |
 | [`docs/audits/frontend-preservation.md`](docs/audits/frontend-preservation.md) | Зафиксированный интерфейс и правила его сохранения |
