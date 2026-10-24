@@ -271,7 +271,7 @@ pip install -r requirements.txt
 # 2. Демо-доступ и секрет подписи токенов
 export AEZA_JWT_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
 export AEZA_ADMIN_EMAIL="analyst@aeza.test"
-export AEZA_ADMIN_PASSWORD="demo123"
+export AEZA_ADMIN_PASSWORD="aeza-demo-password"
 
 # 3. Запуск API (при старте база создаётся и заполняется из снимка)
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
@@ -284,7 +284,7 @@ npm install
 npm run dev          # http://127.0.0.1:5173
 ```
 
-Откройте <http://127.0.0.1:5173>, войдите как `analyst@aeza.test` / `demo123`.
+Откройте <http://127.0.0.1:5173>, войдите как `analyst@aeza.test` / `aeza-demo-password`.
 
 Vite проксирует `/api`, `/metrics` и `/health` на `127.0.0.1:8000`, поэтому CORS в
 разработке не требуется.

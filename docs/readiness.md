@@ -226,12 +226,12 @@ cd backend && python -m pytest tests/ -q
 # Запуск API
 cd backend
 export AEZA_JWT_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
-export AEZA_ADMIN_PASSWORD=demo123
+export AEZA_ADMIN_PASSWORD=aeza-demo-password
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 # Запуск интерфейса
 cd frontend && npm install && npm run dev
 ```
 
-Вход: `analyst@aeza.test` / `demo123`. Интерфейс: <http://127.0.0.1:5173>.
+Вход: `analyst@aeza.test` / `aeza-demo-password`. Интерфейс: <http://127.0.0.1:5173>.
 Опорный момент зафиксирован (`2026-10-19T15:00Z`), поэтому числа воспроизводимы.
