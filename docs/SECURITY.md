@@ -1,84 +1,113 @@
-# Безопасность
+# Security
 
-## Границы доверия
+Scope: the shipped product (`backend/app/` + `frontend/`) and its deployment.
+Findings with raw evidence live in `docs/audits/security-audit.md`.
 
-| Источник | Доверие | Обработка |
-|---|---|---|
-| `датасет.zip` организатора | **не доверенный** | безопасная распаковка + валидация каждой записи |
-| HTTP-запросы | **не доверенные** | валидация Pydantic, ограничения параметров |
-| Файл SQLite | локальный | проверка целостности при старте |
+## Trust boundaries
 
-## Безопасность импорта
+| Source | Trust | Handling |
+| --- | --- | --- |
+| Organiser archive `датасет.zip` | **untrusted** | safe extraction + per-record validation |
+| HTTP requests | **untrusted** | Pydantic validation, bounded query parameters |
+| SQLite auth store | local | created at boot, never committed (see below) |
+| Postgres analytics store | local | reached over the Compose network |
 
-`importer/archive.py` отклоняет архив целиком при:
+## Authentication and authorisation
 
-- path traversal (`../`), абсолютных путях, путях с буквой диска;
-- не-regular членах (symlink, device, fifo);
-- дублирующихся именах (коллизия на регистронезависимой ФС);
-- коэффициенте сжатия > 200× при размере > 1 МиБ;
-- превышении лимитов (5 000 членов / 512 МиБ).
+- Login is `email` + password (`POST /api/v1/auth/login`). Passwords are stored
+  as **PBKDF2-HMAC-SHA256** with a per-user 16-byte salt; the plaintext is never
+  stored or logged.
+- Access tokens are **JWT HS256** with the algorithm pinned
+  (`algorithms=["HS256"]`), which blocks the `alg=none` class of attack. `exp`,
+  `sub`, `iat` and `jti` are required; the `jti` must match a live server-side
+  session row, so logout genuinely revokes the token.
+- Token lifetime is bounded to `1..1440` minutes (`AEZA_TOKEN_TTL_MINUTES`).
+- **Every** data route requires a bearer token: `/api/v1/customers`,
+  `/customers/{id}`, `/analytics/summary`, `/model/settings`,
+  `/source/snapshot`, `/quality`, `/priority`, `/scenarios/compare`,
+  `/export/customers.csv` and `/metrics` all answer **401** without one.
+- There is no role model. The product has a single analyst role; every
+  authenticated user can read and change settings. This is a deliberate scope
+  decision, recorded here so it is not mistaken for RBAC.
 
-Вложенные архивы **не распаковываются**. Исполняемые файлы из архива **не
-запускаются** — читается только `data.json`.
+## Login throttling
 
-## Валидация входных данных
+- `LoginThrottle` (`backend/app/auth/security.py`) keeps a sliding window of
+  failed attempts keyed by `email|client`. Past the budget the API answers
+  **429** with `Retry-After`.
+- Defaults: `AEZA_LOGIN_MAX_ATTEMPTS=10`, `AEZA_LOGIN_WINDOW_SECONDS=300`.
+  A successful login clears the counter; the correct password cannot bypass an
+  active lockout.
+- Limitation: the counter is **per process**. A multi-worker deployment would
+  need a shared store (Redis). The reference deployment runs one worker.
 
-- строгий формат дат (`...Z`), наивные метки отклоняются;
-- диапазоны чисел (неотрицательность, `amount ≤ 1000`);
-- домены статусов и типов;
-- ссылочная целостность до записи;
-- `strict=True` по умолчанию — отклонённая строка отменяет весь импорт.
+## Secrets
 
-## Секреты
+- `AEZA_ALLOW_DEV_SECRET` defaults to **`0`**: without a real `AEZA_JWT_SECRET`
+  the app refuses to start rather than inventing a throwaway key. Local
+  development opts in explicitly with `=1`.
+- With `AEZA_ALLOW_DEV_SECRET=0`, `AEZA_ADMIN_PASSWORD` is also required, so a
+  shared environment cannot boot with a blank admin password.
+- No secret value is committed. `.gitignore` excludes `.env`, `data/`,
+  `*.sqlite*`, `db/auth.sqlite3*`.
+- The SQLite auth store (`db/auth.sqlite3`) is **not tracked**. It holds password
+  hashes and live session rows, so it lives in a named Docker volume
+  (`aeza_auth`) in the Compose stack and is recreated empty on first boot.
 
-- Приложение **не требует** секретов и не читает `.env`.
-- В отслеживаемых файлах секретов нет.
-- `.gitignore` исключает `data/`, `*.sqlite`, `.venv/`, `__pycache__/`.
-- Документация использует только имена переменных, без значений.
+## Transport and headers
 
-Проверка:
+- TLS is terminated by the host nginx; the Compose nginx is HTTP-only and
+  therefore deliberately does **not** set HSTS (a browser only honours HSTS over
+  HTTPS). It does set `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`,
+  including on `/assets/`.
+- API responses carry `Cache-Control: no-store`.
+- CSP is **not** set. Introducing it needs a policy compatible with the current
+  frontend (inline theme bootstrap in `index.html`, Google Fonts); that is a
+  separate, verified change, not a blanket add.
+- CORS defaults to the local dev origins. The live stand still returns
+  `Access-Control-Allow-Origin: *` because it has not been redeployed from this
+  branch; set `AEZA_CORS_ORIGINS` to the real UI origin on the server.
 
-```bash
-git ls-files | xargs grep -lE "ghp_|github_pat_|sk-oh-|password\s*=" 2>/dev/null || echo "clean"
-grep -rE "ghp_|github_pat_" .git/config || echo "no token in git config"
-```
+## Input validation and injection
 
-> Если вы ранее передавали PAT, пароль или API-ключ в открытом канале, отзовите
-> их. Этот документ намеренно не содержит значений.
+- All request bodies and query parameters are validated by Pydantic; out-of-range
+  and unknown fields are rejected with **422**.
+- Snapshot import validates every record against the source contract and applies
+  the whole snapshot atomically — a rejected import leaves the previous dataset
+  untouched.
+- Database access goes through SQLAlchemy `select`/ORM expressions. There is no
+  string-concatenated SQL.
+- Archive extraction rejects path traversal, absolute paths, symlinks, device
+  and FIFO members, duplicate names, zip bombs (compression ratio) and oversized
+  archives. Nested archives are not extracted and executables are never run.
+- CSV export is guarded against **formula injection**: a cell starting with
+  `= + - @ \t \r` is prefixed with an apostrophe.
 
-## Известные ограничения (важно)
+## Error handling and data exposure
 
-| Ограничение | Риск | Митигация |
-|---|---|---|
-| **Нет аутентификации** | любой с сетью может менять веса и запускать импорт | не публиковать в интернет без прокси с авторизацией |
-| Нет rate limiting | возможен спам импортом | обратный прокси |
-| Нет HTTPS | перехват трафика | терминация TLS на прокси |
-| CORS не настроен | — | SPA на том же origin |
-| SQLite без шифрования | доступ к файлу = доступ к данным | права на ФС |
-| `source` в `/api/import` | чтение произвольного пути сервера | ограничить сетевой доступ; при публикации — валидировать путь |
+- Errors return a generic `{"detail": ...}` body with the correct status
+  (401/404/409/422/429/500/502/503). Stack traces are never returned.
+- Metrics are aggregate only: no email, customer id or other high-cardinality
+  label appears in `/metrics`, and the payload contains no `@`.
 
-### Об отсутствии аутентификации
+## Not verified (no SSH access to the production VM)
 
-API позволяет `PUT /api/weights`, `POST /api/weights/reset` и
-`POST /api/import`. В локальном демонстрационном режиме это ожидаемо, но
-**для публичного развёртывания требуется** обратный прокси с авторизацией
-(Basic/OAuth) либо ограничение доступа на уровне сети.
+- Filesystem permissions on the SQLite store and the `.env` file.
+- Firewall rules and exposed ports.
+- Whether the real `AEZA_JWT_SECRET` is strong and rotated.
+- Absence of secrets in host nginx config and shell history.
 
-Самодельная авторизация не добавлялась: первичные материалы (README
-организатора) её не требуют, а официальное ТЗ недоступно (см.
-[`REQUIREMENTS_TRACEABILITY.md`](REQUIREMENTS_TRACEABILITY.md), U1). Это
-зафиксировано как ограничение, а не как «выполненная» защита.
+Exact commands for the owner are in
+`docs/audits/production-readiness-audit.md` §7.
 
-## Обработка ошибок
+## Dependency audit
 
-- Некорректный запрос → 400 с текстом без внутренних деталей.
-- Повреждённое хранилище → 503 с понятным сообщением и подсказкой.
-- Трассировки стека наружу не отдаются (FastAPI обрабатывает исключения).
-- Персональные данные (email) не пишутся в логи приложения; email видны только
-  в ответах API, которые и являются целевым продуктом.
+Dependencies come from PyPI and npm only. `pip-audit` / `npm audit` were **not**
+run in this iteration; run them before a public launch.
 
-## Зависимости
+## Disclaimer
 
-Зависимости — только из PyPI (`fastapi`, `uvicorn`, `sqlalchemy`, `pydantic`,
-`httpx`, `pytest`). Автоматический аудит (`pip-audit`) не запускался; при
-подготовке к публикации его стоит выполнить отдельно.
+The absence of findings here does **not** prove the system is secure. Only the
+areas listed were examined; no penetration test, dependency scan or host
+inspection was performed.

@@ -39,6 +39,18 @@
 | R-17 | Обязательный комментарий | PASS | `backend/app/domain/money.py:3` |
 | R-18 | Полный демо-сценарий | PASS | локально пройден; на стенде — PARTIAL |
 
+### Добавлено в итерации 2026-10-24
+
+| ID | Требование | Статус | Доказательство |
+| --- | --- | --- | --- |
+| R-19 | Ограничение частоты попыток входа | PASS | 10×401 → **429** + `Retry-After`; `test_security_hardening.py` |
+| R-20 | Безопасное значение по умолчанию `AEZA_ALLOW_DEV_SECRET` | PASS | `Settings()` без секрета → `ValueError`; тесты в `test_security_hardening.py` |
+| R-21 | CORS не `*` по умолчанию | PARTIAL | исправлено в `docker-compose.yml`; стенд требует переразвёртывания |
+| R-22 | Runtime-БД не отслеживается Git | PASS | `db/auth.sqlite3` убран из индекса, добавлен в `.gitignore` |
+| R-23 | Контрольные расчёты воспроизводятся | PASS | клиент №10 = **71.4**, `revenueAtRisk` = **5.80 €** через `module.create()` |
+| R-24 | Frontend собран без изменения дизайна | PASS | `npm run build` exit 0; `docs/audits/frontend-preservation.md` |
+| R-25 | Документация соответствует коду | PASS | README/ARCHITECTURE/DATA_AND_RISK_MODEL/SECURITY/TESTING обновлены |
+
 ---
 
 ## Детали
