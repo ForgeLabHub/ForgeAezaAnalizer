@@ -31,7 +31,7 @@ aeza_analyzer/
     service.py     customer risk, revenue at risk, dashboard
   api/app.py       FastAPI endpoints
   static/          vanilla-JS SPA (index.html, app.js, styles.css)
-tests/             pytest suite (48 tests)
+tests/             pytest suite (52 tests)
 docs/              REQUIREMENTS_TRACEABILITY.md, ARCHITECTURE.md, DATA_DICTIONARY.md,
                    ANALYTICS_METHODOLOGY.md, REVENUE_METHODOLOGY.md, IMPORT_AND_DATA_AUDIT.md,
                    API.md, DEVELOPMENT.md, TESTING.md, DEPLOYMENT.md, SECURITY.md, SCHEMA_MAPPING.md
@@ -84,6 +84,23 @@ git push https://<TOKEN>@github.com/Pixelminds-hub/aeza-analizer.git main
 ```
 
 Never commit a token, and never leave one in the remote URL.
+
+**Verified 2026-10-24:** the credentials injected into the agent environment
+(`GITHUB_TOKEN`, `GITHUB_PERSONAL_ACCESS_TOKEN`) are **read-only** on this repo
+— every write path returns 403, including `create_branch` and the Contents API.
+A **classic** PAT with the `repo` scope is required. With one, the push works:
+
+```bash
+git push https://<user>:<CLASSIC_PAT>@github.com/Pixelminds-hub/aeza-analizer.git HEAD:main
+```
+
+Two things bite when pushing to `main`:
+
+- **`main` moves under you.** Other contributors push to it directly, so a push
+  is often rejected as non-fast-forward. Fetch, merge (never force-push — there
+  are 40+ commits from other authors), re-run the tests, then push.
+- **Do not `git push --force`.** `main` is shared; a force-push destroys other
+  people's work.
 
 ## Gotchas that already bit us
 
@@ -229,6 +246,59 @@ No frontend test runner is configured (`frontend/package.json` has no `test`
 script and no vitest/jest/playwright dependency). The UI is verified only by the
 manual browser walkthrough in `docs/demo.md`.
 
+## Compose / clean-checkout fixes (verified by running the stack)
+
+These were real defects that only appear on a clean checkout or a shared host.
+
+- **Stale, wrong seed.** `db/analytics_seed.sql` held a **different** dataset
+  (60 accounts / 115 services / 285 transactions) than the official snapshot.
+  Compose used to pre-load it via an initdb bind-mount. It is no longer mounted;
+  the API now seeds `dataset/data.json` (10/30/100) through its own validated
+  importer (`AEZA_SEED_DEMO_DATA=1`, `AEZA_SNAPSHOT_PATH=/app/dataset/data.json`).
+  The image copies `dataset/data.json`. Counts are asserted in the README
+  acceptance table and in `/api/v1/source/snapshot`.
+- **Auth DB as a bind mount was wrong.** `db/auth.sqlite3` is gitignored, so a
+  file bind-mount would create a *directory* on a clean checkout, and a `./db`
+  bind-mount would impose the host uid on `/app/db` (the container runs as uid
+  10001). Both are replaced by a **named volume** `auth_data:/app/db`, seeded
+  from the image so permissions are correct. Postgres likewise uses `pg_data`.
+- **No default secrets.** Compose fails closed: `POSTGRES_PASSWORD`,
+  `AEZA_JWT_SECRET`, `AEZA_ADMIN_EMAIL`, `AEZA_ADMIN_PASSWORD` use `${VAR:?…}`.
+  `docker compose config` exits 1 without them. CORS defaults to
+  `http://localhost:8080`, never `*`.
+- **Login field is `access_token`** (snake_case), not `accessToken`.
+- **Invalid `sortBy` returns an empty page, not 422.** `GET /customers?sortBy=risk`
+  (wrong key) silently yields `items: []`. Use `riskScore`. Worth tightening.
+
+## CI
+
+`.github/workflows/ci.yml` runs backend tests, root tests, frontend
+typecheck+build, and Compose config validation (including the fail-closed check).
+There was no CI before; this is new.
+
+## Local AI Analyst — verified on live inference
+
+The AI Analyst is not a mock. It was run end-to-end against a real local model:
+
+- Ollama 0.40.10, `qwen2.5:3b-instruct` (1.9 GB, Q4), CPU only, 4 vCPU.
+- API runs in Compose; the model runs on the host. `docker-compose.yml` sets
+  `extra_hosts: host.docker.internal:host-gateway` on the `api` service, and
+  `AEZA_AI_BASE_URL` defaults to `http://host.docker.internal:11434`.
+- **Ollama must not bind loopback-only** if the API is containerised:
+  `OLLAMA_HOST=172.17.0.1:11434 ollama serve` (bind the docker0 bridge, not 0.0.0.0). Loopback bind is the #1 cause of a
+  misleading `unavailable` status.
+- The RAG index is built **at image build time** (`backend/Dockerfile` copies
+  `docs/` and runs `python -m backend.app.ai.rag`). 597 chunks. It is gitignored
+  (`backend/data/rag_index.json`), so it must be produced in the image, not
+  committed.
+- Verified: money question answers "5.80 EUR" grounded with citations;
+  `customerId=5` yields `riskScore=71.4` (exactly the engine value); methodology
+  questions cite `docs/model.md`; prompt injection is refused; `/ai/*` returns
+  401 without a token; `AEZA_AI_ENABLED=0` returns 503 while analytics keeps
+  working.
+- Latency on this CPU: **37–91 s** per answer (`num_ctx=4096`,
+  `max_tokens=1200`). `AEZA_AI_MAX_CONCURRENCY=1`, so requests queue. Fine for a
+  demo, not for concurrent analysts — that needs a separate inference host.
 # Production deployment (verified against the live stand)
 
 Public stand: `https://aeza-sentinel.pixel-minds.ru/` → `84.201.150.227`

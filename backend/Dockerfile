@@ -13,6 +13,15 @@ COPY core.py main.py ./
 COPY backend/__init__.py ./backend/__init__.py
 COPY backend/app ./backend/app
 COPY backend/scripts ./backend/scripts
+# Official organiser dataset: seeded at startup through the app's importer.
+COPY dataset/data.json ./dataset/data.json
+# Local documentation corpus for the AI Analyst's RAG retrieval.
+COPY docs ./docs
+
+# Build the local TF-IDF RAG index at image build time: deterministic, offline,
+# no embedding API. Rebuilt whenever docs/ or the builder change.
+RUN mkdir -p /app/backend/data \
+    && python -m backend.app.ai.rag --docs /app/docs --out /app/backend/data/rag_index.json
 
 # Run as an unprivileged user; the auth database is mounted under /app/db.
 RUN useradd --create-home --uid 10001 aeza \
