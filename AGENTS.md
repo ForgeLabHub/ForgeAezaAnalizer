@@ -261,7 +261,7 @@ The AI Analyst is not a mock. It was run end-to-end against a real local model:
   `extra_hosts: host.docker.internal:host-gateway` on the `api` service, and
   `AEZA_AI_BASE_URL` defaults to `http://host.docker.internal:11434`.
 - **Ollama must not bind loopback-only** if the API is containerised:
-  `OLLAMA_HOST=0.0.0.0:11434 ollama serve`. Loopback bind is the #1 cause of a
+  `OLLAMA_HOST=172.17.0.1:11434 ollama serve` (bind the docker0 bridge, not 0.0.0.0). Loopback bind is the #1 cause of a
   misleading `unavailable` status.
 - The RAG index is built **at image build time** (`backend/Dockerfile` copies
   `docs/` and runs `python -m backend.app.ai.rag`). 324 chunks. It is gitignored
