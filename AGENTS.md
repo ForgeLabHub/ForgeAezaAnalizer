@@ -288,7 +288,7 @@ The AI Analyst is not a mock. It was run end-to-end against a real local model:
   `OLLAMA_HOST=172.17.0.1:11434 ollama serve` (bind the docker0 bridge, not 0.0.0.0). Loopback bind is the #1 cause of a
   misleading `unavailable` status.
 - The RAG index is built **at image build time** (`backend/Dockerfile` copies
-  `docs/` and runs `python -m backend.app.ai.rag`). 324 chunks. It is gitignored
+  `docs/` and runs `python -m backend.app.ai.rag`). 597 chunks. It is gitignored
   (`backend/data/rag_index.json`), so it must be produced in the image, not
   committed.
 - Verified: money question answers "5.80 EUR" grounded with citations;

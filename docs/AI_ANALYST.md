@@ -196,11 +196,11 @@ AI Analyst встроен в существующий frontend:
 `qwen2.5:3b-instruct` (1.9 ГБ, квантование Q4, digest `357c53fb659c…`), CPU,
 без GPU. API — контейнер Compose, модель — на хосте через
 `host.docker.internal:host-gateway` (`extra_hosts` в `docker-compose.yml`).
-Индекс RAG собирается в образ на этапе сборки: 324 чанка из `docs/`.
+Индекс RAG собирается в образ на этапе сборки: 597 чанка из `docs/`.
 
 | Проверка | Команда | Результат |
 | --- | --- | --- |
-| Статус | `GET /api/v1/ai/status` | `ready`, `reachable=true`, `rag_indexed=true`, 324 чанка |
+| Статус | `GET /api/v1/ai/status` | `ready`, `reachable=true`, `rag_indexed=true`, 597 чанка |
 | Вопрос о деньгах | `POST /ai/chat` «Какая выручка под риском…» | `grounded=true`; ответ называет **5.80 EUR**, 18 открытых услуг, 22 240.73 EUR; цитаты — `GET /api/v1/analytics/summary`, `/quality`, `/priority` |
 | Методология | `POST /ai/chat` «почему балл — не вероятность…» | `grounded=true`; цитаты-документы `docs/model.md` (релевантность 0.2339), `docs/DEMO_SCRIPT.md` (0.2322) |
 | Клиент | `POST /ai/chat` с `customerId=5` | `grounded=true`; в контексте `riskScore=71.4` — ровно значение движка |
