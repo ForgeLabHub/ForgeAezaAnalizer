@@ -18,12 +18,13 @@ from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
 
 from core import ConflictError, Core, InvalidInput, NotReadyError, ResourceNotFoundError
-from backend.app.api import routes_actions, routes_ai, routes_analytics, routes_auth, routes_customers, routes_export, routes_insights, routes_model, routes_source
+from backend.app.api import routes_actions, routes_ai, routes_analytics, routes_auth, routes_customers, routes_email, routes_export, routes_insights, routes_model, routes_source
 from backend.app.api.deps import Runtime, RuntimeDep
 from backend.app.api.schemas import ErrorResponse
 from backend.app.ai.service import AIDisabled, AIService, AIUnavailable
 from backend.app.config import Settings, get_settings
 from backend.app.db import Database
+from backend.app.integrations.email import EmailDisabled, EmailRejected, EmailUnavailable
 from backend.app.metrics import Metrics
 from backend.app.modules import AnalyticsModule, CalculationAdapter, ModuleContractError, UnavailableAnalytics, load_module
 from backend.app.storage import Storage
@@ -153,6 +154,18 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
     async def ai_unavailable(request: Request, error: AIUnavailable):
         return JSONResponse({"detail": str(error)}, status_code=503, headers={"Retry-After": "5"})
 
+    @app.exception_handler(EmailDisabled)
+    async def email_disabled(request: Request, error: EmailDisabled):
+        return JSONResponse({"detail": str(error)}, status_code=503, headers={"Retry-After": "30"})
+
+    @app.exception_handler(EmailRejected)
+    async def email_rejected(request: Request, error: EmailRejected):
+        return JSONResponse({"detail": str(error)}, status_code=502)
+
+    @app.exception_handler(EmailUnavailable)
+    async def email_unavailable(request: Request, error: EmailUnavailable):
+        return JSONResponse({"detail": str(error)}, status_code=503, headers={"Retry-After": "10"})
+
     @app.exception_handler(ResourceNotFoundError)
     async def not_found(request: Request, error: ResourceNotFoundError):
         return JSONResponse({"detail": str(error)}, status_code=404)
@@ -202,6 +215,7 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
 
     for router in (routes_auth.router, routes_customers.router, routes_analytics.router,
                    routes_model.router, routes_source.router, routes_insights.router,
-                   routes_export.router, routes_ai.router, routes_actions.router):
+                   routes_export.router, routes_ai.router, routes_actions.router,
+                   routes_email.router):
         app.include_router(router, prefix=settings.api_prefix)
     return app
