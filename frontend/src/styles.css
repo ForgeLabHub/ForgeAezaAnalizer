@@ -462,6 +462,12 @@ code {
   gap: 4px;
   margin-left: 8px;
   flex: 1;
+  /* The links are nowrap, so without min-width:0 the flex item cannot shrink
+     below their total width and the header pushes the page into horizontal
+     scroll between 920px and 1180px. Letting it shrink and scroll internally
+     keeps the layout intact at every width. */
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .app-nav a {
@@ -688,7 +694,10 @@ code {
 
 .grid-2 {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, 1fr) rather than 1fr: a bare 1fr cannot shrink below its content,
+     so a wide table inside the grid forced the whole page to scroll sideways on
+     narrow viewports. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 20px;
 }
 
@@ -739,7 +748,9 @@ code {
 @media (max-width: 1100px) {
   .grid-main,
   .grid-2 {
-    grid-template-columns: 1fr;
+    /* Same reason as .grid-2 above: the single column must be allowed to shrink
+       so an inner .table-wrap scrolls instead of the whole page. */
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
