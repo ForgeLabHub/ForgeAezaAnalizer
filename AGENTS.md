@@ -221,3 +221,33 @@ generated RSA keypair and OIDC-style discovery/JWKS routes.
 No frontend test runner is configured (`frontend/package.json` has no `test`
 script and no vitest/jest/playwright dependency). The UI is verified only by the
 manual browser walkthrough in `docs/demo.md`.
+
+## Push access blocker (2026-10-24)
+`git push` to `Pixelminds-hub/aeza-analizer` fails with
+`403 Permission ... denied to Pixelminds-hub`, for `main` **and** for brand-new
+branches. The GitHub MCP write path fails the same way
+(`Resource not accessible by personal access token`).
+
+Diagnosis: both available credentials (`GITHUB_TOKEN`, `GITHUB_PERSONAL_ACCESS_TOKEN`)
+belong to the account `Pixelminds-hub` and are GitHub App integration tokens
+(`ghu_…`) with **empty** `x-oauth-scopes`. `GET /repos/...` reports
+`permissions.push: true`, but the REST branch-protection endpoint answers
+`Resource not accessible by integration`, i.e. the token has no `Contents: write`.
+
+Consequence: this environment can read and clone, but cannot write to the remote.
+Local `main` is ahead of `origin/main` (14ffdc5) by 13 commits, all verified.
+To publish, a token with `Contents: write` (or a push from a machine that has one)
+is required. A transferable bundle can be produced with:
+
+    git bundle create /tmp/aeza-sync.bundle origin/main..HEAD
+
+and applied elsewhere with `git fetch /tmp/aeza-sync.bundle main:main`.
+
+## Shipped data set differs from README and decks
+`db/analytics_seed.sql` (commit 25dfe0e) carries **60 accounts / 115 services /
+285 transactions**: 10 official organiser accounts plus 50 synthetic
+`demo-customer-*` ones. `README.md` and the defence decks describe the
+organiser's 10/30/100 set, and the seed also stores non-default weights
+(sum 15.0 vs code default 13.0), so live scores (#10 = 86.7) do not match the
+decks (#10 = 71.4). Reproduce the deck numbers exactly by loading
+`dataset/data.json` instead. Full analysis: `docs/PROVENANCE_AUDIT.md`.
