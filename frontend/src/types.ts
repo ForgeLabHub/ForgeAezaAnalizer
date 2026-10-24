@@ -256,6 +256,34 @@ export interface AIResponse {
   }
 }
 
+export type SupportConversationStatus = 'open' | 'closed'
+export type SupportDeliveryStatus = 'received' | 'pending' | 'delivered' | 'failed' | 'stubbed'
+
+export interface SupportConversation {
+  id: number
+  accountId: number
+  email: string
+  status: SupportConversationStatus
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SupportMessage {
+  id: number
+  conversationId: number
+  sender: 'client' | 'analyst'
+  text: string
+  deliveryStatus: SupportDeliveryStatus
+  deliveryError: string | null
+  createdAt: string
+  deliveredAt: string | null
+}
+
+export interface SupportConversationMessages {
+  conversation: Omit<SupportConversation, 'email'>
+  items: SupportMessage[]
+}
+
 export type ActionStatus = 'open' | 'in_progress' | 'done' | 'dismissed'
 
 export interface RetentionAction {

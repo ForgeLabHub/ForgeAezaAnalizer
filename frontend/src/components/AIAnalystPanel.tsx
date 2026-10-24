@@ -3,6 +3,7 @@ import { Link, useMatch } from 'react-router-dom'
 import { api, ApiError } from '../lib/api'
 import type { AIResponse, AIStatus } from '../types'
 import { SlidingTabs } from './motion'
+import { SupportWidgetPanel } from './SupportWidgetPanel'
 import { ErrorBox, Loading } from './ui'
 
 /** Pull customer ids out of the backend citation sources, so an answer can link
@@ -164,6 +165,7 @@ export function AIAnalystWidget() {
   }, [customerMatch?.params.id])
 
   const [open, setOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<'ai' | 'support'>('ai')
   const [scopeOverride, setScopeOverride] = useState<'auto' | 'portfolio'>('auto')
   const [status, setStatus] = useState<AIStatus | null>(null)
   const [turns, setTurns] = useState<Turn[]>([])
@@ -256,39 +258,39 @@ export function AIAnalystWidget() {
         <section
           className="ai-widget-window"
           role="dialog"
-          aria-label="Чат с AI-аналитиком"
+          aria-label={activeTab === 'ai' ? 'Чат с AI-аналитиком' : 'Поддержка клиентов'}
         >
           <header className="ai-widget-header">
             <div className="ai-widget-header-top">
               <div className="ai-widget-identity">
-                <div className="ai-widget-avatar" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"
-                      stroke="currentColor"
-                      strokeWidth="1.9"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M18.5 15.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1z"
-                      fill="currentColor"
-                    />
-                  </svg>
+                <div className={`ai-widget-avatar${activeTab === 'support' ? ' is-support' : ''}`} aria-hidden="true">
+                  {activeTab === 'ai' ? (
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+                      <path d="M18.5 15.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1z" fill="currentColor" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <path d="M20 11.5a7.5 7.5 0 01-7.5 7.5c-1.3 0-2.5-.33-3.57-.91L4 19.5l1.45-4.63A7.46 7.46 0 014.5 11.5 7.5 7.5 0 0112 4a7.5 7.5 0 018 7.5z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+                      <path d="M8 11h8M8 14h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                    </svg>
+                  )}
                 </div>
                 <div>
-                  <div className="ai-widget-title">AI-аналитик</div>
+                  <div className="ai-widget-title">{activeTab === 'ai' ? 'AI-аналитик' : 'Поддержка'}</div>
                   <div className="ai-widget-sub">
-                    <span
-                      className={`ai-widget-dot ${status ? `is-${status.status}` : ''}`}
-                      aria-hidden="true"
-                    />
-                    <span>{statusText}</span>
+                    {activeTab === 'ai' ? (
+                      <>
+                        <span className={`ai-widget-dot ${status ? `is-${status.status}` : ''}`} aria-hidden="true" />
+                        <span>{statusText}</span>
+                      </>
+                    ) : <span>Диалоги Telegram</span>}
                   </div>
                 </div>
               </div>
 
               <div className="ai-widget-actions">
-                {turns.length > 0 ? (
+                {activeTab === 'ai' && turns.length > 0 ? (
                   <button
                     type="button"
                     className="ai-widget-icon-btn"
@@ -327,7 +329,7 @@ export function AIAnalystWidget() {
               </div>
             </div>
 
-            {routeCustomerId !== undefined ? (
+            {activeTab === 'ai' && routeCustomerId !== undefined ? (
               <SlidingTabs
                 ariaLabel="Контекст вопросов"
                 variant="surface"
@@ -343,6 +345,7 @@ export function AIAnalystWidget() {
             ) : null}
           </header>
 
+          {activeTab === 'ai' ? <>
           <div className="ai-widget-messages">
             {status && status.status !== 'ready' ? (
               <div className="ai-status-note">
@@ -433,6 +436,28 @@ export function AIAnalystWidget() {
               </svg>
             </button>
           </form>
+          </> : <SupportWidgetPanel suggestedAccountId={routeCustomerId} />}
+
+          <nav className="ai-widget-tabs" role="tablist" aria-label="Раздел виджета">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'ai'}
+              className={activeTab === 'ai' ? 'active' : ''}
+              onClick={() => setActiveTab('ai')}
+            >
+              AI-аналитик
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'support'}
+              className={activeTab === 'support' ? 'active' : ''}
+              onClick={() => setActiveTab('support')}
+            >
+              Поддержка
+            </button>
+          </nav>
         </section>
       ) : null}
 
@@ -440,9 +465,9 @@ export function AIAnalystWidget() {
         type="button"
         className={`ai-fab${open ? ' is-open' : ''}`}
         onClick={() => setOpen((prev) => !prev)}
-        aria-label={open ? 'Закрыть чат AI-аналитика' : 'Открыть чат AI-аналитика'}
+        aria-label={open ? 'Закрыть виджет аналитики и поддержки' : 'Открыть виджет аналитики и поддержки'}
         aria-expanded={open}
-        title="AI-аналитик"
+        title="AI-аналитик и поддержка"
       >
         <span
           className={`ai-fab-status ${status ? `is-${status.status}` : ''}`}
