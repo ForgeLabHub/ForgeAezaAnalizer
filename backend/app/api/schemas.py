@@ -129,6 +129,21 @@ class Recommendation(Output):
     priority: int
 
 
+RecommendationState = Literal["new", "in_progress", "done"]
+
+
+class RecommendationStatusPatch(BaseModel):
+    """Workflow transition for one playbook.
+
+    ``extra="forbid"`` keeps a client from smuggling analytical fields through
+    this endpoint: a status change must never be able to touch the model.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: RecommendationState
+
+
 class ServiceItem(Output):
     id: int
     name: str

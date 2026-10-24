@@ -1549,3 +1549,58 @@ th.sortable:hover {
     padding-left: 120px;
   }
 }
+
+/* ------------------------------------------------------- retention playbooks
+   A status is a workflow fact, so it gets its own neutral scale rather than
+   reusing the risk colours: an operator must not read "выполнена" as "риск
+   снижен". Only the state is colour-coded; the card keeps the risk accent. */
+.badge.state-new {
+  background: var(--n-100);
+  color: var(--n-600);
+}
+.badge.state-in_progress {
+  background: var(--brand-50);
+  color: var(--brand-700);
+}
+.badge.state-done {
+  background: var(--risk-low-bg);
+  color: var(--risk-low-fg);
+}
+
+.rec-title .badge {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.playbook-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.playbook-error {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--risk-high-bg);
+  color: var(--risk-high-fg);
+  font-size: 13px;
+}
+
+.playbook-saved {
+  margin-top: 8px;
+  color: var(--risk-low-fg);
+}
+
+/* On a narrow screen the actions must stay reachable rather than overflow. */
+@media (max-width: 520px) {
+  .playbook-foot {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .playbook-foot .spacer {
+    display: none;
+  }
+}

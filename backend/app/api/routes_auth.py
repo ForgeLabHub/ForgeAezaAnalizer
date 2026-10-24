@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Request, Response
 
 from backend.app.api.deps import RuntimeDep, UserDep
 from backend.app.api.schemas import LoginRequest, TokenResponse, UserInfo
@@ -7,9 +7,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest, runtime: RuntimeDep, response: Response):
+def login(payload: LoginRequest, runtime: RuntimeDep, response: Response, request: Request):
     response.headers["Cache-Control"] = "no-store"
-    return runtime.auth.login(payload.email, payload.password.get_secret_value())
+    # The throttle keys on the caller so a burst aimed at one account cannot
+    # exhaust the budget for unrelated users sharing the same egress address.
+    client = request.client.host if request.client else ""
+    return runtime.auth.login(payload.email, payload.password.get_secret_value(), client)
 
 
 @router.get("/me", response_model=UserInfo)

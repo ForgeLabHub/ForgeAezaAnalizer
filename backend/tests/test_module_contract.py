@@ -20,7 +20,7 @@ from core import InvalidInput, State
 
 from backend.app.domain.module import MODEL_VERSION, create
 
-SNAPSHOT = Path(__file__).resolve().parents[1] / "data" / "snapshot.json"
+SNAPSHOT = Path(__file__).resolve().parents[2] / "dataset" / "data.json"
 
 
 def _source() -> dict:

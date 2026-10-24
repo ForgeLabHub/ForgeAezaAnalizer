@@ -1,9 +1,21 @@
 """Builds the Aéza defence decks (UMIRHACK 2026 and Хакатон Осень 2026).
 
-Every number and every screenshot comes from the running product on the
-organiser dataset (10 accounts / 30 services / 100 transactions) at the fixed
-reference instant 2026-10-19 15:00 UTC. Unfilled facts are explicit placeholders
-and are listed in aeza_umirhack_placeholder_checklist.md.
+The screenshots come from the running product on the organiser dataset
+(10 accounts / 30 services / 100 transactions) at the fixed reference instant
+2026-10-19 15:00 UTC.
+
+**Known divergence (2026-10-24).** The figures printed on the slides are
+currently hardcoded string literals below, not read from the engine. They were
+captured under an earlier weighting (`expiry_proximity` 15.0), so they show
+"73,3 / 100" and "5,74 EUR", whereas the shipped configuration
+(`expiry_proximity` 3.0, 90-day window) reproduces "71.4 / 100" and "5.80 EUR".
+The `shots/` screenshots carry the same old numbers, so the deck cannot be made
+consistent by editing text alone: the screenshots must be recaptured first.
+Until then, treat the deck as a historical artefact, not as the current result.
+See docs/deck/README.md and docs/audits/state-audit.md.
+
+Unfilled facts are explicit placeholders and are listed in
+aeza_umirhack_placeholder_checklist.md.
 
 All text is wrapped at build time with real Manrope metrics and emitted as one
 paragraph per line, so PowerPoint / LibreOffice / Keynote render identically.

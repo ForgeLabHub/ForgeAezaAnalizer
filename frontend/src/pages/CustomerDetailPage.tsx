@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError, api } from '../lib/api'
 import type { CustomerDetail, ServiceItem } from '../types'
+import Playbooks from '../components/Playbooks'
 import {
   EmptyState,
   ErrorBox,
@@ -293,22 +294,9 @@ export default function CustomerDetailPage() {
               <h2>Рекомендации по удержанию</h2>
             </div>
             <div className="card-body">
-              {customer.recommendations.length ? (
-                <div className="rec-list">
-                  {customer.recommendations.map((rec) => (
-                    <div className={`rec prio-${rec.priority}`} key={rec.code}>
-                      <div className="rec-title">{rec.title}</div>
-                      <div className="rec-detail">{rec.detail}</div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="hint">Действия не требуются: значимых сигналов риска нет.</p>
-              )}
-              <div className="notice" style={{ marginTop: 12 }}>
-                Рекомендации основаны на наблюдаемых сигналах и не гарантируют предотвращение
-                оттока. Система не отправляет сообщения клиентам и не изменяет их аккаунты.
-              </div>
+              {/* Playbooks load their own workflow status; the customer payload
+                  carries the analytical reasons and stays untouched. */}
+              <Playbooks customerId={customer.id} />
             </div>
           </section>
 

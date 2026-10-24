@@ -27,10 +27,14 @@ class Settings:
     auth_database_url: str = field(default_factory=lambda: os.getenv(
         "AEZA_AUTH_DATABASE_URL", f"sqlite:///{(ROOT / 'db' / 'auth.sqlite3').as_posix()}"))
     jwt_secret: str = field(default_factory=lambda: os.getenv("AEZA_JWT_SECRET", ""))
-    allow_dev_secret: bool = field(default_factory=lambda: flag("AEZA_ALLOW_DEV_SECRET", True))
+    # Secure by default: refuse to invent a signing secret unless a local
+    # development environment explicitly opts in with AEZA_ALLOW_DEV_SECRET=1.
+    allow_dev_secret: bool = field(default_factory=lambda: flag("AEZA_ALLOW_DEV_SECRET", False))
     bootstrap_admin_email: str = field(default_factory=lambda: os.getenv("AEZA_ADMIN_EMAIL", "analyst@aeza.test"))
     bootstrap_admin_password: str = field(default_factory=lambda: os.getenv("AEZA_ADMIN_PASSWORD", ""))
     access_token_ttl_minutes: int = field(default_factory=lambda: int(os.getenv("AEZA_TOKEN_TTL_MINUTES", "720")))
+    login_max_attempts: int = field(default_factory=lambda: int(os.getenv("AEZA_LOGIN_MAX_ATTEMPTS", "10")))
+    login_window_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_LOGIN_WINDOW_SECONDS", "300")))
     seed_demo_data: bool = field(default_factory=lambda: flag("AEZA_SEED_DEMO_DATA", False))
     snapshot_path: str = field(default_factory=lambda: os.getenv("AEZA_SNAPSHOT_PATH", str(ROOT / "dataset/data.json")))
     as_of: str = field(default_factory=lambda: os.getenv("AEZA_AS_OF", DEFAULT_AS_OF))
@@ -52,6 +56,10 @@ class Settings:
             raise ValueError("AEZA_TOKEN_TTL_MINUTES must be between 1 and 1440")
         if not 1 <= self.recalculate_seconds <= 3600:
             raise ValueError("AEZA_RECALCULATE_SECONDS must be between 1 and 3600")
+        if self.login_max_attempts < 1:
+            raise ValueError("AEZA_LOGIN_MAX_ATTEMPTS must be at least 1")
+        if self.login_window_seconds < 1:
+            raise ValueError("AEZA_LOGIN_WINDOW_SECONDS must be at least 1")
         self.reference_now()
 
     def reference_now(self) -> datetime:
