@@ -18,40 +18,57 @@
 
 ### H-1. Нет ограничения частоты попыток входа
 
-**Доказательство.** 12 последовательных запросов `POST /api/v1/auth/login` с
-неверным паролем:
+**Статус: ИСПРАВЛЕНО (2026-10-24).**
+
+**Было.** 12 последовательных запросов `POST /api/v1/auth/login` с
+неверным паролем возвращали 401 без блокировки:
 
 ```
 12 bad logins -> [401, 401, 401, 401, 401, 401, 401, 401, 401, 401, 401, 401]
 ```
 
-Блокировки, задержки или счётчика попыток нет ни в `backend/app/auth/`, ни в
-`backend/app/main.py`. Пароль — единственный фактор, поэтому перебор возможен
-без ограничений.
+**Исправление.** Добавлен `LoginThrottle` в `backend/app/auth/security.py` —
+скользящее окно неудачных попыток по ключу `email|client`. При превышении
+бюджета API отвечает **429** с заголовком `Retry-After`. Успешный вход
+сбрасывает счётчик. Бюджет настраивается через `AEZA_LOGIN_MAX_ATTEMPTS`
+(по умолчанию 10) и `AEZA_LOGIN_WINDOW_SECONDS` (по умолчанию 300).
 
-**Смягчающие факторы.** Пароли хешируются PBKDF2-HMAC-SHA256 с солью
-(`backend/app/auth/security.py`), что замедляет перебор; токен живёт 720 минут.
-Это снижает, но не устраняет риск.
+**Доказательство (живой запрос к локальному API):**
 
-**Рекомендация.** Добавить счётчик неудачных попыток по email+IP с окном и
-задержкой. Требует хранилища; не внедрено в этой итерации, чтобы не менять
-аутентификацию без отдельного решения.
+```
+12 bad logins -> 401 401 401 401 401 401 401 401 401 401 429 429
+HTTP/1.1 429 Too Many Requests
+retry-after: 300
+```
+
+Регрессионные тесты: `backend/tests/test_security_hardening.py`
+(`test_login_endpoint_rate_limits_and_reports_retry_after`,
+`test_login_throttle_blocks_after_the_budget_is_spent`,
+`test_login_throttle_is_scoped_to_the_caller`,
+`test_successful_login_clears_the_failure_budget`,
+`test_successful_login_is_not_rate_limited`).
+
+**Ограничение.** Счётчик хранится в процессе. При запуске нескольких воркеров
+бюджет делится между ними; при масштабировании нужен общий store (Redis).
+Для однопроцессного стенда это соответствует риску.
 
 ### H-2. `AEZA_ALLOW_DEV_SECRET` по умолчанию `True`
 
-**Доказательство.** `backend/app/config.py:30`:
+**Статус: ИСПРАВЛЕНО (2026-10-24).**
+
+**Было.** `backend/app/config.py`:
 `allow_dev_secret: bool = field(default_factory=lambda: flag("AEZA_ALLOW_DEV_SECRET", True))`.
+Без `AEZA_JWT_SECRET` и без флага приложение **само генерировало** случайный
+секрет вместо отказа, и при перезапуске все токены становились недействительны.
 
-Если `AEZA_JWT_SECRET` не задан и флаг не выставлен в `0`, приложение
-**само генерирует** случайный секрет (`secrets.token_urlsafe(48)`) вместо
-отказа. При перезапуске секрет меняется, все токены становятся недействительны.
+**Исправление.** Значение по умолчанию изменено на `False`
+(`config.py:32`). Локальная разработка по-прежнему работает, но только при
+явном `AEZA_ALLOW_DEV_SECRET=1`. `.env.example` обновлён.
 
-В Compose флаг выставлен в `"0"`, поэтому на стенде поведение корректное. Риск
-возникает при ручном запуске `uvicorn main:app` без окружения.
-
-**Рекомендация.** Сделать безопасное значение по умолчанию (`False`) либо
-логировать предупреждение. Не менялось, чтобы не сломать локальный сценарий
-разработки из README.
+**Доказательство.** `Settings()` без `AEZA_JWT_SECRET` и без флага теперь
+бросает `ValueError`; с `AEZA_ALLOW_DEV_SECRET=1` — создаётся. Тесты
+`test_settings_refuse_to_invent_a_secret_by_default` и
+`test_settings_allow_an_explicit_development_secret`.
 
 ---
 
@@ -59,20 +76,20 @@
 
 ### M-1. CORS `Access-Control-Allow-Origin: *` на стенде
 
-**Доказательство.** `OPTIONS /api/v1/customers` с `Origin: https://evil.example`
-→ `Access-Control-Allow-Origin: *`.
+**Статус: ИСПРАВЛЕНО в коде и Compose; на стенде требует переразвёртывания.**
 
-Причина: `docker-compose.yml` задаёт `AEZA_CORS_ORIGINS: "*"`. Код по
-умолчанию строже — `http://localhost:8080,http://localhost:5173`
-(`config.py:39`).
+**Было.** `OPTIONS /api/v1/customers` с `Origin: https://evil.example`
+→ `Access-Control-Allow-Origin: *`. Причина — `docker-compose.yml` задавал
+`AEZA_CORS_ORIGINS: "*"`.
 
-**Влияние.** Ограничено: сессия передаётся в заголовке `Authorization`, а не в
-cookie, поэтому чужой origin не может воспользоваться cookie жертвы. Но
-публичный API становится вызываемым со любого сайта.
+**Исправление.** `docker-compose.yml` теперь по умолчанию
+`http://localhost:8080` (переопределяемо через `AEZA_CORS_ORIGINS`), а
+`.env.example` помечает `*` как демонстрационное значение. Код по умолчанию и
+ранее был строгим (`http://localhost:8080,http://localhost:5173`).
 
-**Рекомендация.** Указать на стенде конкретный origin
-(`https://aeza-sentinel.pixel-minds.ru`). Требует правки Compose/окружения на
-сервере — за владельцем.
+**Остаток.** Живой стенд по-прежнему отдаёт `*` (проверено 2026-10-24), потому
+что он не переразвёрнут с этой ветки. Закрывается переразвёртыванием; команда
+для владельца — в `docs/audits/production-readiness-audit.md` §7.
 
 ### M-2. `/api/v1/docs` и `/api/v1/openapi.json` публичны
 
