@@ -1,4 +1,6 @@
 import type {
+  AiExplanation,
+  AiStatus,
   CustomerDetail,
   CustomerPage,
   ModelSettings,
@@ -153,6 +155,28 @@ export const api = {
     request<ScenarioComparison>('/api/v1/scenarios/compare', {
       method: 'POST',
       body: JSON.stringify({ name, overrides }),
+    }),
+
+  /**
+   * Whether the local LLM layer is enabled and reachable.
+   *
+   * The customer page calls this before offering the explanation button, so a
+   * disabled or unreachable provider produces an explanatory notice instead of
+   * a button that would always fail.
+   */
+  aiStatus: () => request<AiStatus>('/api/v1/ai/status'),
+
+  /**
+   * Ask the local model to explain one customer, grounded in the calculation.
+   *
+   * Read-only: the backend sends only this customer's whitelisted facts and
+   * verifies every number in the answer against them. A 503 means the provider
+   * is unavailable; a 502 means the answer was rejected as ungrounded.
+   */
+  aiExplain: (id: number, question?: string) =>
+    request<AiExplanation>(`/api/v1/ai/customers/${id}/explain`, {
+      method: 'POST',
+      body: JSON.stringify(question ? { question } : {}),
     }),
 
   /** URL for the CSV export of the current selection, so the browser can download it. */

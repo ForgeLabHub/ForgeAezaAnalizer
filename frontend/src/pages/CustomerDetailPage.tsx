@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { ApiError, api } from '../lib/api'
 import type { CustomerDetail, ServiceItem } from '../types'
 import Playbooks from '../components/Playbooks'
+import AiPanel from '../components/AiPanel'
 import {
   EmptyState,
   ErrorBox,
@@ -286,6 +287,18 @@ export default function CustomerDetailPage() {
                     .join(', ')}
                 </div>
               ) : null}
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="card-head">
+              <h2>ИИ-объяснение риска</h2>
+              <span className="hint">Локальная модель, факты из расчёта</span>
+            </div>
+            <div className="card-body">
+              {/* The panel checks availability itself and shows a notice instead
+                  of a button when the local model is off or unreachable. */}
+              <AiPanel customerId={customer.id} />
             </div>
           </section>
 

@@ -1604,3 +1604,37 @@ th.sortable:hover {
     display: none;
   }
 }
+
+/* Local-AI explanation panel. Reuses the existing surfaces, radii and type
+   scale; only the answer block needs its own rule because it renders a
+   preformatted, model-authored paragraph. */
+.ai-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ai-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-answer {
+  margin-top: 4px;
+}
+
+.ai-answer-text {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--n-200);
+  background: var(--surface-muted);
+  color: var(--n-800);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
