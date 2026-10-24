@@ -2,14 +2,14 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: aeza
-      POSTGRES_USER: aeza
-      POSTGRES_PASSWORD: aeza
+      POSTGRES_DB: ${POSTGRES_DB:-aeza}
+      POSTGRES_USER: ${POSTGRES_USER:-aeza}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}
     volumes:
-      - ./db/postgres:/var/lib/postgresql/data
-      - ./db/analytics_seed.sql:/docker-entrypoint-initdb.d/20-analytics-seed.sql:ro
+      # Named volume so a clean checkout never depends on host-owned ./db/postgres.
+      - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aeza -d aeza"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aeza} -d ${POSTGRES_DB:-aeza}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -21,26 +21,38 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       # Inside the Compose network the API talks to the bundled Postgres.
-      AEZA_DATABASE_URL: postgresql+psycopg://aeza:aeza@db:5432/aeza
-      # Change this before exposing the stack to anyone.
-      AEZA_JWT_SECRET: ${AEZA_JWT_SECRET:-change-me-in-production}
-      AEZA_ADMIN_EMAIL: ${AEZA_ADMIN_EMAIL:-analyst@aeza.test}
-      AEZA_ADMIN_PASSWORD: ${AEZA_ADMIN_PASSWORD:-demo123}
+      AEZA_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-aeza}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-aeza}
+      # No defaults for secrets: Compose refuses to start unless these are set.
+      # Generate: python -c "import secrets; print(secrets.token_urlsafe(48))"
+      AEZA_JWT_SECRET: ${AEZA_JWT_SECRET:?set AEZA_JWT_SECRET in .env (see .env.example)}
+      AEZA_ADMIN_EMAIL: ${AEZA_ADMIN_EMAIL:?set AEZA_ADMIN_EMAIL in .env}
+      AEZA_ADMIN_PASSWORD: ${AEZA_ADMIN_PASSWORD:?set AEZA_ADMIN_PASSWORD in .env}
       AEZA_ALLOW_DEV_SECRET: "0"
-      AEZA_SEED_DEMO_DATA: "0"
+      # Seed the official organiser dataset through the app's own validated
+      # importer. Do NOT pre-load db/analytics_seed.sql: it holds a different
+      # 60/115/285 fixture, not the official 10/30/100 snapshot.
+      AEZA_SEED_DEMO_DATA: "1"
+      AEZA_SNAPSHOT_PATH: /app/dataset/data.json
       AEZA_AUTH_DATABASE_URL: sqlite:////app/db/auth.sqlite3
       AEZA_AS_OF: ${AEZA_AS_OF:-2026-10-19T15:00:00+00:00}
       AEZA_ANALYTICS_FACTORY: ${AEZA_ANALYTICS_FACTORY:-backend.app.domain.module:create}
       AEZA_RECALCULATE_SECONDS: ${AEZA_RECALCULATE_SECONDS:-60}
       AEZA_METRICS_TOKEN: ${AEZA_METRICS_TOKEN:-}
-      AEZA_CORS_ORIGINS: "*"
+      # Restrict to the SPA origin; never "*" in a shared environment.
+      AEZA_CORS_ORIGINS: ${AEZA_CORS_ORIGINS:-http://localhost:8080}
     depends_on:
       db:
         condition: service_healthy
     ports:
       - "8000:8000"
     volumes:
-      - ./db/auth.sqlite3:/app/db/auth.sqlite3
+      # Named volume, not a bind mount. A bind mount of ./db/auth.sqlite3 would
+      # create a *directory* in place of the file on a clean checkout (the file
+      # is gitignored), and a bind mount of ./db would impose the host uid on
+      # /app/db. Docker seeds this volume from the image's /app/db, which is
+      # owned by the unprivileged app user, so the SQLite store is created on
+      # first run with the right permissions.
+      - auth_data:/app/db
     restart: unless-stopped
 
   web:
@@ -52,3 +64,7 @@ services:
     ports:
       - "8080:80"
     restart: unless-stopped
+
+volumes:
+  auth_data:
+  pg_data:
