@@ -98,6 +98,7 @@ export interface CustomerPage {
 }
 
 export interface Summary {
+  generation?: number
   generatedAt: string
   horizonDays: number
   customers: {

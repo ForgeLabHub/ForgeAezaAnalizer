@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError, api } from '../lib/api'
+import { useLiveGeneration } from '../lib/live'
 import type { CustomerPage, CustomerSummary } from '../types'
 import {
   EmptyState,
@@ -71,6 +72,9 @@ export default function CustomersPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  // Keep the visible page in step with a newly published generation.
+  useLiveGeneration(load)
 
   function update(next: Record<string, string | null>) {
     const merged = new URLSearchParams(params)
