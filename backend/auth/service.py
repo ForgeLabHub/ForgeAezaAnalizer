@@ -12,7 +12,7 @@ from backend.auth.cache import LoginLimiter, TTLCache
 from backend.auth.passwords import hash_password, verify_password
 from backend.auth.tokens import TokenSigner, base64url
 from backend.config import Settings
-from backend.database import User, UserRepository
+from backend.database import Session, User, UserRepository
 
 
 class AuthError(Exception):
@@ -23,14 +23,24 @@ class AuthError(Exception):
         self.headers = headers
 
 
-@dataclass(frozen=True)
-class Session:
-    id: str
-    cookie_hash: str
-    user_id: str
-    auth_version: int
-    auth_time: int
-    expires_at: int
+class SessionStore:
+    def __init__(self, users: UserRepository):
+        self.users = users
+
+    def add(self, session: Session) -> None:
+        self.users.put_session(session)
+
+    def get(self, key: str) -> Session | None:
+        session = self.users.get_session(key)
+        if session is not None and session.expires_at <= int(time.time()):
+            self.users.delete_session(key)
+            return None
+        return session
+
+    def pop(self, key: str) -> Session | None:
+        session = self.get(key)
+        self.users.delete_session(key)
+        return session
 
 
 @dataclass(frozen=True)
@@ -63,7 +73,7 @@ class AuthService:
         self.settings = settings
         self.users = users
         self.signer = TokenSigner(settings)
-        self.sessions: TTLCache[Session] = TTLCache(settings.cache_capacity)
+        self.sessions = SessionStore(users)
         self.profiles: TTLCache[User] = TTLCache(settings.cache_capacity)
         self.flows: TTLCache[LoginFlow] = TTLCache(settings.cache_capacity)
         self.codes: TTLCache[AuthorizationCode] = TTLCache(settings.cache_capacity)
@@ -92,7 +102,7 @@ class AuthService:
             secrets.token_urlsafe(24), digest(secret), user.id, user.auth_version,
             now, now + self.settings.session_ttl,
         )
-        self.sessions.put(session.id, session, self.settings.session_ttl)
+        self.sessions.add(session)
         return session, f"{session.id}.{secret}"
 
     def session_from_cookie(self, cookie: str | None) -> Session | None:

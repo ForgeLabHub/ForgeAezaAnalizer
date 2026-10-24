@@ -185,7 +185,13 @@ class AuthenticationTests(unittest.TestCase):
         with patch.object(self.auth.codes, "clock", return_value=time.monotonic() + 120):
             self.assertEqual(self.exchange(code).json()["error"], "invalid_grant")
         token = self.login().json()["access_token"]
-        with patch.object(self.auth.sessions, "clock", return_value=time.monotonic() + self.settings.session_ttl + 1):
+        # Sessions moved from an in-memory TTL cache to the SQLite store, which
+        # compares ``expires_at`` against ``time.time()``. Expiry is therefore
+        # driven by the wall clock, not a cache clock, so the test advances
+        # ``time.time`` in the auth module rather than patching ``sessions.clock``
+        # (which no longer exists).
+        with patch("backend.auth.service.time.time",
+                   return_value=time.time() + self.settings.session_ttl + 1):
             self.assertEqual(self.client.get("/auth/me", headers={"Authorization": f"Bearer {token}"}).status_code, 401)
 
     def test_tampered_expired_and_id_tokens_cannot_authenticate(self):

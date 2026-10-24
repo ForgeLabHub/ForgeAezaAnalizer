@@ -20,6 +20,16 @@ class User:
         return {"sub": self.id, "preferred_username": self.login}
 
 
+@dataclass(frozen=True)
+class Session:
+    id: str
+    cookie_hash: str
+    user_id: str
+    auth_version: int
+    auth_time: int
+    expires_at: int
+
+
 class UserRepository:
     def __init__(self, path: Path):
         self.path = path
@@ -28,6 +38,7 @@ class UserRepository:
     def connect(self):
         connection = sqlite3.connect(self.path, timeout=5)
         try:
+            connection.execute("PRAGMA foreign_keys = ON")
             with connection:
                 yield connection
         finally:
@@ -84,3 +95,29 @@ class UserRepository:
                 (user.id, login, password_hash),
             )
         return user
+
+    def put_session(self, session: Session) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "DELETE FROM auth_sessions WHERE expires_at <= ?", (session.auth_time,)
+            )
+            connection.execute(
+                """INSERT INTO auth_sessions
+                   (id, cookie_hash, user_id, auth_version, auth_time, expires_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (session.id, session.cookie_hash, session.user_id, session.auth_version,
+                 session.auth_time, session.expires_at),
+            )
+
+    def get_session(self, session_id: str) -> Session | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """SELECT id, cookie_hash, user_id, auth_version, auth_time, expires_at
+                   FROM auth_sessions WHERE id = ?""",
+                (session_id,),
+            ).fetchone()
+        return Session(*row) if row else None
+
+    def delete_session(self, session_id: str) -> None:
+        with self.connect() as connection:
+            connection.execute("DELETE FROM auth_sessions WHERE id = ?", (session_id,))

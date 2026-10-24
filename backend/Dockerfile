@@ -17,15 +17,15 @@ COPY backend/app ./backend/app
 COPY backend/scripts ./backend/scripts
 # The standalone auth module reads its DDL from this file at startup.
 COPY db/schema.sql ./backend/auth_schema.sql
-
 # Official organiser dataset: seeded at startup through the app's importer.
 COPY dataset/data.json ./dataset/data.json
+# Local documentation corpus for the AI Analyst's RAG retrieval.
+COPY docs ./docs
 
 # The AI Analyst grounds its answers in docs/ via a prebuilt RAG index
 # (AEZA_AI_DOCS_PATH / AEZA_AI_RAG_INDEX_PATH). Ship the docs and build the
 # index here: without them the retriever silently returns nothing and answers
-# lose their grounding. Deterministic and offline, so it is safe at build time.
-COPY docs ./docs
+# lose their grounding.
 RUN mkdir -p /app/backend/data \
     && python -m backend.app.ai.rag --docs /app/docs --out /app/backend/data/rag_index.json
 

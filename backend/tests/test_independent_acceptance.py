@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.config import Settings
 from backend.app.main import create_app
-from backend.tests.conftest import TEST_LOGIN, TEST_PASSWORD, make_test_auth_settings
+from backend.tests.conftest import make_test_auth_settings
 
 ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT = ROOT / "dataset" / "data.json"
@@ -65,8 +65,7 @@ def client(tmp_path_factory):
     )
     auth_settings = make_test_auth_settings(tmp / "acc_auth.db")
     try:
-        with TestClient(create_app(settings, auth_settings=auth_settings),
-                        raise_server_exceptions=False) as test_client:
+        with TestClient(create_app(settings, auth_settings=auth_settings), raise_server_exceptions=False) as test_client:
             yield test_client
     finally:
         if previous is None:
@@ -78,7 +77,7 @@ def client(tmp_path_factory):
 def _token(client: TestClient) -> dict:
     response = client.post(
         "/api/v1/auth/login",
-        json={"email": TEST_LOGIN, "password": TEST_PASSWORD},
+        json={"email": "analyst@aeza.test", "password": "analyst-test-password"},
     )
     assert response.status_code == 200, response.text
     return {"Authorization": f"Bearer {response.json()['access_token']}"}

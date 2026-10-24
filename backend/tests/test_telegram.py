@@ -34,11 +34,10 @@ from backend.app.integrations.telegram.service import (
 from backend.app.main import create_app
 from backend.app.modules import load_module
 
-from backend.tests.conftest import TEST_LOGIN, TEST_PASSWORD, make_test_auth_settings
-from backend.tests.conftest import ROOT
+from backend.tests.conftest import ROOT, TEST_LOGIN, TEST_PASSWORD, make_test_auth_settings
 
-EMAIL = "analyst@aeza.test"
-PASSWORD = "demo123"
+EMAIL = TEST_LOGIN
+PASSWORD = TEST_PASSWORD
 
 
 class StubClient:
@@ -76,10 +75,8 @@ def _settings(tmp_path, **overrides) -> Settings:
     return Settings(**base)
 
 
-def _auth_settings(tmp_path):
-    """Standalone auth settings with the shared test credential created."""
-
-    return make_test_auth_settings(tmp_path / "auth.db")
+def _app(settings, module, tmp_path):
+    return create_app(settings, module, make_test_auth_settings(tmp_path / "auth.db"))
 
 
 @pytest.fixture
@@ -101,7 +98,7 @@ def service(tmp_path):
 def test_app_starts_with_telegram_disabled(tmp_path):
     settings = _settings(tmp_path, telegram_enabled=False, telegram_bot_token="")
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module, _auth_settings(tmp_path))) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         assert client.get("/health").status_code == 200
         login = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
         headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
@@ -125,15 +122,16 @@ def test_app_starts_without_a_token_when_disabled(monkeypatch):
 def test_enabling_telegram_without_a_token_does_not_break_the_app(tmp_path):
     """The reported production symptom, as a regression guard.
 
-    With TELEGRAM_ENABLED=1 and an empty token the old code raised from Settings,
-    so the whole analytics API refused to start. An optional channel must never
-    take the product down: the settings build, the service is simply absent, and
-    /telegram/status explains why.
+    With ``TELEGRAM_ENABLED=1`` and an empty token the app must still start: an
+    optional notification channel must never take the product down. The settings
+    build, the service is simply not constructed, and ``/telegram/status``
+    explains why. This is the deliberate behaviour from commit baa2000; a test
+    that expects ``Settings`` to raise here would re-introduce the outage.
     """
 
     settings = _settings(tmp_path, telegram_enabled=True, telegram_bot_token="")
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module, _auth_settings(tmp_path))) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         assert client.get("/health").status_code == 200
         login = client.post("/api/v1/auth/login",
                             json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
@@ -157,7 +155,7 @@ def test_enabling_telegram_without_a_webhook_secret_is_rejected():
 def test_link_code_requires_authentication(tmp_path):
     settings = _settings(tmp_path)
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module, _auth_settings(tmp_path))) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         assert client.post("/api/v1/telegram/link-code").status_code == 401
         assert client.get("/api/v1/telegram/status").status_code == 401
         assert client.post("/api/v1/telegram/disconnect").status_code == 401
@@ -341,7 +339,7 @@ def test_customer_command_validates_its_argument(service):
 def test_webhook_rejects_a_wrong_secret(tmp_path):
     settings = _settings(tmp_path)
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module, _auth_settings(tmp_path))) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         response = client.post(
             "/api/v1/telegram/webhook",
             json=_update("/help"),
@@ -353,7 +351,7 @@ def test_webhook_rejects_a_wrong_secret(tmp_path):
 def test_webhook_accepts_the_right_secret(tmp_path):
     settings = _settings(tmp_path)
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module, _auth_settings(tmp_path))) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         response = client.post(
             "/api/v1/telegram/webhook",
             json=_update("/help"),
@@ -365,7 +363,7 @@ def test_webhook_accepts_the_right_secret(tmp_path):
 def test_webhook_tolerates_a_malformed_body(tmp_path):
     settings = _settings(tmp_path)
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module, _auth_settings(tmp_path))) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         response = client.post(
             "/api/v1/telegram/webhook",
             content=b"not json at all",
@@ -379,7 +377,7 @@ def test_webhook_tolerates_a_malformed_body(tmp_path):
 def test_webhook_is_disabled_with_the_feature(tmp_path):
     settings = _settings(tmp_path, telegram_enabled=False, telegram_bot_token="")
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module, _auth_settings(tmp_path))) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         response = client.post("/api/v1/telegram/webhook", json=_update("/help"),
                                headers={"X-Telegram-Bot-Api-Secret-Token": "webhook-secret"})
         assert response.status_code == 200
@@ -620,8 +618,8 @@ def test_subscription_rejects_unknown_kinds_and_thresholds(service):
 def test_api_link_flow(tmp_path):
     settings = _settings(tmp_path)
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module, _auth_settings(tmp_path))) as client:
-        login = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
+    with TestClient(_app(settings, module, tmp_path)) as client:
+        login = client.post("/api/v1/auth/login", json={"email": EMAIL, "password": PASSWORD})
         headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
         code = client.post("/api/v1/telegram/link-code", headers=headers).json()["code"]
@@ -650,8 +648,8 @@ def test_api_link_flow(tmp_path):
 def test_api_rejects_bad_subscription_values(tmp_path):
     settings = _settings(tmp_path)
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module, _auth_settings(tmp_path))) as client:
-        login = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
+    with TestClient(_app(settings, module, tmp_path)) as client:
+        login = client.post("/api/v1/auth/login", json={"email": EMAIL, "password": PASSWORD})
         headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
         code = client.post("/api/v1/telegram/link-code", headers=headers).json()["code"]
         client.app.state.runtime.telegram.redeem_link_code(code, "777")
@@ -662,8 +660,8 @@ def test_api_rejects_bad_subscription_values(tmp_path):
 def test_telegram_status_never_leaks_the_token(tmp_path):
     settings = _settings(tmp_path)
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module, _auth_settings(tmp_path))) as client:
-        login = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
+    with TestClient(_app(settings, module, tmp_path)) as client:
+        login = client.post("/api/v1/auth/login", json={"email": EMAIL, "password": PASSWORD})
         headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
         body = client.get("/api/v1/telegram/status", headers=headers).text
         assert "TEST-TOKEN" not in body
@@ -675,8 +673,8 @@ def test_telegram_status_never_leaks_the_token(tmp_path):
 def test_existing_endpoints_still_work_with_telegram_on(tmp_path):
     settings = _settings(tmp_path)
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module, _auth_settings(tmp_path))) as client:
-        login = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
+    with TestClient(_app(settings, module, tmp_path)) as client:
+        login = client.post("/api/v1/auth/login", json={"email": EMAIL, "password": PASSWORD})
         headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
         for path in ("/api/v1/analytics/summary", "/api/v1/customers", "/api/v1/priority",
                      "/api/v1/quality", "/api/v1/model/settings", "/api/v1/actions"):
@@ -790,19 +788,17 @@ def test_scheduler_runs_with_a_pinned_as_of(tmp_path):
 
     module = load_module("backend.app.domain.module:create")
     from backend.app.api.deps import Runtime
+    from backend.auth.service import AuthService
     from backend.app.modules import CalculationAdapter
     from backend.app.storage import Storage
-    from backend.auth.service import AuthService as StandaloneAuthService
     from backend.database import UserRepository
     from core import Core
 
-    auth_settings = _auth_settings(tmp_path)
+    auth_settings = make_test_auth_settings(tmp_path / "auth.db")
     storage = Storage(database)
     calculation = CalculationAdapter(module)
-    users = UserRepository(auth_settings.database)
-    users.initialize()
-    runtime = Runtime(settings, database, storage,
-                      StandaloneAuthService(auth_settings, users),
+    auth = AuthService(auth_settings, UserRepository(auth_settings.database))
+    runtime = Runtime(settings, database, storage, auth,
                       calculation, Core(storage, calculation, settings.reference_now),
                       ai=None, telegram=svc)
     # Seed a published generation so there is something to digest.
@@ -855,14 +851,14 @@ def test_lifespan_starts_the_digest_scheduler_with_a_pinned_as_of(tmp_path):
         seen["digest"] = "digest_scheduler" in names
         seen["recalculate"] = "recalculate" in names
 
-    with _TestClient(create_app(settings, module, _auth_settings(tmp_path))) as client:
+    with _TestClient(_app(settings, module, tmp_path)) as client:
         assert client.get("/health").status_code == 200
         client.portal.call(probe) if hasattr(client, "portal") else None
 
     # Fall back to an explicit loop when the test client exposes no portal.
     if "digest" not in seen:
         async def run():
-            app = create_app(settings, module, _auth_settings(tmp_path))
+            app = _app(settings, module, tmp_path)
             async with app.router.lifespan_context(app):
                 names = {t.get_coro().__name__ for t in asyncio.all_tasks() if t is not asyncio.current_task()}
                 seen["digest"] = "digest_scheduler" in names

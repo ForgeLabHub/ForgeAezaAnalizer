@@ -57,6 +57,10 @@ backend/data/rag_index.json
 *.env.bak
 docker-compose.yml.bak*
 docker-compose.yml.before*
+# Stray "*.py.bak" copies of source files. One (backend/auth/passwords.py.bak)
+# was committed upstream; the file is code, but it is still a backup artifact
+# that must not live in the tree.
+*.py.bak
 !.env.example
 
 # Tooling scratch

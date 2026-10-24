@@ -16,7 +16,7 @@
 | `backend/migrations/`, `db/` | Схема и seed PostgreSQL |
 | `dataset/data.json` | Синтетический пример входного снимка |
 
-Compose запускает PostgreSQL 16, API и nginx для интерфейса. Аналитические данные и расчёты хранятся в PostgreSQL. Учётные записи создаёт модуль `backend/auth`; он хранит их в отдельной SQLite `db/auth.sqlite3`. Первый пользователь добавляется вручную командой `docker compose exec api python -m backend.users create <login>`. SQLite и RSA-ключ сохраняются в именованном Docker volume.
+Compose запускает PostgreSQL 16, API и nginx для интерфейса. Аналитические данные и расчёты хранятся в PostgreSQL. Пользователей и серверные сессии создаёт и хранит модуль `backend/auth` в отдельной SQLite. Первый пользователь добавляется вручную командой `docker compose exec api python -m backend.users create <login>`. Auth SQLite и RSA-ключ сохраняются в именованном Docker volume.
 
 ## Поток данных
 
@@ -63,7 +63,7 @@ Score — прозрачная взвешенная оценка от 0 до 100
 - Для публикации используйте HTTPS через reverse proxy и проверенное резервное копирование PostgreSQL.
 - AI Analyst и агрегатный AI выключены по умолчанию; подробная настройка — в [AI справке](AI_ANALYST.md) и [справке агрегатного ассистента](AI_ASSISTANT.md).
 
-Compose сохраняет PostgreSQL в `db/postgres/`, SQLite авторизации и ключ — в именованном volume `aeza_auth`. Для production задайте `AUTH_ISSUER` и `AUTH_FRONTEND_LOGIN_URL` на HTTPS origin и `AUTH_COOKIE_SECURE=true`; при HTTPS и выключенном secure-cookie приложение не запустится. Порты API и SPA опубликованы только на loopback для host reverse proxy. Команда `docker compose down` сохраняет тома, `docker compose down -v` удаляет их.
+Compose сохраняет PostgreSQL и auth SQLite с ключом в именованных volumes `pg_data` и `auth_data`. Для production задайте `AUTH_ISSUER` и `AUTH_FRONTEND_LOGIN_URL` на HTTPS origin и `AUTH_COOKIE_SECURE=true`; при HTTPS и выключенном secure-cookie приложение не запустится. Команда `docker compose down` сохраняет тома, `docker compose down -v` удаляет их.
 
 ## Проверки
 
