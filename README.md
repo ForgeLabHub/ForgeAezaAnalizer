@@ -402,6 +402,12 @@ cd frontend && npm ci && npx tsc -b && npm run build
 | 12 | `/metrics` против интерфейса | совпадают: €5.80, 3 high / 3 medium / 4 n/a |
 | 13 | What-if (`scenarios/compare`) | 3 high → 0 high / 6 medium (реальный пересчёт) |
 | 14 | AI выключен (`AEZA_AI_ENABLED=0`) | `503` с понятным текстом, аналитика продолжает работать |
+| 15 | AI включён (Ollama `qwen2.5:3b-instruct`, CPU) | `status=ready`, `rag_indexed=true` (324 чанка) |
+| 16 | AI: вопрос о деньгах | `grounded=true`, называет **5.80 EUR**, ссылки на `GET /api/v1/analytics/summary` |
+| 17 | AI: объяснение клиента 5 | `grounded=true`, `riskScore=71.4` совпадает со значением движка |
+| 18 | AI: методология (RAG) | цитаты-документы `docs/model.md`, `docs/DEMO_SCRIPT.md` |
+| 19 | AI: prompt injection | отказ, секреты и SQL недоступны |
+| 20 | AI без токена | `/ai/chat` и `/ai/status` → `401` |
 
 ---
 
