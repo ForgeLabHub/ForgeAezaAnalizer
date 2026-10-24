@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './lib/auth'
-import { LiveProvider } from './lib/live'
 import './styles.css'
 
 const root = document.getElementById('root')
@@ -13,9 +12,7 @@ createRoot(root).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <LiveProvider>
-          <App />
-        </LiveProvider>
+        <App />
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>,

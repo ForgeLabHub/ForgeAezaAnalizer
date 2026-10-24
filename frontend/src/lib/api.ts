@@ -1,16 +1,19 @@
 import type {
-  AiExplanation,
-  AiStatus,
+  CsvExportResult,
   CustomerDetail,
   CustomerPage,
   ModelSettings,
-  PlaybookList,
-  PlaybookUpdate,
-  RecommendationState,
-  PriorityView,
+  ObservationsResponse,
+  PriorityResponse,
   QualityReport,
-  ScenarioComparison,
+  ScenarioComparisonResponse,
+  ScenarioOverrides,
+  SettingsPatch,
+  SourceAccepted,
+  SourceInfo,
   Summary,
+  ValidationIssue,
+  VersionInfo,
 } from '../types'
 
 const TOKEN_KEY = 'aeza.token'
@@ -24,14 +27,50 @@ export function setToken(token: string | null) {
   else localStorage.removeItem(TOKEN_KEY)
 }
 
+type UnauthorizedListener = () => void
+type GenerationListener = (generation: number) => void
+
+let unauthorizedListener: UnauthorizedListener | null = null
+let generationListener: GenerationListener | null = null
+
+export function setUnauthorizedListener(listener: UnauthorizedListener | null) {
+  unauthorizedListener = listener
+}
+
+export function setGenerationListener(listener: GenerationListener | null) {
+  generationListener = listener
+}
+
 export class ApiError extends Error {
   status: number
   detail: string
+  errors?: ValidationIssue[]
 
-  constructor(status: number, detail: string) {
+  constructor(status: number, detail: string, errors?: ValidationIssue[]) {
     super(detail)
     this.status = status
     this.detail = detail
+    this.errors = errors
+  }
+}
+
+function parseErrorPayload(status: number, payload: unknown): ApiError {
+  if (payload && typeof payload === 'object') {
+    const obj = payload as { detail?: unknown; errors?: unknown }
+    const detail = obj.detail !== undefined ? String(obj.detail) : `Ошибка запроса (${status})`
+    const errors = Array.isArray(obj.errors) ? (obj.errors as ValidationIssue[]) : undefined
+    return new ApiError(status, detail, errors)
+  }
+  return new ApiError(status, `Ошибка запроса (${status})`)
+}
+
+function notifyGenerationFromResponse(response: Response) {
+  const header = response.headers.get('X-Analysis-Generation')
+  if (header && generationListener) {
+    const gen = Number(header)
+    if (Number.isInteger(gen) && gen >= 1) {
+      generationListener(gen)
+    }
   }
 }
 
@@ -41,7 +80,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     Accept: 'application/json',
     ...((init.headers as Record<string, string>) ?? {}),
   }
-  if (init.body) headers['Content-Type'] = 'application/json'
+  if (init.body !== undefined) headers['Content-Type'] = 'application/json'
   if (token) headers['Authorization'] = `Bearer ${token}`
 
   let response: Response
@@ -50,6 +89,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   } catch {
     throw new ApiError(0, 'Не удалось связаться с сервером. Проверьте, что API запущен.')
   }
+
+  notifyGenerationFromResponse(response)
 
   if (response.status === 204) return undefined as T
 
@@ -64,14 +105,35 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   if (!response.ok) {
-    const detail =
-      payload && typeof payload === 'object' && 'detail' in payload
-        ? String((payload as { detail: unknown }).detail)
-        : `Ошибка запроса (${response.status})`
-    throw new ApiError(response.status, detail)
+    if (response.status === 401 && !path.endsWith('/auth/login')) {
+      unauthorizedListener?.()
+    }
+    throw parseErrorPayload(response.status, payload)
   }
 
   return payload as T
+}
+
+function withQuery(base: string, params: Record<string, string | number | undefined | null>): string {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') {
+      query.set(key, String(value))
+    }
+  }
+  const str = query.toString()
+  return str ? `${base}?${str}` : base
+}
+
+export function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1500)
 }
 
 export const api = {
@@ -85,9 +147,11 @@ export const api = {
 
   logout: () => request<void>('/api/v1/auth/logout', { method: 'POST' }),
 
-  summary: () => request<Summary>('/api/v1/analytics/summary'),
+  summary: (generation?: number) =>
+    request<Summary>(withQuery('/api/v1/analytics/summary', { generation })),
 
   customers: (params: {
+    generation?: number
     search?: string
     riskCategory?: string
     serviceStatus?: string
@@ -95,120 +159,218 @@ export const api = {
     sortDir: 'asc' | 'desc'
     page: number
     pageSize: number
-  }) => {
-    const query = new URLSearchParams()
-    if (params.search) query.set('search', params.search)
-    if (params.riskCategory) query.set('riskCategory', params.riskCategory)
-    if (params.serviceStatus) query.set('serviceStatus', params.serviceStatus)
-    query.set('sortBy', params.sortBy)
-    query.set('sortDir', params.sortDir)
-    query.set('page', String(params.page))
-    query.set('pageSize', String(params.pageSize))
-    return request<CustomerPage>(`/api/v1/customers?${query.toString()}`)
-  },
-
-  customer: (id: number) => request<CustomerDetail>(`/api/v1/customers/${id}`),
-
-  /** Playbooks for one customer, each with its stored workflow status. */
-  playbooks: (id: number) => request<PlaybookList>(`/api/v1/customers/${id}/recommendations`),
-
-  /**
-   * Move one playbook to a new status. Only the addressed (customer, code)
-   * pair changes; the backend rejects an unknown code or status.
-   */
-  setPlaybookStatus: (id: number, code: string, status: RecommendationState) =>
-    request<PlaybookUpdate>(
-      `/api/v1/customers/${id}/recommendations/${encodeURIComponent(code)}`,
-      { method: 'PATCH', body: JSON.stringify({ status }) },
+  }) =>
+    request<CustomerPage>(
+      withQuery('/api/v1/customers', {
+        generation: params.generation,
+        search: params.search,
+        riskCategory: params.riskCategory,
+        serviceStatus: params.serviceStatus,
+        sortBy: params.sortBy,
+        sortDir: params.sortDir,
+        page: params.page,
+        pageSize: params.pageSize,
+      }),
     ),
 
-  modelSettings: () => request<ModelSettings>('/api/v1/model/settings'),
+  customer: (id: number, generation?: number) =>
+    request<CustomerDetail>(withQuery(`/api/v1/customers/${id}`, { generation })),
 
-  patchSettings: (patch: Record<string, unknown>) =>
+  exportCustomersCsv: async (params: {
+    generation?: number
+    search?: string
+    riskCategory?: string
+    serviceStatus?: string
+    sortBy: string
+    sortDir: 'asc' | 'desc'
+  }): Promise<CsvExportResult> => {
+    const token = getToken()
+    const headers: Record<string, string> = { Accept: 'text/csv, application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const url = withQuery('/api/v1/export/customers.csv', {
+      generation: params.generation,
+      search: params.search,
+      riskCategory: params.riskCategory,
+      serviceStatus: params.serviceStatus,
+      sortBy: params.sortBy,
+      sortDir: params.sortDir,
+    })
+
+    let response: Response
+    try {
+      response = await fetch(url, { method: 'GET', headers })
+    } catch {
+      throw new ApiError(0, 'Не удалось связаться с сервером для экспорта CSV.')
+    }
+
+    if (!response.ok) {
+      if (response.status === 401) unauthorizedListener?.()
+      let payload: unknown = null
+      try {
+        payload = await response.json()
+      } catch {
+        payload = null
+      }
+      throw parseErrorPayload(response.status, payload)
+    }
+
+    const blob = await response.blob()
+    const disposition = response.headers.get('Content-Disposition') ?? ''
+    const match = disposition.match(/filename="?([^";]+)"?/i)
+    const filename = match?.[1] ?? 'aeza-customers.csv'
+    const rowsRaw = response.headers.get('X-Export-Rows')
+    const horizonRaw = response.headers.get('X-Export-Horizon-Days')
+
+    return {
+      blob,
+      filename,
+      rows: rowsRaw !== null && rowsRaw !== '' ? Number(rowsRaw) : null,
+      asOf: response.headers.get('X-Export-As-Of'),
+      engineVersion: response.headers.get('X-Export-Engine-Version'),
+      horizonDays: horizonRaw !== null && horizonRaw !== '' ? Number(horizonRaw) : null,
+    }
+  },
+
+  modelSettings: (generation?: number) =>
+    request<ModelSettings>(withQuery('/api/v1/model/settings', { generation })),
+
+  patchSettings: (patch: SettingsPatch) =>
     request<ModelSettings>('/api/v1/model/settings', {
       method: 'PATCH',
       body: JSON.stringify(patch),
     }),
 
-  resetSettings: () =>
-    request<ModelSettings>('/api/v1/model/settings/reset', { method: 'POST' }),
+  resetSettings: (expectedGeneration?: number) =>
+    request<ModelSettings>(withQuery('/api/v1/model/settings/reset', { expectedGeneration }), {
+      method: 'POST',
+    }),
 
-  /** Audit of the raw snapshot. Read-only: it never modifies a record. */
+  sourceSnapshot: (generation?: number) =>
+    request<SourceInfo>(withQuery('/api/v1/source/snapshot', { generation })),
+
+  uploadSnapshot: (snapshot: unknown, expectedGeneration?: number) =>
+    request<SourceAccepted>(withQuery('/api/v1/source/snapshot', { expectedGeneration }), {
+      method: 'PUT',
+      body: JSON.stringify(snapshot),
+    }),
+
+  observations: (params?: { serviceId?: number; limit?: number }) =>
+    request<ObservationsResponse>(
+      withQuery('/api/v1/source/observations', {
+        serviceId: params?.serviceId,
+        limit: params?.limit ?? 100,
+      }),
+    ),
+
   quality: () => request<QualityReport>('/api/v1/quality'),
 
-  /** Work queues. The four measurements stay separate; categories carry no probability. */
-  priority: (params: { horizonDays?: number; category?: string; sortBy?: string; sortDir?: string } = {}) => {
-    const query = new URLSearchParams()
-    if (params.horizonDays) query.set('horizonDays', String(params.horizonDays))
-    if (params.category) query.set('category', params.category)
-    if (params.sortBy) query.set('sortBy', params.sortBy)
-    if (params.sortDir) query.set('sortDir', params.sortDir)
-    const suffix = query.toString()
-    return request<PriorityView>(`/api/v1/priority${suffix ? `?${suffix}` : ''}`)
-  },
-
-  /**
-   * Evaluate alternative parameters without touching the working configuration.
-   * The server returns baseline and scenario side by side; nothing is persisted.
-   */
-  compareScenario: (name: string, overrides: Record<string, unknown>) =>
-    request<ScenarioComparison>('/api/v1/scenarios/compare', {
+  compareScenario: (name: string, overrides: ScenarioOverrides) =>
+    request<ScenarioComparisonResponse>('/api/v1/scenarios/compare', {
       method: 'POST',
       body: JSON.stringify({ name, overrides }),
     }),
 
-  /**
-   * Whether the local LLM layer is enabled and reachable.
-   *
-   * The customer page calls this before offering the explanation button, so a
-   * disabled or unreachable provider produces an explanatory notice instead of
-   * a button that would always fail.
-   */
-  aiStatus: () => request<AiStatus>('/api/v1/ai/status'),
+  priority: (params?: {
+    horizonDays?: number
+    category?: string
+    sortBy?: 'urgency' | 'riskScore' | 'exposure' | 'id'
+    sortDir?: 'asc' | 'desc'
+  }) =>
+    request<PriorityResponse>(
+      withQuery('/api/v1/priority', {
+        horizonDays: params?.horizonDays ?? 30,
+        category: params?.category,
+        sortBy: params?.sortBy ?? 'urgency',
+        sortDir: params?.sortDir ?? 'asc',
+      }),
+    ),
 
   /**
-   * Ask the local model to explain one customer, grounded in the calculation.
-   *
-   * Read-only: the backend sends only this customer's whitelisted facts and
-   * verifies every number in the answer against them. A 503 means the provider
-   * is unavailable; a 502 means the answer was rejected as ungrounded.
+   * Connects to `/api/v1/analytics/events` via fetch stream so Bearer auth and
+   * `Last-Event-ID` headers are transmitted without exposing tokens in URLs.
    */
-  aiExplain: (id: number, question?: string) =>
-    request<AiExplanation>(`/api/v1/ai/customers/${id}/explain`, {
-      method: 'POST',
-      body: JSON.stringify(question ? { question } : {}),
-    }),
+  streamEvents: async (options: {
+    lastEventId?: number | null
+    signal: AbortSignal
+    onOpen?: () => void
+    onUpdate: (eventId: number, version: VersionInfo) => void
+  }): Promise<void> => {
+    const token = getToken()
+    if (!token) return
 
-  /** URL for the CSV export of the current selection, so the browser can download it. */
-  exportUrl: (params: { search?: string; riskCategory?: string; sortBy?: string; sortDir?: string } = {}) => {
-    const query = new URLSearchParams()
-    if (params.search) query.set('search', params.search)
-    if (params.riskCategory) query.set('riskCategory', params.riskCategory)
-    if (params.sortBy) query.set('sortBy', params.sortBy)
-    if (params.sortDir) query.set('sortDir', params.sortDir)
-    const suffix = query.toString()
-    return `/api/v1/export/customers.csv${suffix ? `?${suffix}` : ''}`
+    const headers: Record<string, string> = {
+      Accept: 'text/event-stream',
+      Authorization: `Bearer ${token}`,
+    }
+    if (options.lastEventId !== undefined && options.lastEventId !== null) {
+      headers['Last-Event-ID'] = String(options.lastEventId)
+    }
+
+    const response = await fetch('/api/v1/analytics/events', {
+      method: 'GET',
+      headers,
+      signal: options.signal,
+      cache: 'no-store',
+    })
+
+    if (!response.ok) {
+      if (response.status === 401) unauthorizedListener?.()
+      throw new ApiError(response.status, `SSE error (${response.status})`)
+    }
+
+    if (!response.body) return
+    options.onOpen?.()
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
+
+    try {
+      while (!options.signal.aborted) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n')
+        const frames = buffer.split('\n\n')
+        buffer = frames.pop() ?? ''
+
+        for (const frame of frames) {
+          if (!frame.trim()) continue
+          let eventName = 'message'
+          let eventId: number | null = null
+          const dataLines: string[] = []
+
+          for (const line of frame.split('\n')) {
+            if (line.startsWith(':')) continue
+            if (line.startsWith('id:')) {
+              const parsed = Number(line.slice(3).trim())
+              if (Number.isInteger(parsed) && parsed >= 0) eventId = parsed
+            } else if (line.startsWith('event:')) {
+              eventName = line.slice(6).trim()
+            } else if (line.startsWith('data:')) {
+              dataLines.push(line.slice(5).trim())
+            }
+          }
+
+          if (eventName === 'analysis.updated' && dataLines.length > 0) {
+            try {
+              const version = JSON.parse(dataLines.join('\n')) as VersionInfo
+              const id = eventId ?? version.generation
+              if (typeof id === 'number' && Number.isFinite(id)) {
+                options.onUpdate(id, version)
+              }
+            } catch {
+              // Ignore malformed frames without tearing down the stream.
+            }
+          }
+        }
+      }
+    } finally {
+      try {
+        await reader.cancel()
+      } catch {
+        // Stream already closed.
+      }
+    }
   },
-}
-
-/**
- * The export endpoint needs the bearer token, so a plain link cannot fetch it.
- * This downloads through fetch and hands the blob to the browser.
- */
-export async function downloadExport(params: Parameters<typeof api.exportUrl>[0] = {}) {
-  const token = getToken()
-  const response = await fetch(api.exportUrl(params), {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
-  if (!response.ok) throw new ApiError(response.status, 'Не удалось сформировать экспорт')
-  const blob = await response.blob()
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'aeza-customers.csv'
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
-  return Number(response.headers.get('X-Export-Rows') ?? 0)
 }
