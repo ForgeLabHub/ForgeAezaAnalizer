@@ -157,7 +157,7 @@ Snapshot отклонён: transactions.0.amount: Input should be less than or e
 ```bash
 TOKEN=$(curl -s -X POST http://127.0.0.1:8000/api/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"analyst@aeza.test","password":"demo123"}' \
+  -d '{"email":"analyst@aeza.test","password":"aeza-demo-password"}' \
   | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 
 curl -X PUT http://127.0.0.1:8000/api/v1/source/snapshot \
