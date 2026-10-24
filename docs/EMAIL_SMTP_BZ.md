@@ -91,23 +91,26 @@ Telegram-сценарий вызывает `email_provider.send_otp(email, code,
 контракт поверх SMTP.BZ, поэтому OTP можно отправлять без обхода существующей
 логики `TelegramService`.
 
-Адаптер **не включается автоматически**. Пока интегратор не передал его в
-`create_app(email_provider=...)`, `TelegramService` использует заглушку
-`UnconfiguredEmailProvider`, и OTP не отправляется (как и требует текущее
-соглашение: OTP выключен до согласования контракта партнёрского API).
+Адаптер включается автоматически в `create_app` (`backend/app/main.py`), но
+только когда заданы `SMTP_BZ_API_KEY` и `SMTP_BZ_FROM_EMAIL`
+(`settings.email_configured`). Если ключа нет, `TelegramService` использует
+заглушку `UnconfiguredEmailProvider`, и OTP не отправляется — успех не
+подделывается.
 
-Подключение выполняет интегратор Telegram-модуля — в `backend/app/main.py`:
+Подключение в `backend/app/main.py`:
 
 ```python
 from backend.app.integrations.email import SmtpBzEmailProvider
 
 # внутри create_app(...), перед созданием TelegramService:
-if email_provider is None and settings.email_configured:
-    email_provider = SmtpBzEmailProvider(settings)
+otp_provider = email_provider
+if otp_provider is None and settings.email_configured:
+    otp_provider = SmtpBzEmailProvider(settings)
+telegram = TelegramService(database, storage, settings, otp_provider, telegram_provider)
 ```
 
-Это единственное изменение общей сборки, которое требуется для OTP. Оно не
-включает OTP само по себе — включается лишь транспорт, когда заданы `SMTP_BZ_*`.
+Это включает только транспорт, когда заданы `SMTP_BZ_*`; сам сценарий OTP
+остаётся прежним и использует существующий контракт `EmailProvider`.
 
 ## Что остаётся сделать в панели SMTP.BZ
 

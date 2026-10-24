@@ -24,7 +24,7 @@ from backend.app.api.schemas import ErrorResponse
 from backend.app.ai.service import AIDisabled, AIService, AIUnavailable
 from backend.app.config import Settings, get_settings
 from backend.app.db import Database
-from backend.app.integrations.email import EmailDisabled, EmailRejected, EmailUnavailable
+from backend.app.integrations.email import EmailDisabled, EmailRejected, EmailUnavailable, SmtpBzEmailProvider
 from backend.app.metrics import Metrics
 from backend.app.modules import AnalyticsModule, CalculationAdapter, ModuleContractError, UnavailableAnalytics, load_module
 from backend.app.storage import Storage
@@ -93,7 +93,13 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
         calculation = CalculationAdapter(module)
         users = UserRepository(auth_settings.database)
         auth = AuthService(auth_settings, users)
-        telegram = TelegramService(database, storage, settings, email_provider, telegram_provider)
+        # The OTP adapter is wired only when SMTP.BZ is configured; otherwise the
+        # service keeps its unconfigured stub and OTP e-mail stays off rather
+        # than pretending to send.
+        otp_provider = email_provider
+        if otp_provider is None and settings.email_configured:
+            otp_provider = SmtpBzEmailProvider(settings)
+        telegram = TelegramService(database, storage, settings, otp_provider, telegram_provider)
         runtime = Runtime(settings, database, storage, auth, calculation,
             Core(storage, calculation, settings.reference_now), ai=None, telegram=telegram)
         stop = asyncio.Event()
