@@ -16,6 +16,10 @@ import type {
   SettingsPatch,
   SourceAccepted,
   SourceInfo,
+  SupportConversation,
+  SupportConversationMessages,
+  SupportConversationStatus,
+  SupportMessage,
   Summary,
   ValidationIssue,
   VersionInfo,
@@ -294,6 +298,34 @@ export const api = {
     }),
 
   aiStatus: () => request<AIStatus>('/api/v1/ai/status'),
+
+  supportConversations: (status?: SupportConversationStatus) =>
+    request<{ items: SupportConversation[] }>(
+      withQuery('/api/v1/telegram/support/conversations', { status }),
+    ),
+
+  supportMessages: (conversationId: number) =>
+    request<SupportConversationMessages>(
+      `/api/v1/telegram/support/conversations/${conversationId}/messages`,
+    ),
+
+  startSupportConversation: (accountId: number, text: string) =>
+    request<{ conversation: Omit<SupportConversation, 'email'>; message: SupportMessage | null }>(
+      '/api/v1/telegram/support/conversations',
+      { method: 'POST', body: JSON.stringify({ accountId, text }) },
+    ),
+
+  replyToSupportConversation: (conversationId: number, text: string) =>
+    request<SupportMessage>(`/api/v1/telegram/support/conversations/${conversationId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    }),
+
+  setSupportConversationStatus: (conversationId: number, status: SupportConversationStatus) =>
+    request<Omit<SupportConversation, 'email'>>(`/api/v1/telegram/support/conversations/${conversationId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
 
   aiChat: (question: string, customerId?: number) =>
     request<AIResponse>('/api/v1/ai/chat', {
