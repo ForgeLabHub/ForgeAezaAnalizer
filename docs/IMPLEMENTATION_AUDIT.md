@@ -20,7 +20,7 @@
 | Реализация | Каталог | Стек | Тесты |
 |---|---|---|---|
 | **A** | `aeza_analyzer/` | Python-пакет, SQLAlchemy+SQLite, vanilla-JS SPA, CLI | 52 |
-| **B** | `backend/app/` + `frontend/` | FastAPI, SQLAlchemy, React+TypeScript+Vite, Docker Compose | 108 |
+| **B** | `backend/app/` + `frontend/` | FastAPI, SQLAlchemy, React+TypeScript+Vite, Docker Compose | 246 |
 | **C** | `backend/auth/` | JWT (RS256) + SQLite, OIDC-провайдер | 17 (в `tests/test_auth.py`) |
 
 Реализации **не импортируют друг друга** и имеют собственные модели данных,
@@ -87,7 +87,7 @@
 - React/TypeScript SPA со сборкой без ошибок;
 - Docker Compose с health-check и PostgreSQL;
 - 7 факторов риска с метаданными и русскоязычными объяснениями;
-- 108 тестов, включая интеграционные.
+- 246 тестов, включая интеграционные.
 
 ### C — `backend/auth/`
 
@@ -114,7 +114,7 @@
 
 1. Восстановлены удалённые `aeza_analyzer/` и `backend/` — дерево снова
    собирается и тестируется.
-2. Проверены обе реализации: 52 + 108 тестов проходят.
+2. Проверены обе реализации: 52 + 246 тестов проходят.
 3. Проверен `frontend`: `tsc -b && vite build` собирается без ошибок.
 4. Проверен контракт ТЗ на живом сервере B: авторизация защищает API,
    `/metrics` отдаёт Prometheus-формат, изменение веса пересчитывает рейтинг.

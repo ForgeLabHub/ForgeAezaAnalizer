@@ -35,14 +35,15 @@ OpenAPI. Маршруты Retention Playbooks
 Подготовка (команды backend — **из корня репозитория**):
 
 ```bash
-# Терминал 1
+# Терминал 1 (из корня репозитория)
 export AEZA_JWT_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
 export AEZA_ADMIN_EMAIL="analyst@aeza.test"
 export AEZA_ADMIN_PASSWORD="demo123"
 export AEZA_DATABASE_URL="sqlite:///$(pwd)/data/analytics.sqlite"
 export AEZA_AUTH_DATABASE_URL="sqlite:///$(pwd)/db/auth.sqlite3"
-export AEZA_ANALYTICS_FACTORY="backend.app.domain.module:create"
+export AEZA_ANALYTICS_FACTORY=backend.app.domain.module:create
 export AEZA_SEED_DEMO_DATA=1
+export AEZA_SNAPSHOT_PATH=backend/data/snapshot.json
 mkdir -p data
 python -m uvicorn main:app --host 127.0.0.1 --port 8000
 
