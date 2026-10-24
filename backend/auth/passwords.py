@@ -5,7 +5,7 @@ import secrets
 
 
 def hash_password(password: str) -> str:
-    if not 12 <= len(password) <= 1024:
+    if not 7 <= len(password) <= 1024:
         raise ValueError("Password must contain 12 to 1024 characters")
     salt = secrets.token_bytes(16)
     digest = hashlib.scrypt(
