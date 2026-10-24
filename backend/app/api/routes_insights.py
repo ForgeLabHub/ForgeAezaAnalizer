@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from core import InvalidInput
 from backend.app.api.deps import RuntimeDep, UserDep
-from backend.app.domain import insights
+from backend.app.domain import insights, llm
 
 router = APIRouter(tags=["insights"])
 
@@ -198,3 +198,71 @@ def priority(
             "показаны раздельно. Категории организуют работу и не являются вероятностью оттока."
         ),
     }
+
+
+class AiQuestion(BaseModel):
+    """One analyst question about the published aggregates.
+
+    ``extra="forbid"`` keeps the schema closed, so a caller cannot smuggle
+    fields (settings, a snapshot, a provider URL) into the request. The length
+    bound stops an unbounded prompt from reaching the model.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(min_length=3, max_length=1000)
+
+
+@router.post("/insights/ai", summary="Ответ на вопрос по агрегатам расчёта с помощью локальной модели")
+def ai_question(payload: AiQuestion, runtime: RuntimeDep, user: UserDep):
+    """Answer a portfolio question from the published aggregates.
+
+    Read-only: the model receives only aggregated figures from the published
+    calculation and the data-quality summary. Customer e-mails, individual
+    records, the raw snapshot, the renewal list and every credential are never
+    sent. The model narrates; it never computes or writes.
+
+    Failure is honest: a disabled, unreachable or malformed provider returns
+    **503**, and nothing is replaced by a canned answer. A response that
+    invents a number is rejected as ungrounded.
+    """
+
+    state = runtime.storage.load()
+    summary = runtime.storage.summary()
+    quality_report = insights.inspect_source(state.source, as_of=state.as_of)
+    as_of = state.as_of.isoformat() if state.as_of else None
+
+    try:
+        answer = llm.ask_aggregate(
+            summary,
+            quality_report,
+            settings=runtime.settings,
+            question=payload.question,
+            as_of=as_of,
+        )
+    except llm.LlmUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except llm.LlmUngrounded as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Ответ модели отклонён: он содержит данные, которых нет в расчёте "
+                f"({'; '.join(exc.violations[:3])}). Ответ не показан, чтобы не "
+                "выдавать вымысел за результат расчёта."
+            ),
+        ) from exc
+    except llm.LlmBadResponse as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return {
+        "answer": answer.text,
+        "model": answer.model,
+        "generation": summary.get("generation"),
+        "sources": list(llm.AGGREGATE_SOURCES),
+        "grounded": True,
+        "warning": (
+            "AI-интерпретация не заменяет расчётный движок: числа и категории "
+            "берутся из опубликованного расчёта, а текст лишь объясняет их."
+        ),
+    }
+

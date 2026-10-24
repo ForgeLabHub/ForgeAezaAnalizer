@@ -87,6 +87,13 @@ Never commit a token, and never leave one in the remote URL.
 
 ## Gotchas that already bit us
 
+**Leaked `AEZA_*` shell variables break the test suite.** The test fixtures call
+`Settings(...)` with explicit values, but `create_app` reads
+`os.getenv("AEZA_ANALYTICS_FACTORY")` and the demo routes read other env vars, so
+exporting `AEZA_SEED_DEMO_DATA=1` / `AEZA_DATABASE_URL=...` in the shell makes
+`/ready` return 200 and settings tests fail with "unknown factor keys". If tests
+fail in a way that makes no sense, run `env | grep ^AEZA_` and unset them first.
+
 `from .config import settings` binds the `settings` object; `Settings` reads
 env vars lazily (properties) precisely so tests can repoint `AEZA_DATA_DIR`
 without reloading modules. Keep it lazy.
@@ -275,3 +282,51 @@ The AI Analyst is not a mock. It was run end-to-end against a real local model:
 - Latency on this CPU: **37–91 s** per answer (`num_ctx=4096`,
   `max_tokens=1200`). `AEZA_AI_MAX_CONCURRENCY=1`, so requests queue. Fine for a
   demo, not for concurrent analysts — that needs a separate inference host.
+# Production deployment (verified against the live stand)
+
+Public stand: `https://aeza-sentinel.pixel-minds.ru/` → `84.201.150.227`
+(also the A record for `pixel-minds.ru`). nginx/1.24.0 on Ubuntu terminates TLS
+with a Let's Encrypt cert whose SAN covers both names (expires 2027-01-22) and
+proxies to the Compose stack. `http://` answers 301 to `https://`.
+
+**The deployed API equals `origin/main`, not the feature branches.** Its
+OpenAPI has exactly 18 paths; the Retention Playbooks routes
+(`GET/PATCH /api/v1/customers/{id}/recommendations[/{code}]`) exist only on
+`feat/priority-whatif-integration` and later, so they return 404 on the stand.
+Do not describe the stand as having playbooks until it is redeployed.
+
+`/metrics`, `/api/v1/source/snapshot`, `/api/v1/customers`, `/api/v1/model/settings`
+and `/api/v1/analytics/summary` all return 401 without a token — auth is enforced
+on the stand. `/health`, `/api/v1/docs` and `/api/v1/openapi.json` are public.
+CORS is currently `Access-Control-Allow-Origin: *`.
+
+The agent environment has **no SSH access** to the production VM (no `~/.ssh`,
+no keys, no host credentials) — only outbound HTTPS. Any claim about systemd,
+nginx internals, file ownership or backups must therefore be marked unverified
+and handed to the owner; see `docs/audits/production-readiness-audit.md` §7 for
+the exact commands.
+
+## Export must stay streaming
+`backend/app/api/routes_export.py` streams one page at a time. Buffering the
+whole selection cost ~3.55 GiB resident and ~40 s for 50 000 customers; streaming
+caps it at one page (measured +51.5 MiB). If you touch it, keep two invariants:
+`X-Export-Rows` reports the **filtered** total (not the base-wide count), and
+every page is pinned to the first page's generation so a mid-export
+recalculation cannot splice two snapshots.
+
+## Load harness
+`backend/scripts/generate_load_profile.py` writes synthetic snapshots with the
+organiser schema (`--profile baseline|small|medium|stress`; stress is 50k/200k
+≈ 300k tx). `backend/scripts/loadtest.py` drives real routes and reports
+p50/p95/p99, RPS and error rate (`--scenario read|mixed|write|whatif|export`).
+Both are stdlib-only on purpose so they never enter a production image.
+
+Measured on 4 vCPU / 15.6 GiB: read throughput plateaus at ~115–120 rps with one
+`uvicorn` worker, p50 23 ms at c=4 rising to 258 ms at c=32. The 50k `customers`
+table is 298 MB; the dominant cost is deserialising 50 000 ~23 KB JSON payloads,
+not N+1 or missing indexes.
+
+## Environment caveat
+Running the Docker stack plus load tests in the agent sandbox has repeatedly
+triggered environment restarts. Keep sweeps short and bounded; capture each
+result as you go rather than relying on a long single run.

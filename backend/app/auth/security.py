@@ -3,6 +3,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
+import threading
+import time
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -20,6 +23,55 @@ AUDIENCE = "aeza-api"
 
 class Unauthorized(Exception):
     pass
+
+
+class RateLimited(Exception):
+    """Raised when a client exceeds the login attempt budget."""
+
+    def __init__(self, retry_after: int):
+        super().__init__("Слишком много попыток входа. Повторите позже.")
+        self.retry_after = retry_after
+
+
+class LoginThrottle:
+    """Sliding-window limiter for failed login attempts.
+
+    Keyed by ``email|client`` so one noisy client cannot lock an unrelated
+    account out, and in-process on purpose: the reference deployment runs a
+    single API worker, and a shared store would be a larger change than the
+    threat warrants. Swap the store if the service is ever scaled out.
+    """
+
+    def __init__(self, max_attempts: int, window_seconds: int):
+        self.max_attempts = max_attempts
+        self.window_seconds = window_seconds
+        self._failures: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = threading.Lock()
+
+    def _prune(self, key: str, now: float) -> None:
+        attempts = self._failures[key]
+        cutoff = now - self.window_seconds
+        while attempts and attempts[0] <= cutoff:
+            attempts.popleft()
+
+    def check(self, key: str) -> None:
+        now = time.monotonic()
+        with self._lock:
+            self._prune(key, now)
+            attempts = self._failures[key]
+            if len(attempts) >= self.max_attempts:
+                retry_after = max(1, int(attempts[0] + self.window_seconds - now) + 1)
+                raise RateLimited(retry_after)
+
+    def record_failure(self, key: str) -> None:
+        now = time.monotonic()
+        with self._lock:
+            self._prune(key, now)
+            self._failures[key].append(now)
+
+    def reset(self, key: str) -> None:
+        with self._lock:
+            self._failures.pop(key, None)
 
 
 def hash_password(password: str) -> str:
@@ -51,6 +103,8 @@ class AuthService:
         self.database = database
         self.settings = settings
         self.dummy_hash = hash_password(secrets.token_urlsafe(32))
+        self.throttle = LoginThrottle(
+            settings.login_max_attempts, settings.login_window_seconds)
 
     def bootstrap(self):
         with self.database.sessions() as session:
@@ -66,12 +120,16 @@ class AuthService:
                 if not session.scalar(select(UserRow.id).where(UserRow.email == self.settings.bootstrap_admin_email)):
                     raise
 
-    def login(self, email: str, password: str) -> dict:
+    def login(self, email: str, password: str, client: str = "") -> dict:
+        key = f"{email.strip().lower()}|{client}"
+        self.throttle.check(key)
         with self.database.transaction() as session:
             user = session.scalar(select(UserRow).where(UserRow.email == email))
             matches = verify_password(password, user.password_hash if user else self.dummy_hash)
             if not user or not matches:
+                self.throttle.record_failure(key)
                 raise Unauthorized("Неверный email или пароль")
+            self.throttle.reset(key)
             now = datetime.now(timezone.utc)
             expires = now + timedelta(minutes=self.settings.access_token_ttl_minutes)
             session.execute(delete(AuthSessionRow).where(AuthSessionRow.expires_at <= now))

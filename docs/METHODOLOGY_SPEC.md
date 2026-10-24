@@ -6,6 +6,15 @@
 > и покрыты `tests/test_methodology.py` и `tests/test_money_rounding.py`.
 > Baseline подтверждён на текущем коде: `cd backend && python -m pytest tests/ -q`
 > → **246 passed**.
+>
+> **Исторический документ.** Написан на более раннем этапе проекта. Приведённые
+> здесь числа тестов (например «108 passed») и баллы (например «73,3») относятся к
+> прежней конфигурации и **не являются текущими**. Актуальные значения —
+> в `docs/audits/requirements-traceability.md` и `docs/TESTING.md`.
+>
+> **Статус: проект на утверждение. Код не изменялся.**
+> Ветка: `feat/analytics-scenarios`. Baseline на момент написания —
+> `cd backend && python -m pytest tests/ -q` → **108 passed**.
 
 Все числа ниже получены запуском проверочных скриптов на реальном снимке
 `backend/data/snapshot.json` (10 аккаунтов, 30 услуг, 100 транзакций,
