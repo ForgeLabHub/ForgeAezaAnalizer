@@ -62,3 +62,30 @@ AI Analyst использует документацию из `docs/`; Dockerfil
 Публичный стенд: `https://aeza-sentinel.pixel-minds.ru/`. Проверяйте его OpenAPI
 и фактические настройки отдельно: локальные изменения сами по себе не означают
 обновление стенда.
+
+## Telegram-бот (клиентский) — 2026-10-24
+
+Клиентская интеграция: привязка Telegram к аккаунту по email-OTP, Mini App и
+поддержка. Выключена по умолчанию (`AEZA_TELEGRAM_BOT_ENABLED=0`). Runbook —
+`docs/TELEGRAM_BOT.md`, спецификация — `TELEGRAM_BOT_PLAN.md`.
+
+Неочевидные инварианты:
+
+- **Webhook всегда отвечает 200**, кроме неверного секрета (403) и выключенного
+  бота (503). 5xx заставил бы Telegram бесконечно повторять один и тот же update.
+  Поэтому ошибка отправки ответа (`_send_text`) не пробрасывается наружу.
+- **Дедупликация по `update_id`** (`analyzer_telegram_updates`, PK) — вставка
+  коммитится до бизнес-действия; повторный `/start` не перепривязывает чат.
+  Плюс `SupportMessageRow.telegram_message_id` уникален.
+- **OTP-потребление — compare-and-set**: `UPDATE ... WHERE consumed_at IS NULL`
+  и проверка `rowcount == 1`, потому что `with_for_update` в SQLite не работает.
+- **Провайдер Telegram вырезает токен** из всех ошибок и не чейнит исходный
+  `HTTPError` (в его `.url` есть токен), иначе он попал бы в traceback и логи.
+- **Регистрация webhook — явная** (`POST /telegram/webhook/register`), не при
+  старте: иначе рестарт гоняет с другими инстансами. Требуется публичный HTTPS.
+- **OTP-почта заблокирована** до согласования контракта: `UnconfiguredEmailProvider`
+  бросает, письмо не подменяется фиктивным успехом. Seam — `EmailProvider.send_otp`.
+- **Mini App** (`frontend/src/pages/MiniAppPage.tsx`, `/mini-app`) рендерится до
+  гейта аналитика и использует отдельный клиентский токен (`clientRequest`), не
+  сессию аналитика.
+- Клиенту не показываются risk score, причины риска и рекомендации — по плану.
