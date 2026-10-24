@@ -6746,6 +6746,39 @@
           "email"
         ],
         "title": "UserInfo"
+      },
+      "TestEmailRequest": {
+        "properties": {
+          "to": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 3,
+            "title": "To"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          },
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "to"
+        ],
+        "title": "TestEmailRequest"
       }
     },
     "securitySchemes": {
