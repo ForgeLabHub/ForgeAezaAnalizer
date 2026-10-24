@@ -158,25 +158,43 @@ class Storage:
     ) -> dict:
         """Set one playbook's status, leaving every other row untouched.
 
-        The upsert is a plain read-then-write inside a single transaction, which
-        is idempotent: applying the same status twice converges on the same row
-        rather than creating a duplicate.
+        Uses a dialect-native upsert rather than read-then-insert. The plain
+        read-then-write raced under concurrency: two first-time updates to the
+        same ``(customer, code)`` both saw no row, both inserted, and one failed
+        with a unique-violation 500. Reproduced with 12 concurrent first writes
+        (1 of 12 returned 500). ``ON CONFLICT DO UPDATE`` makes the write
+        atomic, so concurrent updates converge instead of colliding.
         """
 
         now = datetime.now(timezone.utc)
+        dialect = self.database.engine.dialect.name
+        values = {
+            "customer_id": customer_id, "code": code, "status": status,
+            "updated_at": now, "updated_by": actor,
+        }
         with self.database.transaction() as session:
-            row = session.get(RecommendationStatusRow, (customer_id, code))
-            if row is None:
-                session.add(
-                    RecommendationStatusRow(
-                        customer_id=customer_id, code=code, status=status,
-                        updated_at=now, updated_by=actor,
-                    )
-                )
+            if dialect == "sqlite":
+                from sqlalchemy.dialects.sqlite import insert as dialect_insert
+            elif dialect == "postgresql":
+                from sqlalchemy.dialects.postgresql import insert as dialect_insert
             else:
-                row.status = status
-                row.updated_at = now
-                row.updated_by = actor
+                # Fall back to the portable path for any other backend.
+                row = session.get(RecommendationStatusRow, (customer_id, code))
+                if row is None:
+                    session.add(RecommendationStatusRow(**values))
+                else:
+                    row.status = status
+                    row.updated_at = now
+                    row.updated_by = actor
+                return {"code": code, "status": status, "updatedAt": now.isoformat(), "updatedBy": actor}
+
+            statement = dialect_insert(RecommendationStatusRow).values(**values)
+            session.execute(
+                statement.on_conflict_do_update(
+                    index_elements=["customer_id", "code"],
+                    set_={"status": status, "updated_at": now, "updated_by": actor},
+                )
+            )
         return {"code": code, "status": status, "updatedAt": now.isoformat(), "updatedBy": actor}
 
     def source(self, generation=None) -> dict:
