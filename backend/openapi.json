@@ -750,6 +750,214 @@
         }
       }
     },
+    "/api/v1/customers/{customer_id}/recommendations": {
+      "get": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "Рекомендации по удержанию и их статусы",
+        "description": "Return the customer's playbooks with their workflow status attached.\n\nA recommendation without a stored row is reported as ``new``, so the list\nis always complete and an untouched playbook needs no write.",
+        "operationId": "customer_recommendations_api_v1_customers__customer_id__recommendations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Customer Id"
+            }
+          },
+          {
+            "name": "generation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Generation"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{customer_id}/recommendations/{code}": {
+      "patch": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "Изменить статус рекомендации",
+        "description": "Move one playbook to a new status.\n\nOnly the addressed ``(customer, code)`` pair changes. The recommendation must\nexist in the current calculation, so a stale or invented code is rejected\nrather than silently stored.",
+        "operationId": "patch_recommendation_api_v1_customers__customer_id__recommendations__code__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Customer Id"
+            }
+          },
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecommendationStatusPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/api/v1/analytics/summary": {
       "get": {
         "tags": [
@@ -1812,104 +2020,19 @@
         }
       }
     },
-    "/api/v1/priority/actions": {
-      "patch": {
-        "tags": [
-          "insights"
-        ],
-        "summary": "Обновить статус рекомендации",
-        "description": "Persist the operator's workflow state for one recommendation.\n\nThe update is rejected unless the customer and the recommendation code both\nexist in the *published* generation, so a status cannot be attached to an\naction the model never produced.  Nothing here touches the risk score, the\nexposure or the model settings.",
-        "operationId": "update_action_status_api_v1_priority_actions_patch",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ActionStatusPatch"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Unprocessable Content",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Bad Gateway",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Service Unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
     "/api/v1/insights/ai": {
       "post": {
         "tags": [
           "insights"
         ],
-        "summary": "Объяснение аналитики локальной моделью",
-        "description": "Narrate the published aggregates with the local model.\n\nRead-only in every direction: it does not publish a generation, does not\ntouch model settings, does not write workflow state and does not mutate the\nsnapshot.  The model receives aggregate counts and euro totals only — never\na customer e-mail, a raw account record or a single transaction.\n\nThe endpoint is deliberately *not* a chat: it holds no history and accepts\nno session, so one question cannot steer the next one.",
-        "operationId": "ai_insight_api_v1_insights_ai_post",
+        "summary": "Ответ на вопрос по агрегатам расчёта с помощью локальной модели",
+        "description": "Answer a portfolio question from the published aggregates.\n\nRead-only: the model receives only aggregated figures from the published\ncalculation and the data-quality summary. Customer e-mails, individual\nrecords, the raw snapshot, the renewal list and every credential are never\nsent. The model narrates; it never computes or writes.\n\nFailure is honest: a disabled, unreachable or malformed provider returns\n**503**, and nothing is replaced by a canned answer. A response that\ninvents a number is rejected as ungrounded.",
+        "operationId": "ai_question_api_v1_insights_ai_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AiAskRequest"
+                "$ref": "#/components/schemas/AiQuestion"
               }
             }
           },
@@ -1988,7 +2111,7 @@
           "export"
         ],
         "summary": "Экспорт текущей выборки клиентов в CSV",
-        "description": "Export the filtered, sorted selection with its calculation metadata.\n\nThe row set and order come from the same storage query the list endpoint\nuses, so the file matches what the analyst sees on screen.",
+        "description": "Export the filtered, sorted selection with its calculation metadata.\n\nRows are read in pages and written to the response as they arrive, so peak\nmemory stays proportional to one page rather than to the whole selection.\nBuffering every row first was measured at 50 000 customers to hold ~3.5 GiB\nresident and take 40 s; streaming keeps the working set bounded.\n\nThe row set and order come from the same storage query the list endpoint\nuses, so the file matches what the analyst sees on screen.",
         "operationId": "export_customers_api_v1_export_customers_csv_get",
         "security": [
           {
@@ -2059,8 +2182,745 @@
               "default": "desc",
               "title": "Sortdir"
             }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2000,
+              "minimum": 1,
+              "default": 500,
+              "title": "Pagesize"
+            }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/status": {
+      "get": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Состояние AI Analyst",
+        "operationId": "status_api_v1_ai_status_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "probe",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Probe"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/chat": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Вопрос AI-аналитику",
+        "operationId": "chat_api_v1_ai_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ai/customers/{customer_id}/explain": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Объяснить оценку клиента",
+        "operationId": "explain_customer_api_v1_ai_customers__customer_id__explain_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Customer Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExplainRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/scenarios/explain": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Объяснить результат what-if сценария",
+        "operationId": "explain_scenario_api_v1_ai_scenarios_explain_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioExplainRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ai/reports/summary": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Краткий отчёт по картине риска",
+        "operationId": "report_api_v1_ai_reports_summary_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/actions": {
+      "get": {
+        "tags": [
+          "actions"
+        ],
+        "summary": "Список подтверждённых действий по удержанию",
+        "operationId": "list_actions_api_v1_actions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customerid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "open",
+                    "in_progress",
+                    "done",
+                    "dismissed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "actions"
+        ],
+        "summary": "Подтвердить действие по удержанию",
+        "operationId": "create_action_api_v1_actions_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/actions/{action_id}": {
+      "patch": {
+        "tags": [
+          "actions"
+        ],
+        "summary": "Изменить статус или комментарий действия",
+        "operationId": "update_action_api_v1_actions__action_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "action_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Action Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionUpdate"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2216,7 +3076,7 @@
         ],
         "title": "Account"
       },
-      "ActionStatusPatch": {
+      "ActionCreate": {
         "properties": {
           "customerId": {
             "type": "integer",
@@ -2229,52 +3089,29 @@
             "minLength": 1,
             "title": "Code"
           },
-          "status": {
+          "serviceId": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "integer",
+                "minimum": 1.0
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Status"
-          },
-          "assignee": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 320
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Assignee"
+            "title": "Serviceid"
           },
           "note": {
             "anyOf": [
               {
                 "type": "string",
-                "maxLength": 1000
+                "maxLength": 2000
               },
               {
                 "type": "null"
               }
             ],
             "title": "Note"
-          },
-          "expectedGeneration": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expectedgeneration"
           }
         },
         "additionalProperties": false,
@@ -2283,14 +3120,49 @@
           "customerId",
           "code"
         ],
-        "title": "ActionStatusPatch",
-        "description": "Workflow update for one retention recommendation."
+        "title": "ActionCreate"
       },
-      "AiAskRequest": {
+      "ActionUpdate": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "in_progress",
+                  "done",
+                  "dismissed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ActionUpdate"
+      },
+      "AiQuestion": {
         "properties": {
           "question": {
             "type": "string",
-            "maxLength": 2000,
+            "maxLength": 1000,
             "minLength": 3,
             "title": "Question"
           }
@@ -2300,8 +3172,36 @@
         "required": [
           "question"
         ],
-        "title": "AiAskRequest",
-        "description": "One analyst question for the local model."
+        "title": "AiQuestion",
+        "description": "One analyst question about the published aggregates.\n\n``extra=\"forbid\"`` keeps the schema closed, so a caller cannot smuggle\nfields (settings, a snapshot, a provider URL) into the request. The length\nbound stops an unbounded prompt from reaching the model."
+      },
+      "ChatRequest": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Question"
+          },
+          "customerId": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customerid"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "ChatRequest"
       },
       "CustomerCounts": {
         "properties": {
@@ -2462,22 +3362,6 @@
             "type": "string",
             "title": "Email"
           },
-          "isSynthetic": {
-            "type": "boolean",
-            "title": "Issynthetic",
-            "default": false
-          },
-          "syntheticReason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Syntheticreason"
-          },
           "balance": {
             "$ref": "#/components/schemas/Money"
           },
@@ -2625,6 +3509,25 @@
           "detail"
         ],
         "title": "ErrorResponse"
+      },
+      "ExplainRequest": {
+        "properties": {
+          "question": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExplainRequest"
       },
       "FactorInfo": {
         "properties": {
@@ -2895,46 +3798,6 @@
         ],
         "title": "Money"
       },
-      "ProvenanceSummary": {
-        "properties": {
-          "total": {
-            "type": "integer",
-            "title": "Total"
-          },
-          "synthetic": {
-            "type": "integer",
-            "title": "Synthetic"
-          },
-          "real": {
-            "type": "integer",
-            "title": "Real"
-          },
-          "demonstrationRecords": {
-            "type": "integer",
-            "title": "Demonstrationrecords"
-          },
-          "state": {
-            "type": "string",
-            "title": "State"
-          },
-          "note": {
-            "type": "string",
-            "title": "Note"
-          }
-        },
-        "additionalProperties": true,
-        "type": "object",
-        "required": [
-          "total",
-          "synthetic",
-          "real",
-          "demonstrationRecords",
-          "state",
-          "note"
-        ],
-        "title": "ProvenanceSummary",
-        "description": "Where the loaded records come from: real, synthetic, or a mix."
-      },
       "PublishedCustomerDetail": {
         "properties": {
           "generation": {
@@ -2989,22 +3852,6 @@
           "email": {
             "type": "string",
             "title": "Email"
-          },
-          "isSynthetic": {
-            "type": "boolean",
-            "title": "Issynthetic",
-            "default": false
-          },
-          "syntheticReason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Syntheticreason"
           },
           "balance": {
             "$ref": "#/components/schemas/Money"
@@ -3228,16 +4075,6 @@
           "revenue": {
             "$ref": "#/components/schemas/RevenueSummary"
           },
-          "provenance": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ProvenanceSummary"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "topRiskReasons": {
             "items": {
               "$ref": "#/components/schemas/RiskReason"
@@ -3262,11 +4099,6 @@
           },
           "model": {
             "$ref": "#/components/schemas/ModelInfo"
-          },
-          "aiEnabled": {
-            "type": "boolean",
-            "title": "Aienabled",
-            "default": false
           }
         },
         "additionalProperties": true,
@@ -3320,6 +4152,26 @@
         ],
         "title": "Recommendation"
       },
+      "RecommendationStatusPatch": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "new",
+              "in_progress",
+              "done"
+            ],
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "RecommendationStatusPatch",
+        "description": "Workflow transition for one playbook.\n\n``extra=\"forbid\"`` keeps a client from smuggling analytical fields through\nthis endpoint: a status change must never be able to touch the model."
+      },
       "RenewalDetail": {
         "properties": {
           "serviceId": {
@@ -3353,6 +4205,25 @@
           "revenueAtRisk"
         ],
         "title": "RenewalDetail"
+      },
+      "ReportRequest": {
+        "properties": {
+          "focus": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 400
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focus"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReportRequest"
       },
       "RevenueSummary": {
         "properties": {
@@ -3411,6 +4282,30 @@
           "count"
         ],
         "title": "RiskReason"
+      },
+      "ScenarioExplainRequest": {
+        "properties": {
+          "overrides": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Overrides"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ScenarioExplainRequest"
       },
       "ScenarioRequest": {
         "properties": {

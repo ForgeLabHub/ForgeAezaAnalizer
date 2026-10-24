@@ -226,3 +226,64 @@ def test_csv_writer_round_trips_through_a_parser():
     assert len(rows) == 1
     assert rows[0]["email"] == 'weird,"quoted"@x'
     assert "line1\nline2" in rows[0]["topReasons"]
+
+
+def _export_rows(client, headers, query: str = "") -> list[dict]:
+    response = client.get(f"/api/v1/export/customers.csv{query}", headers=headers)
+    assert response.status_code == 200, response.text
+    body = response.content.decode("utf-8-sig")
+    return list(csv.DictReader(io.StringIO(body)))
+
+
+def test_export_body_matches_the_customer_list(client, auth_headers):
+    """The file and the interface must not be able to disagree."""
+    listed = client.get("/api/v1/customers?pageSize=100", headers=auth_headers).json()
+    rows = _export_rows(client, auth_headers)
+    assert [row["id"] for row in rows] == [str(item["id"]) for item in listed["items"]]
+
+
+def test_export_row_count_is_the_filtered_selection(client, auth_headers):
+    """``X-Export-Rows`` must describe the export, not the whole customer base."""
+    listed = client.get("/api/v1/customers?pageSize=100", headers=auth_headers).json()
+    total = listed["total"]
+    # The fixture gives categories in a repeating pattern, so a filter exists
+    # that is a strict, non-empty subset of the whole selection.
+    for category in ("high", "low"):
+        filtered = client.get(
+            f"/api/v1/customers?pageSize=100&riskCategory={category}", headers=auth_headers
+        ).json()
+        if not filtered["items"] or filtered["total"] == total:
+            continue
+        response = client.get(
+            f"/api/v1/export/customers.csv?riskCategory={category}", headers=auth_headers
+        )
+        assert response.status_code == 200, response.text
+        rows = list(csv.DictReader(io.StringIO(response.content.decode("utf-8-sig"))))
+        assert int(response.headers["X-Export-Rows"]) == filtered["total"]
+        assert len(rows) == filtered["total"]
+        assert filtered["total"] < total, "the filter must actually narrow the selection"
+        return
+    pytest.skip("fixture does not produce a narrowing filter")
+
+
+def test_export_streams_across_pages(client, auth_headers):
+    """Paging must not drop or duplicate rows, whatever the page size."""
+    listed = client.get("/api/v1/customers?pageSize=100", headers=auth_headers).json()
+    whole = _export_rows(client, auth_headers)
+    assert len(whole) == listed["total"]
+    for page_size in (1, 2, 3):
+        paged = _export_rows(client, auth_headers, f"?pageSize={page_size}")
+        assert [row["id"] for row in paged] == [row["id"] for row in whole]
+
+
+def test_export_is_a_stream_not_a_buffer(client, auth_headers):
+    """The response must be a stream so memory stays bounded by one page."""
+    response = client.get("/api/v1/export/customers.csv?pageSize=1", headers=auth_headers)
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    # A streamed body has no reliable Content-Length up front.
+    assert "content-length" not in {k.lower() for k in response.headers}
+
+
+def test_export_requires_authentication(client):
+    assert client.get("/api/v1/export/customers.csv").status_code == 401

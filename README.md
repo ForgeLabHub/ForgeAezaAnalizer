@@ -1,18 +1,23 @@
 # Aéza · Churn Risk Analyzer
 
-**Backend v2:** ядро — FastAPI-приложение `backend.app.main:create_app` (часть B
-ниже). Встроенный объяснимый risk-engine подключается фабрикой
-`AEZA_ANALYTICS_FACTORY=backend.app.domain.module:create` — это значение по
-умолчанию в `.env.example` и `docker-compose.yml`. Если переменную оставить
-пустой, аналитические маршруты отвечают 503 («Расчёт ещё не опубликован»).
-Контракт подключения внешнего модуля:
-[docs/backend-rewrite.md](docs/backend-rewrite.md).
+**Продукт (рекомендуемый к запуску):** `backend/app/` + `frontend/` —
+FastAPI + React, собирается в Docker-образ, разворачивается через Docker Compose.
+Аналитический движок подключён по умолчанию
+(`AEZA_ANALYTICS_FACTORY=backend.app.domain.module:create`). Если фабрику не
+задать, аналитические маршруты отвечают 503, а не подставляют нули. Описание
+части B — [ниже](#часть-b--fastapi--react).
 
-Аналитика клиентских данных Aéza для хакатона **UMIRHack 2026, кейс №2**:
-выявление риска оттока, объяснение причин оценки и выручки под риском на
-**официальном датасете организатора** (10 аккаунтов, 30 услуг, 100 транзакций).
-Данные синтетические: их сгенерировал организатор (`dataset/generate.py`),
-это снимок состояния, а не история событий.
+Аналитика клиентских данных Aéza для хакатона: выявление риска оттока,
+объяснение причин оценки и выручки под риском на **официальном датасете
+организатора** (10 аккаунтов, 30 услуг, 100 транзакций). Данные синтетические:
+их сгенерировал организатор (`dataset/generate.py`), это снимок состояния, а не
+история событий.
+
+**Контрольные значения на официальном наборе** (воспроизведены командой, см.
+`docs/audits/calculation-audit.md`): клиент №10 → score **71.4**; `revenueAtRisk`
+→ **5.80 €**; `upcomingRenewals` → **17.03 €**; распределение категорий
+**3 high / 3 medium / 4 not_applicable**. Смена веса `expiry_proximity` 3 → 9
+даёт score **81.8** и выручку **7.72 €**.
 
 > **В репозитории три независимых набора кода для одного кейса.** Они написаны
 > параллельно, не импортируют друг друга и имеют собственные модели данных,
@@ -199,7 +204,7 @@ revenue_at_risk = eligible_renewal_amount × risk_score / 100
 - `favicon.ico` не отдаётся (безвредный 404 в консоли).
 
 Полный отчёт аудита данных и найденные дефекты исходных данных —
-[`docs/DATA_AUDIT.md`](docs/DATA_AUDIT.md).
+[`docs/DATA_AND_RISK_MODEL.md`](docs/DATA_AND_RISK_MODEL.md).
 
 
 ---
@@ -233,11 +238,7 @@ React + TypeScript SPA под nginx. Полностью независима о�
 5. **Даёт рекомендации по удержанию**, привязанные к реальным сигналам в данных.
 6. **Позволяет менять веса модели и горизонт прогноза** — настройки сохраняются на
    сервере и немедленно меняют результаты.
-7. **Строит рабочий список удержания** («Центр действий»): кого удерживать первым по
-   ожидаемой экспозиции, с рекомендациями по каждой позиции.
-8. **Позволяет проверить сценарий до публикации** («Лаборатория сценариев»):
-   симуляция сравнивает модель-кандидат с опубликованной и ничего не сохраняет.
-9. **Импортирует снимок данных** через API с полной валидацией и атомарным
+7. **Импортирует снимок данных** через API с полной валидацией и атомарным
    применением.
 
 ### Честные ограничения
@@ -250,31 +251,31 @@ React + TypeScript SPA под nginx. Полностью независима о�
   истории.
 - **Данные синтетические.** Балансы не вычисляются из транзакций, `amount`
   генерируется независимо от `price`, полной истории пополнений нет.
-- **Приоритет — это порядок работ, а не вероятность.** Уровни P1–P3 и индекс 0–100
-  отвечают на вопрос «кого смотреть первым», а не «кто уйдёт».
-- **Рекомендации не гарантируют удержание.** Они описывают проверяемое действие по
-  реальному сигналу в данных; система не отправляет сообщения клиентам и не меняет их
-  аккаунты.
 
 ---
 
 ## Быстрый старт (локально, без Docker)
 
-Нужен Python 3.10+ и Node.js 18+.
+Нужен Python 3.10+ и Node.js 18+. Команды backend запускаются **из корня
+репозитория** — `main.py` в корне импортирует `backend.app.main:create_app`.
 
 ```bash
-# 1. Backend
-cd backend
-python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+# 1. Зависимости backend
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r backend/requirements.txt
 
 # 2. Демо-доступ и секрет подписи токенов
 export AEZA_JWT_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
 export AEZA_ADMIN_EMAIL="analyst@aeza.test"
 export AEZA_ADMIN_PASSWORD="demo123"
+export AEZA_DATABASE_URL="sqlite:///$(pwd)/data/analytics.sqlite"
+export AEZA_AUTH_DATABASE_URL="sqlite:///$(pwd)/db/auth.sqlite3"
+export AEZA_ANALYTICS_FACTORY="backend.app.domain.module:create"
+export AEZA_SEED_DEMO_DATA=1     # загрузить dataset/data.json при пустой БД
+mkdir -p data
 
-# 3. Запуск API (при старте база создаётся и заполняется из снимка)
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+# 3. Запуск API из корня репозитория
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
 ```bash
@@ -287,13 +288,18 @@ npm run dev          # http://127.0.0.1:5173
 Откройте <http://127.0.0.1:5173>, войдите как `analyst@aeza.test` / `demo123`.
 
 Vite проксирует `/api`, `/metrics` и `/health` на `127.0.0.1:8000`, поэтому CORS в
-разработке не требуется.
+разработке не требуется. Полный стек с PostgreSQL — в разделе
+[Docker Compose](#запуск-через-docker-compose).
 
 ### Проверка API напрямую
 
 ```bash
 curl -s http://127.0.0.1:8000/health
-curl -s http://127.0.0.1:8000/metrics | grep '^aeza_'
+# Токен нужен для /metrics и всех маршрутов /api/v1
+TOKEN=$(curl -s -X POST http://127.0.0.1:8000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"analyst@aeza.test","password":"demo123"}' | python -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+curl -s http://127.0.0.1:8000/metrics -H "Authorization: Bearer $TOKEN" | grep '^aeza_'
 ```
 
 Swagger UI: <http://127.0.0.1:8000/api/v1/docs>
@@ -322,33 +328,30 @@ docker compose up --build
 - `001_schema.up.sql` — таблицы, ограничения, индексы;
 - `002_seed.sql` — те же 10/30/100 записей из `dataset/data.json`.
 
-> **Обновление до новой версии модели.** Настройки модели хранятся в БД
-> (`pgdata`), а не в образе. После `docker compose up --build` уже
-> существующий том сохраняет прежние веса, поэтому опубликованная модель
-> может отличаться от новых значений по умолчанию. Сбросьте её до дефолта:
->
-> ```bash
-> curl -X POST http://localhost:8000/api/v1/model/settings/reset \
->   -H "Authorization: Bearer <token>"   # токен: POST /api/v1/auth/login
-> ```
->
-> Либо пересоздайте том с данными: `docker compose down -v && docker compose up --build`
-> (удалит БД, включая загруженный снимок и сессии).
-
 ---
 
 ## Тесты
 
 ```bash
+# Backend (FastAPI-приложение) — 210 тестов
 cd backend
 python -m pytest tests/ -q
+
+# Корневой набор (часть A + модуль авторизации) — 69 тестов
+cd ..
+python -m pytest tests/ -q
+
+# Frontend: типизация и production-сборка
+cd frontend
+npx tsc -b && npm run build
 ```
 
-Покрытие: денежные преобразования, нормализация факторов, границы порогов, нулевые
-и отсутствующие веса, скоринг на уровне услуги и клиента, определение продлений в
-горизонте, выручка под риском, авторизация, все обязательные сортировки, фильтры,
-импорт (включая атомарность и откат), `/metrics`, сквозной сценарий из 10 шагов и
-воспроизводимость расчёта.
+Покрытие backend: денежные преобразования, нормализация факторов, границы
+порогов, нулевые и отсутствующие веса, скоринг на уровне услуги и клиента,
+определение продлений в горизонте, выручка под риском, авторизация, ограничение
+частоты входа, безопасные значения по умолчанию, все обязательные сортировки,
+фильтры, импорт (включая атомарность и откат), `/metrics`, сквозной сценарий из
+10 шагов и воспроизводимость расчёта. Полные результаты — `docs/TESTING.md`.
 
 ---
 
@@ -405,39 +408,39 @@ docs/             документация по данным, модели, им
 
 | Документ | Содержание |
 | --- | --- |
-| [`docs/data.md`](docs/data.md) | Структура исходных данных, денежные единицы, качество данных |
-| [`docs/DATA_ARCHITECTURE.md`](docs/DATA_ARCHITECTURE.md) | Архитектура данных: хранилище, внешние потоки, импорт, два стека |
-| [`docs/model.md`](docs/model.md) | Факторы риска, формула, пороги, агрегация до клиента, ограничения |
-| [`docs/import.md`](docs/import.md) | Формат снимка, правила валидации, атомарность |
-| [`docs/demo.md`](docs/demo.md) | Сценарий демонстрации на 3–5 минут |
-| [`docs/readiness.md`](docs/readiness.md) | Отчёт о готовности: что проверено и что осталось |
-| [`docs/REQUIREMENTS_TRACEABILITY.md`](docs/REQUIREMENTS_TRACEABILITY.md) | Матрица соответствия официальному ТЗ |
-| [`docs/IMPLEMENTATION_AUDIT.md`](docs/IMPLEMENTATION_AUDIT.md) | Аудит всех реализаций в репозитории |
-| [`docs/ARCHITECTURE_DECISION.md`](docs/ARCHITECTURE_DECISION.md) | Выбор основного продукта и судьба остальных |
-| [`docs/TESTING.md`](docs/TESTING.md) | Фактические команды, тесты и результаты |
-| [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) | Пошаговый сценарий защиты |
-| [`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md) | Реализованное и идеи на будущее |
-| [`docs/AUTH_MODULE.md`](docs/AUTH_MODULE.md) | Модуль аутентификации (OIDC, JWT) |
-| [`docs/API.md`](docs/API.md) | Эндпоинты канонического продукта (часть B), схемы, авторизация, ошибки |
-| [`docs/API_PART_A_LEGACY.md`](docs/API_PART_A_LEGACY.md) | LEGACY: эндпоинты части A (`aeza_analyzer/`) |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Устройство части A |
-| [`docs/ANALYTICS_METHODOLOGY.md`](docs/ANALYTICS_METHODOLOGY.md) | Методика риска части A |
-| [`docs/REVENUE_METHODOLOGY.md`](docs/REVENUE_METHODOLOGY.md) | Денежная оценка части A |
-| [`docs/IMPORT_AND_DATA_AUDIT.md`](docs/IMPORT_AND_DATA_AUDIT.md) | Импорт и профиль данных части A |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Устройство приложения: слои, точки входа, поток данных |
+| [`docs/API.md`](docs/API.md) | HTTP-эндпоинты **части A** (`/api/*`, `aeza_analyzer/api/app.py`). Для части B источник истины — `backend/openapi.json` |
+| [`docs/DATA_AND_RISK_MODEL.md`](docs/DATA_AND_RISK_MODEL.md) | Данные, единицы, факторы, формула, пороги, интерпретация score |
+| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Локальная разработка и структура |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Развёртывание, Docker Compose, диагностика |
+| [`docs/SECURITY.md`](docs/SECURITY.md) | Модель угроз и принятые меры |
+| [`docs/TESTING.md`](docs/TESTING.md) | Команды и фактические результаты тестов |
+| [`docs/research/README.md`](docs/research/README.md) | Исследование: кейсы Aéza и найденные репозитории (и блокировка) |
+| [`docs/audits/final-project-completion.md`](docs/audits/final-project-completion.md) | Итоговый отчёт о завершении |
+| [`docs/audits/release-gate.md`](docs/audits/release-gate.md) | Ворота релиза: что готово, что проверяется на production, откат |
+| [`docs/audits/project-inventory.md`](docs/audits/project-inventory.md) | Инвентаризация репозитория и классификация файлов |
+| [`docs/audits/requirements-traceability.md`](docs/audits/requirements-traceability.md) | Матрица соответствия ТЗ с доказательствами |
+| [`docs/audits/frontend-preservation.md`](docs/audits/frontend-preservation.md) | Зафиксированный интерфейс и правила его сохранения |
+| [`docs/audits/security-audit.md`](docs/audits/security-audit.md) | Аудит безопасности, находки и их статус |
+| [`docs/audits/calculation-audit.md`](docs/audits/calculation-audit.md) | Формулы, восстановленные из кода, и контрольные расчёты |
+| [`docs/audits/architecture-audit.md`](docs/audits/architecture-audit.md) | Архитектурные находки |
+| [`docs/audits/production-readiness-audit.md`](docs/audits/production-readiness-audit.md) | Готовность стенда и команды для владельца |
+| [`docs/deck/README.md`](docs/deck/README.md) | Генератор презентаций для защиты |
+| [`docs/AUTH_MODULE.md`](docs/AUTH_MODULE.md) | Модуль авторизации части C (OIDC, JWT) |
 | [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md) | Словарь полей |
 | [`docs/SCHEMA_MAPPING.md`](docs/SCHEMA_MAPPING.md) | Источник → модель приложения |
-| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Разработка части A |
-| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Развёртывание части A (SQLite, Render) |
-| [`docs/DEPLOYMENT_PART_B.md`](docs/DEPLOYMENT_PART_B.md) | Развёртывание канонического продукта B (Docker, PostgreSQL) |
-| [`docs/PROVENANCE_AUDIT.md`](docs/PROVENANCE_AUDIT.md) | Аудит происхождения, дублирования и состояния проекта |
-| [`docs/SECURITY.md`](docs/SECURITY.md) | Безопасность |
+| [`docs/ANALYTICS_METHODOLOGY.md`](docs/ANALYTICS_METHODOLOGY.md) | Методика риска |
+| [`docs/REVENUE_METHODOLOGY.md`](docs/REVENUE_METHODOLOGY.md) | Денежная оценка |
+| [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) | Пошаговый сценарий защиты |
+| [`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md) | Реализованное и идеи на будущее |
 
 ---
 
 ## API
 
-Все маршруты, кроме `/health`, `/metrics`, `/api/v1/docs` и входа, требуют
-`Authorization: Bearer <token>`.
+Полный список — в `backend/openapi.json` и в Swagger UI. Ниже — основные
+маршруты части B. Все, кроме `/health`, `/ready`, `/metrics`, `/api/v1/docs` и
+входа, требуют `Authorization: Bearer <token>`.
 
 | Метод | Маршрут | Назначение |
 | --- | --- | --- |
@@ -446,89 +449,38 @@ docs/             документация по данным, модели, им
 | `POST` | `/api/v1/auth/logout` | Завершить сессию |
 | `GET` | `/api/v1/customers` | Список клиентов: поиск, фильтры, сортировка, пагинация |
 | `GET` | `/api/v1/customers/{id}` | Карточка клиента с услугами и рекомендациями |
+| `GET` | `/api/v1/customers/{id}/recommendations` | Playbooks клиента со статусом |
+| `PATCH` | `/api/v1/customers/{id}/recommendations/{code}` | Сменить статус playbook |
 | `GET` | `/api/v1/analytics/summary` | Сводные показатели дашборда |
-| `GET` | `/api/v1/priority` | Рабочий список удержания: категории, фильтр и сортировка |
-| `PATCH` | `/api/v1/priority/actions` | Статус, исполнитель и заметка по рекомендации |
-| `GET` | `/api/v1/quality` | Отчёт о качестве данных снимка |
-| `POST` | `/api/v1/scenarios/compare` | Сравнение модели-кандидата с опубликованной (без публикации) |
-| `GET` | `/api/v1/analytics/events` | Календарь ближайших продлений |
-| `GET` | `/api/v1/export/customers.csv` | Экспорт клиентов в CSV |
+| `GET` | `/api/v1/analytics/events` | Поток событий (SSE) |
+| `GET` | `/api/v1/priority` | Очереди приоритизации |
+| `GET` | `/api/v1/quality` | Аудит качества данных |
+| `GET` | `/api/v1/ai/status` | Доступность локальной ИИ-модели |
+| `POST` | `/api/v1/ai/customers/{id}/explain` | ИИ-объяснение риска клиента (только чтение) |
+| `POST` | `/api/v1/scenarios/compare` | Сравнение сценария с baseline (what-if) |
+| `GET` | `/api/v1/export/customers.csv` | CSV текущей выборки (потоково) |
 | `GET` | `/api/v1/model/settings` | Текущие веса, горизонт, пороги |
 | `PATCH` | `/api/v1/model/settings` | Изменить веса, горизонт, пороги |
 | `POST` | `/api/v1/model/settings/reset` | Вернуть значения по умолчанию |
 | `GET` | `/api/v1/source/snapshot` | Текущие объём и отчёт последнего импорта |
 | `PUT` | `/api/v1/source/snapshot` | Импортировать снимок (атомарно) |
-| `GET` | `/api/v1/source/observations` | Наблюдения импорта (для аудита) |
+| `GET` | `/api/v1/source/observations` | Наблюдения по снимку |
 | `GET` | `/metrics` | Метрики Prometheus |
 | `GET` | `/health` | Проверка живости |
-| `GET` | `/ready` | Проверка готовности (снимок загружен) |
+| `GET` | `/ready` | Проверка готовности |
 | `GET` | `/api/v1/docs` | Swagger UI |
+| `GET` | `/api/v1/ai/status` | Состояние AI Analyst: `disabled` / `ready` / `unavailable` |
+| `POST` | `/api/v1/ai/chat` | Вопрос по портфелю |
+| `POST` | `/api/v1/ai/customers/{id}/explain` | Объяснение риска клиента |
+| `POST` | `/api/v1/ai/scenarios/explain` | Объяснение what-if сценария |
+| `POST` | `/api/v1/ai/reports/summary` | Краткий отчёт для аналитика |
+
+Маршруты части A (`/api/health`, `/api/meta`, `/api/dashboard`, `/api/weights`,
+…) описаны отдельно в [`docs/API.md`](docs/API.md).
 
 Параметры `/api/v1/customers`: `search`, `riskCategory`, `serviceStatus`, `sortBy`
 (`id`, `email`, `riskScore`, `balance`, `totalReplenished`), `sortDir`
 (`asc`/`desc`), `page`, `pageSize`.
-
-Параметры `/api/v1/priority`: `horizonDays` (по умолчанию 30), `category`
-(`operational_attention`, `high_risk_with_exposure`, `high_risk_review`,
-`data_quality_review`, `normal_review`), `sortBy` (`urgency`, `riskScore`,
-`exposure`, `id`), `sortDir` (`asc`/`desc`).
-
-### Центр действий и симуляция
-
-`GET /api/v1/priority` — приоритизированный список удержания, построенный на том же
-опубликованном расчёте, что дашборд и карточки клиентов. Каждая позиция помечается
-одной или несколькими абсолютными категориями; это организационные ярлыки, а не
-вероятность оттока:
-
-- **operational_attention** — подтверждённая операционная проблема: просроченное
-  продление или противоречие регламенту.
-- **high_risk_with_exposure** — высокий риск и продление внутри горизонта: деньги под
-  угрозой сейчас.
-- **high_risk_review** — высокий риск, но деньги в горизонте не подтверждены.
-- **data_quality_review** — снимок по клиенту неполон, вывод делать рано.
-- **normal_review** — ни одно из перечисленных оснований не сработало.
-
-Позиции сортируются по выбранному `sortBy`: `urgency` (операционная срочность),
-`riskScore`, `exposure` (риск-взвешенная экспозиция) или `id`. Порядок переключается
-через `sortDir`.
-
-#### Статусы работы с рекомендациями
-
-Каждая рекомендация в позиции несёт поле `actions` — список задач удержания с текущим
-состоянием рабочего процесса: `code`, `title`, `detail`, `priority`, `status`
-(`new` / `in_progress` / `done`), `assignee`, `note`, `updatedAt`, `updatedBy`.
-Состояние по умолчанию — `new`.
-
-`PATCH /api/v1/priority/actions` сохраняет одно изменение. Тело:
-
-```json
-{
-  "customerId": 15,
-  "code": "notify_expiring",
-  "status": "in_progress",
-  "assignee": "retention-team",
-  "note": "Позвонили, обещали пополнить",
-  "expectedGeneration": 4
-}
-```
-
-Поля `status`, `assignee`, `note` необязательны — передаются только изменяемые.
-Переходы состояний ограничены (`new` → `in_progress` → `done`; `done` можно вернуть в
-`in_progress`). Записи привязаны к поколению расчёта: устаревший `expectedGeneration`
-отклоняется с `409`, чтобы не переносить статус на изменившийся набор данных.
-
-Рабочий процесс **не влияет на аналитику**: балл риска, экспозиция и веса не зависят
-от статусов. Это видно в `test_action_status.py` (тест
-`test_action_status_does_not_change_analytics`).
-
-`POST /api/v1/scenarios/compare` — сравнение модели-кандидата с опубликованной. Тело
-принимает `overrides` с теми же полями, что `PATCH /api/v1/model/settings`
-(`weights`, `horizonDays`, `lowMax`, `mediumMax`, `failedRenewalWindowDays`).
-Симуляция проходит ту же валидацию, что и сохранение, но **ничего не публикует**: не
-создаётся поколение расчёта и не пишется строка настроек, поэтому другие пользователи
-не затронуты. В ответе — `baseline` и `scenario` (сводки), `comparison` (разница по
-каждой метрике) и список затронутых клиентов (сначала сменившие категорию, затем
-изменившие только балл). Применить сценарий можно только явным `PATCH`.
 
 ---
 
@@ -541,19 +493,49 @@ docs/             документация по данным, модели, им
 | `AEZA_DATABASE_URL` | `postgresql+psycopg://aeza:aeza@localhost:5432/aeza` | Аналитическая БД PostgreSQL |
 | `AEZA_AUTH_DATABASE_URL` | `sqlite:///./db/auth.sqlite3` | SQLite для пользователей и сессий |
 | `AEZA_JWT_SECRET` | — | Секрет подписи токенов; обязателен в production |
-| `AEZA_ALLOW_DEV_SECRET` | `1` | Разрешить временный секрет, если `AEZA_JWT_SECRET` не задан |
+| `AEZA_ALLOW_DEV_SECRET` | `0` | Разрешить временный секрет, если `AEZA_JWT_SECRET` не задан. По умолчанию **запрещено**; для локальной разработки задайте `1` |
 | `AEZA_ADMIN_EMAIL` | `analyst@aeza.test` | Логин аналитика при первом старте |
 | `AEZA_ADMIN_PASSWORD` | — | Пароль аналитика при первом старте |
 | `AEZA_TOKEN_TTL_MINUTES` | `720` | Время жизни токена |
+| `AEZA_LOGIN_MAX_ATTEMPTS` | `10` | Неудачных попыток входа на email+клиента до ответа 429 |
+| `AEZA_LOGIN_WINDOW_SECONDS` | `300` | Окно, в котором считается бюджет попыток |
 | `AEZA_SNAPSHOT_PATH` | `dataset/data.json` | Необязательный источник для локальной загрузки при пустой БД |
 | `AEZA_SEED_DEMO_DATA` | `0` | Загружать JSON-снимок при пустой БД; Compose использует SQL seed |
 | `AEZA_AS_OF` | `2026-10-19T15:00:00+00:00` | Опорный момент расчёта; `now` — по стенным часам |
-| `AEZA_CORS_ORIGINS` | `*` | Разрешённые источники через запятую |
+| `AEZA_CORS_ORIGINS` | `http://localhost:8080,http://localhost:5173` | Разрешённые источники через запятую; `*` — только для демонстрации |
+| `AEZA_AI_ENABLED` | `0` | Включить локальный AI Analyst (`/api/v1/ai`) |
+| `AEZA_AI_PROVIDER` | `ollama` | `ollama` (локальный runtime) или `mock` (офлайн, для тестов) |
+| `AEZA_AI_MODEL` | `qwen2.5:3b-instruct` | Имя локальной модели для AI Analyst |
+| `AEZA_AI_BASE_URL` | `http://127.0.0.1:11434` | Адрес Ollama; внешние URL отклоняются |
+| `AEZA_AI_RAG_INDEX_PATH` | `backend/data/rag_index.json` | Локальный индекс документации |
+| `AEZA_OLLAMA_URL` | `http://172.18.0.1:11434` | Адрес Ollama для агрегатного ассистента (`/api/v1/insights/ai`). Алиас `AEZA_LLM_BASE_URL` тоже поддерживается |
+| `AEZA_OLLAMA_MODEL` | `qwen2.5:7b` | Модель агрегатного ассистента (алиас `AEZA_LLM_MODEL`) |
+| `AEZA_OLLAMA_TIMEOUT_SECONDS` | `90` | Таймаут агрегатного ассистента (алиас `AEZA_LLM_TIMEOUT_SECONDS`) |
+| `AEZA_LLM_MAX_TOKENS` | `700` | Ограничение длины ответа агрегатного ассистента |
+| `AEZA_LLM_TEMPERATURE` | `0.2` | Температура агрегатного ассистента |
 
 **Опорный момент.** Снимок Aéza — это состояние на фиксированный момент, и статусы
 услуг в нём не меняются со временем. Поэтому `AEZA_AS_OF` по умолчанию равен
 документированному моменту снимка: так «дней до окончания» и все баллы
 воспроизводимы. Значение `now` включает живой режим по стенным часам.
+
+---
+
+## AI Analyst (локальная LLM)
+
+Модуль `backend/app/ai/` объясняет уже посчитанные оценки Risk Engine через
+локальную модель (Ollama), локальный RAG по документации проекта и read-only
+инструменты backend. Числа берутся из backend, модель их не вычисляет; ответы
+проверяются на неподтверждённые данные. Выключен по умолчанию
+(`AEZA_AI_ENABLED=0`) — продукт работает и без него.
+
+Цикл «риск → объяснение → решение человека» замкнут: рекомендацию Risk Engine
+можно подтвердить в карточке клиента, действие сохраняется (`/api/v1/actions`) и
+становится видно и аналитику, и AI-аналитику. Записывает действие только человек
+через API — у AI-модуля маршрута записи нет.
+
+Установка, запуск модели, пересборка RAG-индекса, API и диагностика:
+[docs/AI_ANALYST.md](docs/AI_ANALYST.md).
 
 ---
 
@@ -563,10 +545,18 @@ docs/             документация по данным, модели, им
   сохраняется.
 - Токены — JWT (HS256) с настраиваемым временем жизни.
 - Рабочие секреты не вшиты в код: `AEZA_JWT_SECRET` задаётся окружением.
-- В production задайте `AEZA_ALLOW_DEV_SECRET=0`, чтобы приложение отказывалось
-  стартовать без явного секрета.
+- `AEZA_ALLOW_DEV_SECRET` по умолчанию `0`: без явного секрета приложение
+  отказывается стартовать, а не генерирует временный ключ. Для локальной
+  разработки задайте `1`.
+- Неудачные попытки входа ограничены (`AEZA_LOGIN_MAX_ATTEMPTS` за
+  `AEZA_LOGIN_WINDOW_SECONDS`); при превышении — **429** с `Retry-After`.
 - В логи и метрики не попадают email, идентификаторы клиентов и иные персональные
   данные: метрики агрегированы, меток с высокой кардинальностью нет.
+- Стенд по-прежнему отдаёт CORS `*`, пока не переразвёрнут с этой ветки; на
+  сервере задайте конкретный origin в `AEZA_CORS_ORIGINS`.
+- Развёртывание на сервере требует задать `AEZA_JWT_SECRET` и
+  `AEZA_ADMIN_PASSWORD` — подробности в `docs/SECURITY.md` и
+  `docs/audits/production-readiness-audit.md`.
 
 ---
 

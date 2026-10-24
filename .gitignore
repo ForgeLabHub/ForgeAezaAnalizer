@@ -13,6 +13,12 @@
 *.sqlite3
 *.db
 
+# Auth module runtime store: holds password hashes and live sessions, so it is
+# never committed. db/schema.sql and db/analytics_seed.sql stay tracked.
+/db/auth.sqlite3
+/db/auth.sqlite3-shm
+/db/auth.sqlite3-wal
+
 # Python
 __pycache__/
 *.py[cod]
@@ -33,6 +39,8 @@ npm-debug.log*
 # Local data / runtime state (backend)
 backend/data/aeza.db
 backend/data/*.db
+# RAG index is a rebuildable artifact: python -m backend.app.ai.rag --docs docs
+backend/data/rag_index.json
 /db/postgres/
 
 # Secrets and local env
@@ -40,6 +48,7 @@ backend/data/*.db
 .env.local
 
 # Tooling scratch
+.tmp_local/
 .playwright-mcp/
 .agent_tmp/
 *.log
@@ -58,3 +67,8 @@ frontend/tsconfig.tsbuildinfo
 
 # Local-only compose overrides (published sandbox ports).
 docker-compose.override.yml
+
+# Local SQLite authentication database and runtime files
+/db/auth.sqlite3
+/db/auth.sqlite3-wal
+/db/auth.sqlite3-shm

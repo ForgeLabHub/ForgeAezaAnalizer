@@ -1,5 +1,27 @@
 import type { ReactNode } from 'react'
-import type { RiskCategory } from '../types'
+import type { PriorityCategoryKey, QualitySeverity, RiskCategory, ValidationIssue } from '../types'
+
+export const STATUS_LABELS: Record<string, string> = {
+  active: 'Активна',
+  suspended: 'Приостановлена',
+  prolong_wait: 'Ожидает продления',
+  blocked: 'Заблокирована',
+  deleted: 'Удалена',
+}
+
+export const PRIORITY_SHORT_LABELS: Record<PriorityCategoryKey, string> = {
+  operational_attention: 'Операционный контроль',
+  high_risk_with_exposure: 'Высокий риск с экспозицией',
+  high_risk_review: 'Высокий риск без экспозиции',
+  data_quality_review: 'Проверка данных',
+  normal_review: 'Плановый обзор',
+}
+
+export const QUALITY_SEVERITY_LABELS: Record<QualitySeverity, string> = {
+  critical: 'Критично',
+  warning: 'Предупреждение',
+  info: 'Справка',
+}
 
 export function RiskBadge({ category, label }: { category: RiskCategory; label?: string }) {
   const text =
@@ -19,8 +41,43 @@ export function RiskBadge({ category, label }: { category: RiskCategory; label?:
   )
 }
 
-export function StatusBadge({ status, label }: { status: string; label: string }) {
-  return <span className={`badge status-${status}`}>{label}</span>
+export function StatusBadge({ status, label }: { status: string; label?: string }) {
+  const text = label ?? STATUS_LABELS[status] ?? status
+  return <span className={`badge status-${status}`}>{text}</span>
+}
+
+export function PriorityBadge({
+  category,
+  title,
+}: {
+  category: PriorityCategoryKey | string
+  title?: string
+}) {
+  const cls =
+    category === 'operational_attention' || category === 'high_risk_with_exposure'
+      ? 'risk-high'
+      : category === 'high_risk_review' || category === 'data_quality_review'
+        ? 'risk-medium'
+        : 'neutral'
+  const text =
+    PRIORITY_SHORT_LABELS[category as PriorityCategoryKey] ?? category
+  return (
+    <span className={`badge ${cls}`} title={title}>
+      <span className="dot" aria-hidden="true" />
+      {text}
+    </span>
+  )
+}
+
+export function SeverityBadge({ level }: { level: QualitySeverity }) {
+  const cls =
+    level === 'critical' ? 'risk-high' : level === 'warning' ? 'risk-medium' : 'neutral'
+  return (
+    <span className={`badge ${cls}`}>
+      <span className="dot" aria-hidden="true" />
+      {QUALITY_SEVERITY_LABELS[level]}
+    </span>
+  )
 }
 
 export function ScoreBar({ score, category }: { score: number | null; category: RiskCategory }) {
@@ -171,10 +228,25 @@ export function Loading({ label = 'Загрузка данных…' }: { label?
   )
 }
 
-export function ErrorBox({ children }: { children: ReactNode }) {
+export function ErrorBox({
+  children,
+  issues,
+}: {
+  children: ReactNode
+  issues?: ValidationIssue[]
+}) {
   return (
     <div className="error-box" role="alert">
-      {children}
+      <div>{children}</div>
+      {issues && issues.length > 0 ? (
+        <ul className="error-issues">
+          {issues.map((item, idx) => (
+            <li key={idx}>
+              <code>{item.loc.filter((part) => part !== 'body').join('.')}</code>: {item.msg}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   )
 }
@@ -219,8 +291,20 @@ export function BarChart({
   )
 }
 
-export function formatEur(eur: string, withUnit = true): string {
+export function centsToEurString(cents: number | null | undefined): string | null {
+  if (cents === null || cents === undefined || !Number.isFinite(cents)) return null
+  const rounded = Math.round(cents)
+  const sign = rounded < 0 ? '-' : ''
+  const abs = Math.abs(rounded)
+  const whole = Math.floor(abs / 100)
+  const frac = String(abs % 100).padStart(2, '0')
+  return `${sign}${whole}.${frac}`
+}
+
+export function formatEur(eur: string | null | undefined, withUnit = true): string {
+  if (eur === null || eur === undefined || eur === '') return '—'
   const n = Number(eur)
+  if (!Number.isFinite(n)) return eur
   const formatted = n.toLocaleString('ru-RU', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -228,7 +312,39 @@ export function formatEur(eur: string, withUnit = true): string {
   return withUnit ? `${formatted} €` : formatted
 }
 
-export function formatDateTime(iso: string): string {
+export function formatCents(cents: number | null | undefined, withUnit = true): string {
+  return formatEur(centsToEurString(cents), withUnit)
+}
+
+export function formatSignedCents(cents: number | null | undefined): string {
+  if (cents === null || cents === undefined || !Number.isFinite(cents)) return '—'
+  if (cents === 0) return '0,00 €'
+  const prefix = cents > 0 ? '+' : '−'
+  return `${prefix}${formatCents(Math.abs(cents), true)}`
+}
+
+export function formatSignedNumber(value: number | null | undefined, digits = 0): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—'
+  if (value === 0) return (0).toFixed(digits)
+  const prefix = value > 0 ? '+' : '−'
+  return `${prefix}${Math.abs(value).toLocaleString('ru-RU', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}`
+}
+
+export function formatRelativePct(rel: number | null | undefined): string {
+  if (rel === null || rel === undefined || !Number.isFinite(rel)) return '—'
+  if (rel === 0) return '0,0%'
+  const prefix = rel > 0 ? '+' : '−'
+  return `${prefix}${(Math.abs(rel) * 100).toLocaleString('ru-RU', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })}%`
+}
+
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
   return d.toLocaleString('ru-RU', {
@@ -241,7 +357,8 @@ export function formatDateTime(iso: string): string {
   })
 }
 
-export function formatDate(iso: string): string {
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
   return d.toLocaleDateString('ru-RU', {
@@ -252,8 +369,8 @@ export function formatDate(iso: string): string {
   })
 }
 
-export function formatDays(days: number | null): string {
-  if (days === null) return '—'
+export function formatDays(days: number | null | undefined): string {
+  if (days === null || days === undefined) return '—'
   const sign = days < 0 ? '−' : ''
   return `${sign}${Math.abs(days).toFixed(1)} дн.`
 }
