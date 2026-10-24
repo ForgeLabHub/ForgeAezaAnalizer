@@ -21,9 +21,55 @@ import { ErrorBox, Loading, formatCents, STATUS_LABELS } from '../components/ui'
 
 const TOKEN_KEY = 'aeza.telegram.clientToken'
 
+/** Minimal shape of the Telegram WebApp object this screen uses. */
+interface TelegramWebApp {
+  initData?: string
+  colorScheme?: 'light' | 'dark'
+  isExpanded?: boolean
+  viewportHeight?: number
+  ready?: () => void
+  expand?: () => void
+  close?: () => void
+  onEvent?: (event: string, handler: () => void) => void
+  offEvent?: (event: string, handler: () => void) => void
+}
+
+function webApp(): TelegramWebApp | null {
+  const tg = (window as unknown as { Telegram?: { WebApp?: TelegramWebApp } }).Telegram
+  return tg?.WebApp ?? null
+}
+
 function readInitData(): string | null {
-  const webApp = (window as unknown as { Telegram?: { WebApp?: { initData?: string } } }).Telegram?.WebApp
-  return webApp?.initData && webApp.initData.length > 0 ? webApp.initData : null
+  const data = webApp()?.initData
+  return data && data.length > 0 ? data : null
+}
+
+/** Apply the Telegram theme and viewport height to the document. */
+function useTelegramChrome() {
+  useEffect(() => {
+    const app = webApp()
+    if (!app) return
+    // Tell Telegram the app is ready and use the full height; without expand()
+    // the Mini App stays in the collapsed half-screen sheet.
+    app.ready?.()
+    app.expand?.()
+    document.documentElement.dataset.theme = app.colorScheme === 'dark' ? 'dark' : 'light'
+    const applyHeight = () => {
+      if (typeof app.viewportHeight === 'number' && app.viewportHeight > 0) {
+        document.documentElement.style.setProperty('--tg-viewport-height', `${app.viewportHeight}px`)
+      }
+    }
+    const applyTheme = () => {
+      document.documentElement.dataset.theme = app.colorScheme === 'dark' ? 'dark' : 'light'
+    }
+    applyHeight()
+    app.onEvent?.('themeChanged', applyTheme)
+    app.onEvent?.('viewportChanged', applyHeight)
+    return () => {
+      app.offEvent?.('themeChanged', applyTheme)
+      app.offEvent?.('viewportChanged', applyHeight)
+    }
+  }, [])
 }
 
 function money(value: { cents: number | null; eur: string | null } | undefined): string {
@@ -52,6 +98,8 @@ export default function MiniAppPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(false)
+
+  useTelegramChrome()
 
   const load = useCallback(async (active: string) => {
     setLoading(true)
@@ -138,6 +186,9 @@ export default function MiniAppPage() {
     setAccount(null)
     setServices([])
     setThread([])
+    // Inside Telegram, "exit" means closing the Mini App; a browser tab must
+    // stay open, so close() is only called when the WebApp SDK is present.
+    if (webApp()) webApp()?.close?.()
   }
 
   if (!token) {
