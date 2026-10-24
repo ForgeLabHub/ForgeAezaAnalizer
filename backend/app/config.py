@@ -90,12 +90,12 @@ class Settings:
                 raise ValueError("AEZA_LLM_MAX_TOKENS must be between 16 and 8192")
             if not 0.0 <= self.llm_temperature <= 2.0:
                 raise ValueError("AEZA_LLM_TEMPERATURE must be between 0 and 2")
-        # Telegram is validated only when it is switched on. An incomplete or
-        # absent configuration must leave the rest of the app fully usable, so
-        # nothing here raises unless the operator asked for the feature.
-        if self.telegram_enabled:
-            if not self.telegram_bot_token.strip():
-                raise ValueError("TELEGRAM_BOT_TOKEN is required when TELEGRAM_ENABLED=1")
+        # Telegram: an incomplete configuration must degrade the integration, not
+        # the product. A missing token while TELEGRAM_ENABLED=1 is an operator
+        # mistake, but refusing to start the whole analytics app over an optional
+        # channel is worse. In that case the service is simply not built (the API
+        # reports enabled:false) and build_telegram logs the reason.
+        if self.telegram_enabled and self.telegram_bot_token.strip():
             if not self.telegram_webhook_secret.strip():
                 raise ValueError("TELEGRAM_WEBHOOK_SECRET is required when TELEGRAM_ENABLED=1")
             if not self.telegram_api_base.startswith(("http://", "https://")):
