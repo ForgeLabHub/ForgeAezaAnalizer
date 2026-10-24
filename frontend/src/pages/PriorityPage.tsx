@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError, api } from '../lib/api'
 import { useAnalysis } from '../lib/realtime'
 import type { PriorityCategoryKey, PriorityItem, PriorityResponse } from '../types'
+import { SlidingTabs } from '../components/motion'
 import {
   EmptyState,
   ErrorBox,
@@ -18,6 +19,10 @@ type PrioritySortBy = 'urgency' | 'riskScore' | 'exposure' | 'id'
 type SortDir = 'asc' | 'desc'
 
 const HORIZON_OPTIONS = [7, 30, 90] as const
+const HORIZON_TABS = HORIZON_OPTIONS.map((h) => ({
+  value: String(h) as '7' | '30' | '90',
+  label: `Горизонт ${h} дн.`,
+}))
 
 const URGENCY_LABELS: Record<number, { text: string; cls: string }> = {
   0: { text: '1 · Нарушение регламента', cls: 'risk-high' },
@@ -36,6 +41,16 @@ export default function PriorityPage() {
 
   const rawHorizon = Number(params.get('horizonDays') ?? '30')
   const horizonDays = HORIZON_OPTIONS.includes(rawHorizon as 7 | 30 | 90) ? rawHorizon : 30
+  const horizonDirRef = useRef<{ horizon: number; dir: -1 | 0 | 1 }>({
+    horizon: horizonDays,
+    dir: 0,
+  })
+  if (horizonDirRef.current.horizon !== horizonDays) {
+    horizonDirRef.current = {
+      horizon: horizonDays,
+      dir: horizonDays > horizonDirRef.current.horizon ? 1 : -1,
+    }
+  }
   const category = params.get('category') ?? ''
   const sortBy = (params.get('sortBy') as PrioritySortBy) || 'urgency'
   const sortDir = ((params.get('sortDir') as SortDir) || 'asc') === 'desc' ? 'desc' : 'asc'
@@ -102,20 +117,12 @@ export default function PriorityPage() {
         <div>
           <h1>Очередь приоритетных действий</h1>
         </div>
-        <div className="tabs" role="tablist" aria-label="Горизонт экспозиции">
-          {HORIZON_OPTIONS.map((h) => (
-            <button
-              key={h}
-              type="button"
-              role="tab"
-              aria-selected={horizonDays === h}
-              className={horizonDays === h ? 'active' : ''}
-              onClick={() => update({ horizonDays: String(h) })}
-            >
-              Горизонт {h} дн.
-            </button>
-          ))}
-        </div>
+        <SlidingTabs
+          ariaLabel="Горизонт экспозиции"
+          items={HORIZON_TABS}
+          value={String(horizonDays) as '7' | '30' | '90'}
+          onChange={(val) => update({ horizonDays: val })}
+        />
       </div>
 
       {pinnedGeneration !== null ? (
@@ -156,7 +163,10 @@ export default function PriorityPage() {
         </div>
       ) : null}
 
-      <section className="card">
+      <section
+        className="card"
+        style={{ '--enter-dir': horizonDirRef.current.dir } as CSSProperties}
+      >
         <div className="toolbar">
           <select
             className="select"

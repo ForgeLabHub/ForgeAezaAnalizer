@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useMatch } from 'react-router-dom'
 import { api, ApiError } from '../lib/api'
 import type { AIResponse, AIStatus } from '../types'
+import { SlidingTabs } from './motion'
 import { ErrorBox, Loading } from './ui'
 
 /** Pull customer ids out of the backend citation sources, so an answer can link
@@ -327,26 +328,18 @@ export function AIAnalystWidget() {
             </div>
 
             {routeCustomerId !== undefined ? (
-              <div className="ai-widget-scope" role="tablist" aria-label="Контекст вопросов">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeCustomerId !== undefined}
-                  className={activeCustomerId !== undefined ? 'active' : ''}
-                  onClick={() => setScopeOverride('auto')}
-                >
-                  Клиент #{routeCustomerId}
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeCustomerId === undefined}
-                  className={activeCustomerId === undefined ? 'active' : ''}
-                  onClick={() => setScopeOverride('portfolio')}
-                >
-                  Весь портфель
-                </button>
-              </div>
+              <SlidingTabs
+                ariaLabel="Контекст вопросов"
+                variant="surface"
+                size="sm"
+                className="ai-widget-scope"
+                value={activeCustomerId !== undefined ? 'auto' : 'portfolio'}
+                onChange={(val) => setScopeOverride(val)}
+                items={[
+                  { value: 'auto', label: `Клиент #${routeCustomerId}` },
+                  { value: 'portfolio', label: 'Весь портфель' },
+                ]}
+              />
             ) : null}
           </header>
 

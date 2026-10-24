@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError, api, triggerBlobDownload } from '../lib/api'
 import { useAnalysis } from '../lib/realtime'
 import type { CustomerPage, CustomerSummary, ObservationsResponse } from '../types'
+import { SlidingTabs } from '../components/motion'
 import {
   EmptyState,
   ErrorBox,
@@ -16,6 +17,11 @@ import {
 
 type SortDir = 'asc' | 'desc'
 type CustomersTab = 'customers' | 'observations'
+
+const CUSTOMER_TABS = [
+  { value: 'customers' as const, label: 'Список клиентов' },
+  { value: 'observations' as const, label: 'Наблюдения статусов' },
+]
 
 const COLUMNS: Array<{
   key: string
@@ -43,6 +49,13 @@ export default function CustomersPage() {
 
   const rawTab = params.get('tab') as CustomersTab | null
   const tab: CustomersTab = rawTab === 'observations' ? 'observations' : 'customers'
+  const tabDirRef = useRef<{ tab: CustomersTab; dir: -1 | 0 | 1 }>({ tab, dir: 0 })
+  if (tabDirRef.current.tab !== tab) {
+    tabDirRef.current = {
+      tab,
+      dir: tab === 'observations' ? 1 : -1,
+    }
+  }
 
   const sortBy = params.get('sortBy') ?? 'riskScore'
   const sortDir = (params.get('sortDir') as SortDir) ?? 'desc'
@@ -209,20 +222,12 @@ export default function CustomersPage() {
               </>
             )}
           </span>
-          <button
-            type="button"
-            className={`btn${tab === 'customers' ? ' primary' : ''}`}
-            onClick={() => update({ tab: null })}
-          >
-            Список клиентов
-          </button>
-          <button
-            type="button"
-            className={`btn${tab === 'observations' ? ' primary' : ''}`}
-            onClick={() => update({ tab: 'observations' })}
-          >
-            Наблюдения статусов
-          </button>
+          <SlidingTabs
+            ariaLabel="Раздел страницы клиентов"
+            items={CUSTOMER_TABS}
+            value={tab}
+            onChange={(next) => update({ tab: next === 'customers' ? null : 'observations' })}
+          />
           {tab === 'customers' ? (
             <button
               type="button"
@@ -237,7 +242,11 @@ export default function CustomersPage() {
       </div>
 
       {tab === 'customers' ? (
-        <section className="card">
+        <section
+          key="customers"
+          className="card tab-panel"
+          style={{ '--enter-dir': tabDirRef.current.dir } as CSSProperties}
+        >
           <form className="toolbar" onSubmit={submitSearch}>
             <input
               className="input search"
@@ -426,7 +435,11 @@ export default function CustomersPage() {
           )}
         </section>
       ) : (
-        <section className="card">
+        <section
+          key="observations"
+          className="card tab-panel"
+          style={{ '--enter-dir': tabDirRef.current.dir } as CSSProperties}
+        >
           <form className="toolbar" onSubmit={submitObservationFilter}>
             <input
               className="input search"

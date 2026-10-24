@@ -27,6 +27,7 @@ export default function LoginPage() {
 
   return (
     <div className="login-wrap">
+      <div className="presswall-bg is-full" aria-hidden="true" />
       <ThemeToggle className="login-theme-toggle" />
       <form className="login-card" onSubmit={onSubmit}>
         <div style={{ marginBottom: 16 }}>
