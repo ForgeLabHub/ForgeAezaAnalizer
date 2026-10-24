@@ -71,11 +71,9 @@ def engine(tmp_path_factory):
         seed_demo_data=True, snapshot_path=str(SNAPSHOT), as_of=AS_OF,
     )
     auth_settings = make_test_auth_settings(tmp / "rob_auth.db")
-    auth_settings = make_test_auth_settings(tmp / "rob_auth.db")
     try:
         with TestClient(create_app(settings, auth_settings=auth_settings), raise_server_exceptions=False) as client:
             token = client.post("/api/v1/auth/login",
-                                json={"email": TEST_LOGIN, "password": TEST_PASSWORD}
                                 json={"email": TEST_LOGIN, "password": TEST_PASSWORD}
                                 ).json()["access_token"]
             headers = {"Authorization": f"Bearer {token}"}
