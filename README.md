@@ -292,6 +292,12 @@ cd ..                                                # запуск из кор�
 # Создайте пользователя явно (команда запросит пароль дважды):
 python -m backend.users create analyst@example.com
 
+# Проверить, что учётная запись действительно сохранена:
+python -m backend.users list                       # все логины, id и статус
+python -m backend.users show analyst@example.com   # одна запись
+# Не используйте UserRepository.find(login): find() ищет по id и вернёт None
+# для логина — это не признак потерянных данных.
+
 # 3. Подключить реальный аналитический модуль и заполнить БД снимком
 export AEZA_ANALYTICS_FACTORY=backend.app.domain.module:create
 export AEZA_SEED_DEMO_DATA=1
