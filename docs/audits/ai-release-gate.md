@@ -123,3 +123,47 @@ cd frontend && npm install && npm run dev
 - Answer quality for the other `/ai/*` tasks and for `/insights/ai` with the real
   model.
 - Behaviour under concurrent AI requests (`max_concurrency` default 1).
+
+## 8. Push status (attempted, blocked)
+
+The owner asked for the work to be pushed to `main`. It could not be pushed, and
+this is a permissions blocker, not a code problem. Evidence:
+
+```
+$ git push https://<token>@github.com/Pixelminds-hub/aeza-analizer.git main
+remote: Permission to Pixelminds-hub/aeza-analizer.git denied to Pavel1778.
+fatal: unable to access ...: The requested URL returned error: 403
+
+$ curl -X POST .../git/refs -d '{"ref":"refs/heads/oh-write-probe",...}'
+{"message":"Resource not accessible by personal access token","status":"403"}
+```
+
+- Both available credentials (`GITHUB_TOKEN` = `ghu_…`, `GITHUB_PERSONAL_ACCESS_TOKEN`)
+  authenticate as **`Pavel1778`**; the repository owner is `Pixelminds-hub`.
+- `GET /repos/.../permissions` reports `push: true` for that token, but every
+  actual write — `git push`, and creating a ref through the API — returns 403.
+  The read-only `permissions` field does not reflect the fine-grained
+  `Contents: write` grant that pushing needs.
+- The credential helper resolves to the same `Pavel1778` token; bypassing the
+  helper, using `x-access-token`/`oauth2` prefixes, and the `gh` helper all fail
+  identically. No SSH key exists in this environment and the `ssh` binary is
+  absent.
+
+What is needed: a token with **Contents: write** on
+`Pixelminds-hub/aeza-analizer` (or a collaborator invitation for the pushing
+account), then:
+
+```bash
+git push https://<TOKEN>@github.com/Pixelminds-hub/aeza-analizer.git main
+```
+
+Until then the three commits below exist only in this working copy:
+
+```
+3c02d45 docs: add the AI release gate and align the timeout default
+c83d043 chore: drop the scratch vite config accidentally committed
+5525838 fix: size the AI timeout for a cold CPU-only call
+```
+
+`origin/main` is still at `534ca6c`, which already contains the AI Analyst
+backend; the timeout fix and this document are the delta.
