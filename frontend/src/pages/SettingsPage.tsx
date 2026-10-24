@@ -29,6 +29,16 @@ const CATEGORY_TITLES: Record<string, string> = {
   not_applicable: 'Не применимо',
 }
 
+const SIMPLE_FACTOR_DESCRIPTIONS: Record<string, string> = {
+  expiry_proximity: 'До окончания оплаченного периода осталось мало времени или срок уже вышел.',
+  auto_prolong_disabled: 'Клиенту нужно продлевать услугу вручную.',
+  insufficient_balance: 'На балансе не хватает средств для оплаты следующего продления.',
+  prolong_wait_status: 'Срок оплаты подошёл, услуга ожидает списания средств.',
+  failed_renewals: 'Количество неудачных попыток оплаты за всё время (справочно, не влияет на балл).',
+  suspended_status: 'Работа услуги временно приостановлена.',
+  renewal_failure_rate: 'Как часто попытки продлить услугу завершались ошибкой оплаты.',
+}
+
 export default function SettingsPage() {
   const { activeGeneration, pinnedGeneration, setPinnedGeneration, refreshKey, notifyMutation } =
     useAnalysis()
@@ -295,11 +305,6 @@ export default function SettingsPage() {
       <div className="page-head">
         <div>
           <h1>Модель риска и What-If сценарии</h1>
-          <p>
-            Настройте веса факторов, окно анализа отказов, горизонт и пороги риска. Перед
-            публикацией в рабочую модель протестируйте изменения изолированно в режиме What-If —
-            без перезаписи текущего поколения расчёта.
-          </p>
         </div>
         <div className="row">
           <button
@@ -690,7 +695,7 @@ export default function SettingsPage() {
       </section>
 
       <div className="grid-main">
-        <section className="card">
+        <section className="card settings-equal-card">
           <div className="card-head">
             <h2>Веса факторов риска</h2>
             <span className="hint">
@@ -706,180 +711,215 @@ export default function SettingsPage() {
               const isDeprecated = Boolean(factor.deprecated)
               const value = isDeprecated ? 0 : (weights[factor.key] ?? 0)
               const isDefault = Math.abs(value - factor.defaultWeight) < 1e-9
+              const shortDesc = SIMPLE_FACTOR_DESCRIPTIONS[factor.key] ?? factor.description
               return (
                 <div className="weight-row" key={factor.key}>
                   <div className="weight-info">
                     <div className="name">
                       {factor.label}{' '}
                       {isDeprecated ? (
-                        <span className="badge neutral">диагностический · вне рейтинга</span>
+                        <span className="badge neutral">вне рейтинга</span>
                       ) : (
                         <span className="hint">
-                          · ключ <code>{factor.key}</code> · по умолчанию {factor.defaultWeight}
+                          · по умолчанию {factor.defaultWeight}
                           {isDefault ? '' : ' (изменено)'}
                         </span>
                       )}
                     </div>
-                    <div className="desc">{factor.description}</div>
-                    <div className="formula">Расчёт: {factor.howComputed}</div>
-                    <div className="formula">Нормализация: {factor.normalization}</div>
+                    <div className="desc">{shortDesc}</div>
                   </div>
-                  <input
-                    className="input num"
-                    type="number"
-                    min={0}
-                    max={1000}
-                    step={0.5}
-                    value={value}
-                    disabled={isDeprecated}
+                  <div
+                    className={`num-stepper${isDeprecated ? ' is-disabled' : ''}`}
                     title={
                       isDeprecated
-                        ? 'Диагностический показатель уже учтён в renewal_failure_rate и не участвует в взвешенной сумме'
+                        ? 'Справочный показатель: уже учтён в доле неуспешных продлений и не влияет на балл'
                         : undefined
                     }
-                    onChange={(e) => {
-                      const parsed = Number(e.target.value)
-                      setWeights((prev) => ({
-                        ...prev,
-                        [factor.key]: Number.isFinite(parsed)
-                          ? Math.max(0, Math.min(1000, parsed))
-                          : 0,
-                      }))
-                    }}
-                    aria-label={`Вес фактора ${factor.label}`}
-                  />
+                  >
+                    <input
+                      className="input num"
+                      type="number"
+                      min={0}
+                      max={1000}
+                      step={0.5}
+                      value={value}
+                      disabled={isDeprecated}
+                      onChange={(e) => {
+                        const parsed = Number(e.target.value)
+                        setWeights((prev) => ({
+                          ...prev,
+                          [factor.key]: Number.isFinite(parsed)
+                            ? Math.max(0, Math.min(1000, parsed))
+                            : 0,
+                        }))
+                      }}
+                      aria-label={`Вес фактора ${factor.label}`}
+                    />
+                    <div className="num-stepper-btns">
+                      <button
+                        type="button"
+                        className="num-step-btn"
+                        disabled={isDeprecated || value >= 1000}
+                        onClick={() =>
+                          setWeights((prev) => ({
+                            ...prev,
+                            [factor.key]: Math.min(
+                              1000,
+                              Math.round(((prev[factor.key] ?? 0) + 0.5) * 10) / 10,
+                            ),
+                          }))
+                        }
+                        aria-label={`Увеличить вес фактора ${factor.label}`}
+                        title="Увеличить (+0.5)"
+                      >
+                        <svg viewBox="0 0 12 12" aria-hidden="true">
+                          <path
+                            d="M2.5 7.5L6 4l3.5 3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        className="num-step-btn"
+                        disabled={isDeprecated || value <= 0}
+                        onClick={() =>
+                          setWeights((prev) => ({
+                            ...prev,
+                            [factor.key]: Math.max(
+                              0,
+                              Math.round(((prev[factor.key] ?? 0) - 0.5) * 10) / 10,
+                            ),
+                          }))
+                        }
+                        aria-label={`Уменьшить вес фактора ${factor.label}`}
+                        title="Уменьшить (−0.5)"
+                      >
+                        <svg viewBox="0 0 12 12" aria-hidden="true">
+                          <path
+                            d="M2.5 4.5L6 8l3.5-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )
             })}
           </div>
-          <div className="card-note">
-            Отрицательные веса запрещены. Если сумма весов равна нулю, услуга получает статус
-            «Недостаточно данных» вместо произвольного нулевого риска.
-          </div>
         </section>
 
-        <div className="stack">
-          <section className="card">
-            <div className="card-head">
-              <h2>Горизонт, окно и пороги</h2>
+        <section className="card settings-equal-card">
+          <div className="card-head">
+            <h2>Горизонт, окно и пороги</h2>
+          </div>
+          <div className="card-body stack" style={{ gap: 14 }}>
+            <div className="field">
+              <label htmlFor="horizon">Горизонт прогноза, дней</label>
+              <input
+                id="horizon"
+                className="input num"
+                style={{ width: '100%', textAlign: 'left' }}
+                type="number"
+                min={1}
+                max={365}
+                step={1}
+                value={horizon}
+                onChange={(e) =>
+                  setHorizon(Math.max(1, Math.min(365, Math.round(Number(e.target.value) || 1))))
+                }
+              />
+              <span className="hint">
+                Продления вне горизонта не учитываются в выручке под риском.
+              </span>
             </div>
-            <div className="card-body stack" style={{ gap: 14 }}>
-              <div className="field">
-                <label htmlFor="horizon">Горизонт прогноза, дней</label>
+
+            <div className="field">
+              <label className="row" style={{ gap: 8, cursor: 'pointer' }}>
                 <input
-                  id="horizon"
+                  type="checkbox"
+                  checked={useWindowLimit}
+                  onChange={(e) => setUseWindowLimit(e.target.checked)}
+                />
+                <span>Ограничить окно анализа неуспешных продлений</span>
+              </label>
+              {useWindowLimit ? (
+                <input
+                  id="failedRenewalWindowDays"
                   className="input num"
                   style={{ width: '100%', textAlign: 'left' }}
                   type="number"
                   min={1}
-                  max={365}
+                  max={3650}
                   step={1}
-                  value={horizon}
+                  value={windowDays}
                   onChange={(e) =>
-                    setHorizon(Math.max(1, Math.min(365, Math.round(Number(e.target.value) || 1))))
+                    setWindowDays(
+                      Math.max(1, Math.min(3650, Math.round(Number(e.target.value) || 1))),
+                    )
                   }
+                  aria-label="Окно анализа неуспешных продлений, дней"
                 />
-                <span className="hint">
-                  Продления вне горизонта не учитываются в выручке под риском.
-                </span>
-              </div>
-
-              <div className="field">
-                <label className="row" style={{ gap: 8, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={useWindowLimit}
-                    onChange={(e) => setUseWindowLimit(e.target.checked)}
-                  />
-                  <span>Ограничить окно анализа неуспешных продлений</span>
-                </label>
-                {useWindowLimit ? (
-                  <input
-                    id="failedRenewalWindowDays"
-                    className="input num"
-                    style={{ width: '100%', textAlign: 'left' }}
-                    type="number"
-                    min={1}
-                    max={3650}
-                    step={1}
-                    value={windowDays}
-                    onChange={(e) =>
-                      setWindowDays(
-                        Math.max(1, Math.min(3650, Math.round(Number(e.target.value) || 1))),
-                      )
-                    }
-                    aria-label="Окно анализа неуспешных продлений, дней"
-                  />
-                ) : (
-                  <div className="notice">
-                    Режим <code>null</code>: учитываются все транзакции продления в снимке без
-                    ограничения по давности.
-                  </div>
-                )}
-                <span className="hint">
-                  Если внутри выбранного окна нет попыток продления, фактор считается неизвестным
-                  (не нулём).
-                </span>
-              </div>
-
-              <div className="field">
-                <label htmlFor="lowMax">Верхняя граница низкого риска</label>
-                <input
-                  id="lowMax"
-                  className="input num"
-                  style={{ width: '100%', textAlign: 'left' }}
-                  type="number"
-                  min={0}
-                  max={99}
-                  step={1}
-                  value={lowMax}
-                  onChange={(e) => setLowMax(Math.round(Number(e.target.value) || 0))}
-                />
-              </div>
-
-              <div className="field">
-                <label htmlFor="mediumMax">Верхняя граница среднего риска</label>
-                <input
-                  id="mediumMax"
-                  className="input num"
-                  style={{ width: '100%', textAlign: 'left' }}
-                  type="number"
-                  min={1}
-                  max={100}
-                  step={1}
-                  value={mediumMax}
-                  onChange={(e) => setMediumMax(Math.round(Number(e.target.value) || 1))}
-                />
-                <span className="hint">
-                  Требуется lowMax &lt; mediumMax, иначе сервер отклонит изменение.
-                </span>
-              </div>
-
-              <div className="notice">
-                Текущие пороги: 0–{lowMax} низкий, {lowMax + 1}–{mediumMax} средний,{' '}
-                {mediumMax + 1}–100 высокий.
-              </div>
+              ) : (
+                <div className="notice">
+                  Режим <code>null</code>: учитываются все транзакции продления в снимке без
+                  ограничения по давности.
+                </div>
+              )}
+              <span className="hint">
+                Если внутри выбранного окна нет попыток продления, фактор считается неизвестным
+                (не нулём).
+              </span>
             </div>
-          </section>
 
-          <section className="card">
-            <div className="card-head">
-              <h2>Как читать модель</h2>
+            <div className="field">
+              <label htmlFor="lowMax">Верхняя граница низкого риска</label>
+              <input
+                id="lowMax"
+                className="input num"
+                style={{ width: '100%', textAlign: 'left' }}
+                type="number"
+                min={0}
+                max={99}
+                step={1}
+                value={lowMax}
+                onChange={(e) => setLowMax(Math.round(Number(e.target.value) || 0))}
+              />
             </div>
-            <div className="card-body">
-              <div className="notice info">
-                Формула:{' '}
-                <code>risk_score = 100 × Σ(weight_i × feature_i) / Σ(weight_i)</code>. Каждый
-                активный признак нормализован в диапазон 0…1.
-              </div>
-              <div className="notice" style={{ marginTop: 10 }}>
-                <strong>Модель не откалибрована.</strong> Балл риска — не вероятность оттока: в
-                данных нет исторических исходов, поэтому обучение и валидация невозможны. Значение
-                отражает силу наблюдаемых сигналов риска.
-              </div>
+
+            <div className="field">
+              <label htmlFor="mediumMax">Верхняя граница среднего риска</label>
+              <input
+                id="mediumMax"
+                className="input num"
+                style={{ width: '100%', textAlign: 'left' }}
+                type="number"
+                min={1}
+                max={100}
+                step={1}
+                value={mediumMax}
+                onChange={(e) => setMediumMax(Math.round(Number(e.target.value) || 1))}
+              />
+              <span className="hint">
+                Требуется lowMax &lt; mediumMax, иначе сервер отклонит изменение.
+              </span>
             </div>
-          </section>
-        </div>
+
+            <div className="notice">
+              Текущие пороги: 0–{lowMax} низкий, {lowMax + 1}–{mediumMax} средний,{' '}
+              {mediumMax + 1}–100 высокий.
+            </div>
+          </div>
+        </section>
       </div>
 
       {toast ? <div className={`toast${toast.err ? ' err' : ''}`}>{toast.text}</div> : null}

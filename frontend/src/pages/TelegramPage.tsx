@@ -125,7 +125,6 @@ export default function TelegramPage() {
         <div className="page-head">
           <div>
             <h1>Telegram</h1>
-            <p>Уведомления о риске оттока в Telegram.</p>
           </div>
         </div>
         <div className="notice">
@@ -144,10 +143,6 @@ export default function TelegramPage() {
       <div className="page-head">
         <div>
           <h1>Telegram</h1>
-          <p>
-            Подключение чата и настройка уведомлений. Уведомления строятся на текущем
-            расчёте — отдельного источника данных у бота нет.
-          </p>
         </div>
         <div className="hint">
           {status.linked ? `Подключено: ${status.chatId}` : 'Чат не подключён'}

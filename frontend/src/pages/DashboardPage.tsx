@@ -61,14 +61,6 @@ export default function DashboardPage() {
       <div className="page-head">
         <div>
           <h1>Дашборд риска оттока</h1>
-          <p>
-            Горизонт прогноза — {summary.horizonDays} дн. Момент оценки:{' '}
-            {formatDateTime(summary.asOf ?? summary.generatedAt)} UTC
-            {summary.generation ? ` · поколение #${summary.generation}` : ''}
-            {summary.engineVersion ? ` · движок ${summary.engineVersion}` : ''}. Балл риска —
-            результат прозрачной взвешенной rule-based модели, а не откалиброванная вероятность
-            оттока.
-          </p>
         </div>
         <div className="row">
           <Link className="btn" to="/priority">
@@ -155,10 +147,6 @@ export default function DashboardPage() {
               ]}
             />
           </div>
-          <div className="card-note">
-            Категория «Не применимо» — все услуги клиента удалены или заблокированы: это известное
-            состояние, а не прогноз.
-          </div>
         </section>
 
         <section className="card">
@@ -173,7 +161,6 @@ export default function DashboardPage() {
               rows={summary.topRiskReasons.map((r) => ({ label: r.label, value: r.count }))}
             />
           </div>
-          {summary.historyNote ? <div className="card-note">{summary.historyNote}</div> : null}
         </section>
       </div>
 
@@ -226,8 +213,8 @@ export default function DashboardPage() {
         <section className="card card-statuses-equal">
           <div className="card-head">
             <h2>Статусы услуг</h2>
-            <Link className="hint" to="/data?tab=quality">
-              Качество данных →
+            <Link className="hint" to="/customers?tab=observations">
+              Наблюдения статусов →
             </Link>
           </div>
           <div className="card-body">
