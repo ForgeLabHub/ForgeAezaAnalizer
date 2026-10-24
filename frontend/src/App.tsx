@@ -1,7 +1,9 @@
-import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { useAuth } from './lib/auth'
 import { AnalysisProvider, GenerationControl, useAnalysis } from './lib/realtime'
 import { Loading } from './components/ui'
+import { PageStage, SlidingNav, type SlidingNavItem } from './components/motion'
 import { ThemeToggle } from './lib/theme'
 import { AezaLogo } from './components/AezaLogo'
 import LoginPage from './pages/LoginPage'
@@ -12,10 +14,33 @@ import CustomerDetailPage from './pages/CustomerDetailPage'
 import SettingsPage from './pages/SettingsPage'
 import { AIAnalystWidget } from './components/AIAnalystPanel'
 
+const NAV_ITEMS: SlidingNavItem[] = [
+  { to: '/', label: 'Дашборд', end: true },
+  { to: '/priority', label: 'Приоритеты' },
+  { to: '/customers', label: 'Клиенты' },
+  { to: '/settings', label: 'Модель и сценарии' },
+]
+
 function Shell({ children }: { children: React.ReactNode }) {
   const { email, logout } = useAuth()
   const { pinnedGeneration, maxGeneration, setPinnedGeneration } = useAnalysis()
   const navigate = useNavigate()
+  const headerRef = useRef<HTMLElement | null>(null)
+  const [headerHeight, setHeaderHeight] = useState(64)
+
+  useEffect(() => {
+    const el = headerRef.current
+    if (!el) return
+    const sync = () => setHeaderHeight(el.offsetHeight)
+    sync()
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(sync) : null
+    ro?.observe(el)
+    window.addEventListener('resize', sync)
+    return () => {
+      ro?.disconnect()
+      window.removeEventListener('resize', sync)
+    }
+  }, [])
 
   async function onLogout() {
     await logout()
@@ -23,17 +48,13 @@ function Shell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="app-shell">
-      <header className="app-header">
+    <div
+      className="app-shell"
+      style={{ '--header-offset': `${headerHeight}px` } as CSSProperties}
+    >
+      <header className="app-header" ref={headerRef}>
         <AezaLogo />
-        <nav className="app-nav">
-          <NavLink to="/" end>
-            Дашборд
-          </NavLink>
-          <NavLink to="/priority">Приоритеты</NavLink>
-          <NavLink to="/customers">Клиенты</NavLink>
-          <NavLink to="/settings">Модель и сценарии</NavLink>
-        </nav>
+        <SlidingNav items={NAV_ITEMS} />
         <div className="header-user">
           <GenerationControl />
           <span className="email">{email}</span>
@@ -60,7 +81,10 @@ function Shell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       ) : null}
-      <main className="page">{children}</main>
+      <div className="app-body">
+        <div className="presswall-bg" aria-hidden="true" />
+        <PageStage>{children}</PageStage>
+      </div>
       <AIAnalystWidget />
     </div>
   )
@@ -72,6 +96,7 @@ export default function App() {
   if (!ready) {
     return (
       <div className="login-wrap">
+        <div className="presswall-bg is-full" aria-hidden="true" />
         <Loading label="Проверка сессии…" />
       </div>
     )
