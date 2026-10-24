@@ -1,7 +1,13 @@
 # Сценарий демонстрации (3–5 минут)
 
-Все шаги выполняются на **реальных данных кейса** — тех самых 10 аккаунтах, 30 услугах
-и 100 транзакциях из `dataset/data.json`. Синтетические данные не подмешиваются.
+Все шаги выполняются на **официальных данных кейса** — тех самых 10 аккаунтах,
+30 услугах и 100 транзакциях из `dataset/data.json`. Синтетические записи
+`demo-customer-*` не подмешиваются.
+
+> Организатор сгенерировал эти адреса в домене `example.test` (RFC 2606),
+> поэтому слой провенанса помечает их как синтетические и показывает
+> предупреждение «Состав данных». Это корректно: снимок не содержит реальных
+> клиентов Aéza. Если жюри спросит — так и объясняйте, это не дефект.
 
 ## Готовый демонстрационный стенд
 
@@ -13,7 +19,8 @@
 | API (Swagger UI) | <https://work-2-mxzlgbuemrxujutc.prod-runtime.all-hands.dev/api/v1/docs> |
 | Метрики Prometheus | <https://work-2-mxzlgbuemrxujutc.prod-runtime.all-hands.dev/metrics> |
 
-Вход: `analyst@aeza.test` / `aeza-demo-password`.
+Вход: `analyst@aeza.test` / `demo123` (значение по умолчанию из
+`docker-compose.yml`; переопределяется `AEZA_ADMIN_PASSWORD`).
 
 Стенд собран из `docker-compose.yml` (Postgres + API + nginx) с временным override-файлом
 для портов 12000/12001; override не входит в репозиторий. Это демонстрационный контур:
@@ -33,14 +40,14 @@
 cd backend
 export AEZA_JWT_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
 export AEZA_ADMIN_EMAIL="analyst@aeza.test"
-export AEZA_ADMIN_PASSWORD="aeza-demo-password"
+export AEZA_ADMIN_PASSWORD="demo123"
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 # Терминал 2
 cd frontend && npm run dev
 ```
 
-Открыть <http://127.0.0.1:5173>, войти как `analyst@aeza.test` / `aeza-demo-password`.
+Открыть <http://127.0.0.1:5173>, войти как `analyst@aeza.test` / `demo123`.
 
 Либо сразу весь стек: `docker compose up -d --build` (интерфейс на `:8080`, API на `:8000`).
 

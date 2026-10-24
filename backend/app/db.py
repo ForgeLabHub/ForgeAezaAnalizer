@@ -118,9 +118,31 @@ class AuthSessionRow(Base):
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
 
 
+class ActionStatusRow(Base):
+    """Operator workflow state for one retention recommendation.
+
+    Kept deliberately separate from the analytics tables: changing a status must
+    never touch the score, the exposure or the model settings.  The row is keyed
+    by ``(generation, customer_id, code)`` so a recalculated generation starts
+    with a clean workflow while the previous generation's decisions stay on
+    record rather than being silently rewritten.
+    """
+
+    __tablename__ = "analyzer_action_status"
+    generation: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    customer_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16))
+    assignee: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    updated_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+
+
 ANALYTICS_TABLES = (
     CurrentRow.__table__, SourceRow.__table__, ModelRow.__table__, AnalysisRow.__table__,
     CustomerRow.__table__, ServiceIndexRow.__table__, ObservationRow.__table__, AuditRow.__table__,
+    ActionStatusRow.__table__,
 )
 AUTH_TABLES = (UserRow.__table__, AuthSessionRow.__table__)
 

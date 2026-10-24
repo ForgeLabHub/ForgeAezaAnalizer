@@ -56,7 +56,12 @@ class AuthService:
         with self.database.sessions() as session:
             if session.scalar(select(UserRow.id).where(UserRow.email == self.settings.bootstrap_admin_email)):
                 return
-        password = self.settings.bootstrap_admin_password or "aeza-demo-password"
+        # Dev-only fallback: reachable only while AEZA_ALLOW_DEV_SECRET is on and
+        # no password was supplied.  Production settings refuse to start without
+        # AEZA_ADMIN_PASSWORD, so this value never reaches a shared environment.
+        # It matches the Compose default so a bare `uvicorn` run and the demo
+        # stand share one credential instead of two.
+        password = self.settings.bootstrap_admin_password or "demo123"
         try:
             with self.database.transaction() as session:
                 session.add(UserRow(email=self.settings.bootstrap_admin_email,

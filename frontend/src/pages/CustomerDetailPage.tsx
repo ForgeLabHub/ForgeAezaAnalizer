@@ -5,11 +5,13 @@ import type { CustomerDetail, ServiceItem } from '../types'
 import {
   EmptyState,
   ErrorBox,
+  FreshnessBanner,
   Loading,
   Metric,
   RiskBadge,
   ScoreCell,
   StatusBadge,
+  SyntheticTag,
   formatDateTime,
   formatDays,
   formatEur,
@@ -173,14 +175,30 @@ export default function CustomerDetailPage() {
             <RiskBadge category={customer.riskCategory} label={customer.riskCategoryLabel} />
           </div>
           <p>
-            {customer.email} · {customer.serviceCount} услуг, из них {customer.eligibleServiceCount}{' '}
-            пригодны для прогноза оттока
+            {customer.email}
+            {customer.isSynthetic ? <SyntheticTag title={customer.syntheticReason} /> : null} ·{' '}
+            {customer.serviceCount} услуг, из них {customer.eligibleServiceCount} пригодны для
+            прогноза оттока
           </p>
         </div>
         <Link className="btn" to="/customers">
           ← К списку клиентов
         </Link>
       </div>
+
+      <FreshnessBanner
+        asOf={customer.asOf}
+        calculatedAt={customer.calculatedAt}
+        capturedAt={customer.capturedAt}
+        horizonDays={customer.horizonDays}
+      />
+
+      {customer.isSynthetic ? (
+        <div className="notice warn" role="status">
+          Это синтетическая запись: {customer.syntheticReason ?? 'тестовый домен'}. Она
+          используется для демонстрации и не является клиентом Aéza.
+        </div>
+      ) : null}
 
       {customer.stateNote ? <div className="notice warn">{customer.stateNote}</div> : null}
 

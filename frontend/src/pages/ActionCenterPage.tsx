@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, api } from '../lib/api'
-import type { PriorityItem, PriorityResponse } from '../types'
+import type { ActionWorkflowStatus, PriorityItem, PriorityResponse } from '../types'
 import { EmptyState, ErrorBox, Loading, Metric, RiskBadge, formatEur } from '../components/ui'
+
+const STATUS_LABELS: Record<ActionWorkflowStatus, string> = {
+  new: 'Новое',
+  in_progress: 'В работе',
+  done: 'Выполнено',
+}
+
+const STATUS_ORDER: ActionWorkflowStatus[] = ['new', 'in_progress', 'done']
 
 const CATEGORY_LABELS: Record<string, string> = {
   operational_attention: 'Операционная проблема',
@@ -38,6 +46,9 @@ export default function ActionCenterPage() {
   const [sortBy, setSortBy] = useState<SortKey>('urgency')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [horizon, setHorizon] = useState<number | ''>('')
+  const [savingAction, setSavingAction] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -62,9 +73,31 @@ export default function ActionCenterPage() {
     return () => {
       cancelled = true
     }
-  }, [category, sortBy, sortDir, horizon])
+  }, [category, sortBy, sortDir, horizon, reloadToken])
 
   const items = data?.items ?? []
+
+  /** Persist one workflow change. The queue is refetched so the row reflects
+   *  exactly what the server stored rather than an optimistic guess. */
+  async function setActionStatus(
+    customerId: number,
+    code: string,
+    status: ActionWorkflowStatus,
+  ) {
+    const key = `${customerId}:${code}`
+    setSavingAction(key)
+    setActionError(null)
+    try {
+      await api.updateActionStatus({ customerId, code, status })
+      setReloadToken((value) => value + 1)
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError ? err.detail : 'Не удалось сохранить статус действия',
+      )
+    } finally {
+      setSavingAction(null)
+    }
+  }
 
   const tierCounts = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -96,6 +129,14 @@ export default function ActionCenterPage() {
       groups.get(primary)?.push(item)
     }
     return groups
+  }, [items])
+
+  const workflowCounts = useMemo(() => {
+    const counts: Record<ActionWorkflowStatus, number> = { new: 0, in_progress: 0, done: 0 }
+    for (const item of items) {
+      for (const action of item.actions ?? []) counts[action.status] += 1
+    }
+    return counts
   }, [items])
 
   function toggleSort(next: SortKey) {
@@ -146,7 +187,14 @@ export default function ActionCenterPage() {
               value={formatEur((overdueTotal / 100).toFixed(2))}
               foot="операционная задолженность"
             />
+            <Metric
+              label="Действий в работе"
+              value={workflowCounts.in_progress}
+              foot={`новых: ${workflowCounts.new} · выполнено: ${workflowCounts.done}`}
+            />
           </div>
+
+          {actionError && <ErrorBox>{actionError}</ErrorBox>}
 
           <div className="card">
             <div className="row" style={{ gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -226,6 +274,7 @@ export default function ActionCenterPage() {
                           <th>Продления</th>
                           <th>Просрочено</th>
                           <th>Категории</th>
+                          <th>Действия по удержанию</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -250,6 +299,45 @@ export default function ActionCenterPage() {
                                   </span>
                                 ))}
                               </div>
+                            </td>
+                            <td>
+                              {item.actions.length === 0 ? (
+                                <span className="hint">—</span>
+                              ) : (
+                                <div className="stack" style={{ gap: 6 }}>
+                                  {item.actions.map((action) => (
+                                    <div key={action.code} className="action-row">
+                                      <div className="action-title" title={action.detail}>
+                                        {action.title}
+                                      </div>
+                                      <select
+                                        aria-label={`Статус: ${action.title}`}
+                                        value={action.status}
+                                        disabled={savingAction === `${item.id}:${action.code}`}
+                                        onChange={(e) =>
+                                          void setActionStatus(
+                                            item.id,
+                                            action.code,
+                                            e.target.value as ActionWorkflowStatus,
+                                          )
+                                        }
+                                      >
+                                        {STATUS_ORDER.map((status) => (
+                                          <option key={status} value={status}>
+                                            {STATUS_LABELS[status]}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      {action.updatedAt && (
+                                        <span className="hint">
+                                          {new Date(action.updatedAt).toLocaleString('ru-RU')}
+                                          {action.updatedBy ? ` · ${action.updatedBy}` : ''}
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </td>
                           </tr>
                         ))}

@@ -34,7 +34,8 @@ aeza_analyzer/
 tests/             pytest suite (48 tests)
 docs/              REQUIREMENTS_TRACEABILITY.md, ARCHITECTURE.md, DATA_DICTIONARY.md,
                    ANALYTICS_METHODOLOGY.md, REVENUE_METHODOLOGY.md, IMPORT_AND_DATA_AUDIT.md,
-                   API.md, DEVELOPMENT.md, TESTING.md, DEPLOYMENT.md, SECURITY.md, SCHEMA_MAPPING.md
+                   API_PART_A_LEGACY.md, DEVELOPMENT.md, TESTING.md, DEPLOYMENT.md, SECURITY.md,
+                   SCHEMA_MAPPING.md   (docs/API.md documents the canonical part-B API)
 ```
 
 ## Commands
@@ -243,11 +244,100 @@ is required. A transferable bundle can be produced with:
 
 and applied elsewhere with `git fetch /tmp/aeza-sync.bundle main:main`.
 
-## Shipped data set differs from README and decks
-`db/analytics_seed.sql` (commit 25dfe0e) carries **60 accounts / 115 services /
-285 transactions**: 10 official organiser accounts plus 50 synthetic
-`demo-customer-*` ones. `README.md` and the defence decks describe the
-organiser's 10/30/100 set, and the seed also stores non-default weights
-(sum 15.0 vs code default 13.0), so live scores (#10 = 86.7) do not match the
-decks (#10 = 71.4). Reproduce the deck numbers exactly by loading
-`dataset/data.json` instead. Full analysis: `docs/PROVENANCE_AUDIT.md`.
+## Shipped data set matches README and decks — fixed 2026-10-24
+`db/analytics_seed.sql` now carries the **official organiser set: 10 accounts /
+30 services / 100 transactions** and one published generation, matching
+`dataset/data.json`, `README.md` and the defence decks. Previously it held 60
+accounts / 115 services / 285 transactions (10 official + 50 synthetic
+`demo-customer-*`), so live row counts and scores disagreed with the decks.
+
+The seed is generated, not hand-edited: load a snapshot into a database with
+`backend/scripts/load_snapshot.py`, then dump it with
+`backend/scripts/export_seed.py`. Regenerate after changing the source data.
+History: `docs/PROVENANCE_AUDIT.md` §6.1.
+
+The seed's *model defaults* were fixed to agree with the code (see below), so
+the "sum 15.0 vs code default 13.0" divergence no longer applies.
+
+## Seed/code default divergence — fixed 2026-10-24
+`db/analytics_seed.sql` previously stored settings that disagreed with
+`DEFAULT_WEIGHTS`: `failed_renewals: 2.0` (a deprecated factor that scoring
+ignores), `suspended_status: 2.0` and `renewal_failure_rate: 1.5` (code: 1.0 /
+2.5), and it omitted `failedRenewalWindowDays` entirely — which deserialised as
+`null` ("whole snapshot") instead of the module's approved 90-day window. The
+result was that `GET /model/settings` reported `isDefault: false` on a fresh
+install and a reset silently changed the baseline.
+
+All four values are now seeded to match the code, and
+`test_bundled_seed_defaults_match_code_defaults` (`backend/tests/test_domain.py`)
+fails if the seed ever drifts from `DEFAULT_WEIGHTS` / `RiskSettings()` again.
+A fresh database now serves `isDefault: true` and a reset is a true no-op.
+
+## Final readiness pass — 2026-10-24 (verified, not assumed)
+
+Ran after a full fresh-stack rebuild. Every claim below was checked by running a
+command against the live stack (`project-api-1` / `project-db-1` / `project-web-1`).
+
+### Documentation defects found and fixed
+- `docs/DEMO_SCRIPT.md` claimed the `expiry_proximity 3.0 → 0.5` change moves
+  high-risk customers **2 → 1**. Measured: **3 → 0**, low 0 → 1, exposure
+  **5,80 € → 4,37 €**. Corrected.
+- Same file gave the top customer score as **≈ 73.3**; the real score is
+  **71.4** (`user-0010@example.test`). Corrected.
+- Earlier in the session: `docs/demo.md` login credential was wrong
+  (`aeza-demo-password` → 401; `demo123` → 200), and the stale fallback in
+  `backend/app/auth/security.py` plus `docs/deck/capture_shots.py` carried the
+  same bad password. All fixed.
+
+### What the live stack actually serves (baseline, generation 3)
+- 10 customers / 30 services; high 3, medium 3, low 0, not_applicable 4.
+- Revenue at risk **5,80 €**, upcoming renewals **17,03 €**, horizon 30 d.
+- `GET /model/settings` → `isDefault: true`, weights sum **13.0**.
+- `/metrics`: `aeza_customers_total 10`, `aeza_services_total 30`,
+  `aeza_services_open_total 18`, `aeza_revenue_at_risk_eur 5.8`,
+  `aeza_upcoming_renewals_eur 17.03`.
+
+### Verification commands that passed
+- `cd backend && python -m pytest tests/ -q` → **210 passed**.
+- root `python -m pytest tests -q` → **69 passed**.
+- `cd frontend && npx tsc -b && npm run build` → clean.
+- `python backend/scripts/export_openapi.py` → byte-identical to
+  `backend/openapi.json` (19 paths / 21 operations).
+- 18-case live API suite (auth, 401/404/422, sort validation, negative weight,
+  unknown field) → 18/18.
+- Import atomicity: `PUT /source/snapshot` with `transactions[0].amount=5000`
+  (schema cap 1000) → 422, generation unchanged, counts unchanged. Re-PUT of the
+  same dataset → 200 no-op.
+- Workflow persistence: `PATCH /priority/actions` → 200, status `done`,
+  note trimmed; re-read confirms persistence; risk score and exposure unchanged.
+  Unknown customer / unknown code → 404.
+
+### Browser (Playwright) walkthrough
+Dashboard, Customers (numeric sort by `totalReplenished`: 4342,96 → 4206,69 →
+2936,08 → 2905,01), Customer #10, Settings, Scenarios, Action Center — all render
+live data. Two rendering notes for anyone re-checking by automation:
+- The markdown content extractor can serve a stale SPA render right after a
+  click; re-read, or navigate straight to the URL, to see the settled table.
+- It also surfaces collapsed content that `innerText` omits — the "Экосистема
+  Aéza / Виртуальные серверы / …" block is the collapsed logo dropdown in
+  `frontend/src/components/AezaLogoDropdown.tsx`, not a layout change.
+
+Mobile invariant re-confirmed at 390×844: `scrollWidth == clientWidth` on all
+six routes (`/`, `/action-center`, `/customers`, `/what-if`, `/settings`,
+`/customers/10`); the customers table scrolls inside `.table-wrap`
+(`overflow-x: auto`, 1208 px of content in a 364 px container).
+
+### Test-residue hygiene
+The API verification suite writes a row into `analyzer_action_status`. It was
+deleted afterwards; the table is empty on a fresh seed (the seed inserts no
+workflow rows). If you run the suite, clean up with:
+
+    sudo docker exec project-db-1 psql -U aeza -d aeza \
+      -c "DELETE FROM analyzer_action_status;"
+
+### AI Analyst plan
+`docs/AI_ANALYST_PLAN.md` records the verified integration points for a future
+local AI Analyst. **Nothing there is implemented**, no model is installed, and no
+infrastructure changed — per the task constraint. It reuses the existing
+`AEZA_ANALYTICS_FACTORY`-style provider pattern and the existing
+`NotReadyError → 503` handler rather than adding a new error path.

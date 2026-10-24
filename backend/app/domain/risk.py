@@ -49,7 +49,7 @@ class FactorDefinition:
     how_computed: str
     normalization: str
     default_weight: float
-    missing_data_behaviour: str = "factor excluded and weights renormalised"
+    missing_data_behaviour: str = "фактор исключён, веса перенормированы"
     #: ``True`` for factors kept in the API for compatibility but excluded from
     #: the weighted sum (weight is 0).  The signal they describe is already
     #: carried by another factor, so counting them again would double-weight it.
@@ -100,7 +100,7 @@ FACTORS: tuple[FactorDefinition, ...] = (
         normalization="не участвует в рейтинге (вес 0)",
         default_weight=0.0,
         deprecated=True,
-        missing_data_behaviour="factor excluded and weights renormalised",
+        missing_data_behaviour="фактор исключён, веса перенормированы",
     ),
     FactorDefinition(
         key="suspended_status",
@@ -127,6 +127,22 @@ FACTOR_BY_KEY: dict[str, FactorDefinition] = {f.key: f for f in FACTORS}
 
 DEFAULT_WEIGHTS: dict[str, float] = {f.key: f.default_weight for f in FACTORS}
 
+#: Factors that are reported for compatibility but never enter the rating.
+DEPRECATED_KEYS: frozenset[str] = frozenset(f.key for f in FACTORS if f.deprecated)
+
+
+def canonical_weights(weights: dict[str, float]) -> dict[str, float]:
+    """Force deprecated factors to weight 0.
+
+    A stored settings row can predate the deprecation (the bundled seed still
+    carries ``failed_renewals: 2.0``).  Serving that value would advertise a
+    weight the scoring core ignores and make the reported weight sum disagree
+    with the score, so the value is normalised at the boundary instead.
+    """
+
+    return {key: (0.0 if key in DEPRECATED_KEYS else float(value)) for key, value in weights.items()}
+
+
 #: Risk bands, inclusive upper bounds.  Centralised so both the API and the UI
 #: agree on the same classification.
 DEFAULT_LOW_MAX = 34
@@ -150,6 +166,9 @@ class RiskSettings:
 
     def __post_init__(self) -> None:
         validate_settings(self)
+        # Deprecated factors must not advertise a weight the rating ignores,
+        # even when the caller passed one (e.g. a legacy persisted row).
+        object.__setattr__(self, "weights", canonical_weights(self.weights))
 
     def weight(self, key: str) -> float:
         return self.weights.get(key, 0.0)
@@ -428,12 +447,18 @@ def compute_service_risk(
     weighted_sum = 0.0
     for definition in FACTORS:
         value = raw.get(definition.key)
-        weight = settings.weight(definition.key)
+        # The published formula is 100 * sum(w_i * f_i) / sum(w_i) over
+        # features in [0, 1].  A diagnostic factor must never enter the sum,
+        # and a value outside [0, 1] would let the score exceed 100.  Clamping
+        # keeps the documented range true even if an operator re-enables a
+        # deprecated weight or a future feature is mis-normalised.
+        weight = 0.0 if definition.deprecated else settings.weight(definition.key)
         available = value is not None and weight > 0
         if available:
+            feature = max(0.0, min(1.0, float(value)))
             total_weight += weight
-            weighted_sum += weight * float(value)
-            contribution = weight * float(value)
+            weighted_sum += weight * feature
+            contribution = weight * feature
         else:
             contribution = 0.0
         results.append(
