@@ -188,6 +188,10 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
             Core(storage, calculation, settings.reference_now), ai=None)
         stop = asyncio.Event()
         task = None
+        # Bound before the try block: the finally clause awaits it, and if
+        # startup failed earlier an unbound name here would replace the real
+        # exception with an UnboundLocalError.
+        digest_task = None
 
         def initialize():
             database.initialize()
@@ -214,7 +218,6 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
             # The digest scheduler runs whenever Telegram is on, independently of
             # AEZA_AS_OF: the pinned reference instant only affects scoring, not
             # whether notifications may be delivered.
-            digest_task = None
             if runtime.telegram is not None:
                 # Register the webhook before scheduling anything. The bot only
                 # receives updates through it, so a deployment that skips this
