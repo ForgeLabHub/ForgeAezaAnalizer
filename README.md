@@ -271,7 +271,7 @@ pip install -r requirements.txt
 # 2. Демо-доступ и секрет подписи токенов
 export AEZA_JWT_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
 export AEZA_ADMIN_EMAIL="analyst@aeza.test"
-export AEZA_ADMIN_PASSWORD="aeza-demo-password"
+export AEZA_ADMIN_PASSWORD="demo123"
 
 # 3. Запуск API (при старте база создаётся и заполняется из снимка)
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
@@ -284,7 +284,7 @@ npm install
 npm run dev          # http://127.0.0.1:5173
 ```
 
-Откройте <http://127.0.0.1:5173>, войдите как `analyst@aeza.test` / `aeza-demo-password`.
+Откройте <http://127.0.0.1:5173>, войдите как `analyst@aeza.test` / `demo123`.
 
 Vite проксирует `/api`, `/metrics` и `/health` на `127.0.0.1:8000`, поэтому CORS в
 разработке не требуется.
@@ -354,12 +354,13 @@ python -m pytest tests/ -q
 
 ## Загрузка данных вручную
 
-Снимок данных лежит в `backend/data/snapshot.json` и применяется автоматически при
-старте. Чтобы загрузить другой файл:
+Compose загружает `db/analytics_seed.sql` при первом создании локальной PostgreSQL
+базы. Постоянные файлы PostgreSQL находятся в `db/postgres/`, авторизация хранится
+отдельно в `db/auth.sqlite3`. Чтобы импортировать другой снимок:
 
 ```bash
 cd backend
-python scripts/load_snapshot.py path/to/snapshot.json
+python scripts/load_snapshot.py ../dataset/data.json
 ```
 
 Тот же результат доступен через API:
@@ -368,7 +369,7 @@ python scripts/load_snapshot.py path/to/snapshot.json
 curl -X PUT http://127.0.0.1:8000/api/v1/source/snapshot \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  --data-binary @backend/data/snapshot.json
+  --data-binary @dataset/data.json
 ```
 
 Импорт валидируется целиком **до** записи; при ошибке предыдущий набор остаётся
@@ -392,13 +393,13 @@ backend/
   migrations/     SQL-схема и сид для PostgreSQL
   scripts/        загрузчик снимка
   tests/          unit, API и интеграционные тесты
-  data/           snapshot.json (входные данные приложения)
 frontend/
   src/
     lib/          API-клиент и контекст авторизации
     components/   переиспользуемые UI-элементы и графики
     pages/        дашборд, клиенты, карточка клиента, настройки, вход
 dataset/          исходный комплект кейса (data.json, SQL, README, generate.py)
+db/               PostgreSQL seed, файлы PostgreSQL и SQLite-база авторизации
 docs/             документация по данным, модели, импорту и демонстрации
 
 
@@ -504,14 +505,15 @@ docs/             документация по данным, модели, им
 
 | Переменная | По умолчанию | Описание |
 | --- | --- | --- |
-| `AEZA_DATABASE_URL` | `sqlite:///./data/aeza.db` | Строка подключения SQLAlchemy |
+| `AEZA_DATABASE_URL` | `postgresql+psycopg://aeza:aeza@localhost:5432/aeza` | Аналитическая БД PostgreSQL |
+| `AEZA_AUTH_DATABASE_URL` | `sqlite:///./db/auth.sqlite3` | SQLite для пользователей и сессий |
 | `AEZA_JWT_SECRET` | — | Секрет подписи токенов; обязателен в production |
 | `AEZA_ALLOW_DEV_SECRET` | `1` | Разрешить временный секрет, если `AEZA_JWT_SECRET` не задан |
 | `AEZA_ADMIN_EMAIL` | `analyst@aeza.test` | Логин аналитика при первом старте |
 | `AEZA_ADMIN_PASSWORD` | — | Пароль аналитика при первом старте |
 | `AEZA_TOKEN_TTL_MINUTES` | `720` | Время жизни токена |
-| `AEZA_SNAPSHOT_PATH` | `data/snapshot.json` | Снимок для автозагрузки при старте |
-| `AEZA_SEED_DEMO_DATA` | `1` | Загружать снимок, если база пуста |
+| `AEZA_SNAPSHOT_PATH` | `dataset/data.json` | Необязательный источник для локальной загрузки при пустой БД |
+| `AEZA_SEED_DEMO_DATA` | `0` | Загружать JSON-снимок при пустой БД; Compose использует SQL seed |
 | `AEZA_AS_OF` | `2026-10-19T15:00:00+00:00` | Опорный момент расчёта; `now` — по стенным часам |
 | `AEZA_CORS_ORIGINS` | `*` | Разрешённые источники через запятую |
 
