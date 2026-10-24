@@ -207,6 +207,22 @@ def test_all_zero_weights_is_allowed_but_yields_no_score():
     assert validate_settings(settings) is None
 
 
+def test_deprecated_factor_cannot_be_given_a_non_zero_weight():
+    """Re-enabling failed_renewals would restore the double counting.
+
+    Its signal is already carried by renewal_failure_rate, so the only accepted
+    weight is 0. A non-zero value used to be accepted, which is how a live
+    stand drifted away from the approved methodology.
+    """
+    with pytest.raises(RiskConfigError):
+        validate_settings(RiskSettings(weights={**DEFAULT_WEIGHTS, "failed_renewals": 2.0}))
+
+
+def test_deprecated_factor_keeps_its_zero_weight_accepted():
+    """The field must stay settable to 0 for API compatibility."""
+    assert validate_settings(RiskSettings(weights={**DEFAULT_WEIGHTS, "failed_renewals": 0.0})) is None
+
+
 def test_classify_boundaries():
     settings = RiskSettings()
     assert classify(0, settings) == "low"

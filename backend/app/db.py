@@ -103,6 +103,27 @@ class AuditRow(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
 
 
+class RecommendationStatusRow(Base):
+    """Workflow status of one retention playbook for one customer.
+
+    Deliberately **not** keyed by ``generation``. A generation is republished on
+    every recalculation, so tying a status to it would silently reset the
+    operator's work whenever the snapshot or the model settings changed. The
+    natural key is the pair the analytics layer already uses to deduplicate
+    recommendations: the customer and the stable recommendation ``code``.
+
+    Nothing here feeds back into the model: a status is a workflow fact, not an
+    analytical signal, so it can never change a score or an exposure.
+    """
+
+    __tablename__ = "analyzer_recommendation_status"
+    customer_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16))
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    updated_by: Mapped[str] = mapped_column(String(320))
+
+
 class UserRow(Base):
     __tablename__ = "analyzer_users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -118,31 +139,39 @@ class AuthSessionRow(Base):
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
 
 
-class ActionStatusRow(Base):
-    """Operator workflow state for one retention recommendation.
+class ActionRow(Base):
+    """A retention action a human confirmed for a customer.
 
-    Kept deliberately separate from the analytics tables: changing a status must
-    never touch the score, the exposure or the model settings.  The row is keyed
-    by ``(generation, customer_id, code)`` so a recalculated generation starts
-    with a clean workflow while the previous generation's decisions stay on
-    record rather than being silently rewritten.
+    Deliberately *not* keyed by analysis generation: an action is a human
+    decision and must survive the next import or model change.  ``generation``
+    records only the context in which the action was created.
     """
 
-    __tablename__ = "analyzer_action_status"
-    generation: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
-    customer_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
-    code: Mapped[str] = mapped_column(String(64), primary_key=True)
-    status: Mapped[str] = mapped_column(String(16))
-    assignee: Mapped[str | None] = mapped_column(String(320), nullable=True)
-    note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    __tablename__ = "analyzer_actions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    customer_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    service_id: Mapped[int | None] = mapped_column(BigInteger)
+    code: Mapped[str] = mapped_column(String(64))
+    title: Mapped[str] = mapped_column(String(255))
+    detail: Mapped[str] = mapped_column(String(2000))
+    status: Mapped[str] = mapped_column(String(32), default="open")
+    note: Mapped[str | None] = mapped_column(String(2000))
+    generation: Mapped[int] = mapped_column(BigInteger, default=0)
+    created_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
-    updated_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    __table_args__ = (Index("analyzer_actions_customer_idx", "customer_id", "created_at"),)
 
 
 ANALYTICS_TABLES = (
     CurrentRow.__table__, SourceRow.__table__, ModelRow.__table__, AnalysisRow.__table__,
     CustomerRow.__table__, ServiceIndexRow.__table__, ObservationRow.__table__, AuditRow.__table__,
-    ActionStatusRow.__table__,
+    # Workflow state for retention playbooks. Grouped with the analytics tables
+    # because it is created by the same initialise() call the runtime makes at
+    # startup; it holds no analytical data and is never versioned by generation.
+    RecommendationStatusRow.__table__,
+    # Human-confirmed retention actions, created by the same initialise() call.
+    ActionRow.__table__,
 )
 AUTH_TABLES = (UserRow.__table__, AuthSessionRow.__table__)
 

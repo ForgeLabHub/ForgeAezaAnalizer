@@ -1,6 +1,15 @@
 export interface Money {
-  cents: number
-  eur: string
+  cents: number | null
+  eur: string | null
+}
+
+export interface VersionInfo {
+  generation: number
+  sourceVersion: number
+  modelVersion: number
+  capturedAt: string | null
+  asOf: string | null
+  calculatedAt: string | null
 }
 
 export type RiskCategory =
@@ -18,6 +27,7 @@ export interface FactorResult {
   contribution: number
   available: boolean
   reason: string
+  deprecated?: boolean
 }
 
 export interface Recommendation {
@@ -27,16 +37,33 @@ export interface Recommendation {
   priority: number
 }
 
+export interface HorizonExposureItem {
+  horizonDays: number
+  renewalCount: number
+  upcomingRenewals: Money
+  revenueAtRisk: Money
+}
+
+export interface OverdueDetailItem {
+  serviceId: number
+  status: string
+  statusLabel?: string
+  expiredAt: string
+  daysOverdue: number
+  amount: Money
+  lifecycleInconsistent: boolean
+}
+
 export interface ServiceItem {
   id: number
   name: string
   status: string
   statusLabel: string
-  paymentTerm: string
+  paymentTerm: string | null
   paymentTermLabel: string
-  autoProlong: boolean
-  createdAt: string
-  expiresAt: string
+  autoProlong: boolean | null
+  createdAt: string | null
+  expiresAt: string | null
   daysToExpiry: number | null
   price: Money
   riskScore: number | null
@@ -59,22 +86,27 @@ export interface CustomerSummary {
   withdrawBalance: Money
   totalReplenished: Money
   bonusBalance: Money
-  bonusState: string
+  bonusState: string | null
   riskScore: number | null
   riskCategory: RiskCategory
   riskCategoryLabel: string
   serviceCount: number
   eligibleServiceCount: number
   highRiskServiceCount: number
+  highRiskShare?: number
+  overdueServiceCount?: number
   concludedStates: Record<string, number>
   stateNote: string
   revenueAtRisk: Money
   upcomingRenewals: Money
+  overdueOperational?: Money
+  lifecycleInconsistentCount?: number
+  exposureByHorizon?: HorizonExposureItem[]
   topReasons: string[]
   missingData: string[]
 }
 
-export interface CustomerDetail extends CustomerSummary {
+export interface CustomerDetail extends CustomerSummary, Partial<VersionInfo> {
   reasons: string[]
   services: ServiceItem[]
   recommendations: Recommendation[]
@@ -85,9 +117,10 @@ export interface CustomerDetail extends CustomerSummary {
     riskScore: number
     revenueAtRisk: Money
   }>
+  overdueDetails?: OverdueDetailItem[]
 }
 
-export interface CustomerPage {
+export interface CustomerPage extends Partial<VersionInfo> {
   items: CustomerSummary[]
   page: number
   pageSize: number
@@ -97,9 +130,11 @@ export interface CustomerPage {
   sortDir: string
 }
 
-export interface Summary {
+export interface Summary extends Partial<VersionInfo> {
   generatedAt: string
   horizonDays: number
+  engineVersion?: string
+  version?: VersionInfo
   customers: {
     total: number
     byCategory: Record<RiskCategory, number>
@@ -148,104 +183,148 @@ export interface FactorInfo {
   normalization: string
   defaultWeight: number
   missingDataBehaviour: string
+  deprecated?: boolean
 }
 
-export interface PriorityExposure {
-  cents: number
-  eur: string
-}
-
-/** One row of the retention worklist. Risk, exposure, urgency and data quality
- *  are four separate measurements; ``categories`` groups work without
- *  collapsing them into a single number. */
-export interface PriorityItem {
-  id: number
-  email: string
-  riskScore: number | null
-  riskCategory: RiskCategory
-  serviceCount: number
-  highRiskServiceCount: number
-  highRiskShare: number | null
-  revenueAtRiskOnHorizon: PriorityExposure | null
-  upcomingRenewalsOnHorizon: PriorityExposure | null
-  overdueOperational: PriorityExposure | null
-  overdueServiceCount: number
-  lifecycleInconsistentCount: number
-  categories: string[]
-  urgencyRank: number
-}
-
-export interface PriorityResponse {
+export interface SettingsPayload {
   horizonDays: number
-  total: number
-  categories: Record<string, string>
-  qualityCounts: Record<string, number>
-  items: PriorityItem[]
-  note: string
+  weights: Record<string, number>
+  lowMax: number
+  mediumMax: number
+  failedRenewalWindowDays: number | null
 }
 
-/** One measured quantity inside a scenario comparison. */
-export interface ScenarioMeasure {
-  baseline: number
-  scenario: number
-  absolute: number
-  relative: number | null
+export interface SettingsPatch {
+  horizonDays?: number
+  weights?: Record<string, number>
+  lowMax?: number
+  mediumMax?: number
+  failedRenewalWindowDays?: number | null
+  expectedGeneration?: number
 }
 
-export interface ScenarioCustomerChange {
-  id: number
-  email: string
-  scoreBefore: number | null
-  scoreAfter: number | null
-  categoryBefore: RiskCategory
-  categoryAfter: RiskCategory
-  categoryChanged: boolean
-  revenueAtRiskBefore: number
-  revenueAtRiskAfter: number
-}
-
-export interface ScenarioComparison {
-  horizonDays: ScenarioMeasure
-  revenueAtRiskCents: ScenarioMeasure
-  upcomingRenewalsCents: ScenarioMeasure
-  highRiskCustomers: ScenarioMeasure
-  mediumRiskCustomers: ScenarioMeasure
-  highRiskServices: ScenarioMeasure
-  categories: Record<string, ScenarioMeasure>
-  note?: string
-  [key: string]: ScenarioMeasure | Record<string, ScenarioMeasure> | string | undefined
-}
-
-export interface ScenarioResult {
-  name: string
-  baselineSettings: ModelSettings['settings']
-  scenarioSettings: ModelSettings['settings']
-  appliedOverrides: Record<string, unknown>
-  allowedParameters: string[]
-  asOf: string | null
-  baseline: Summary
-  scenario: Summary
-  comparison: ScenarioComparison
-  customers: ScenarioCustomerChange[]
-  factorAvailability: unknown
-  note: string
-}
-
-export interface ModelSettings {
-  settings: {
-    horizonDays: number
-    weights: Record<string, number>
-    lowMax: number
-    mediumMax: number
-    failedRenewalWindowDays?: number | null
-  }
+export interface ModelSettings extends Partial<VersionInfo> {
+  settings: SettingsPayload
   factors: FactorInfo[]
   updatedAt: string | null
   isDefault: boolean
 }
 
+// ------------------------------------------------------------------ AI Analyst
+export type AIStatusValue = 'disabled' | 'ready' | 'unavailable'
+
+export interface AIStatus {
+  status: AIStatusValue
+  provider: string
+  model: string
+  enabled: boolean
+  reason: string
+  reachable: boolean
+  rag_indexed: boolean
+  rag_chunks: number
+}
+
+export interface AICitation {
+  kind: 'fact' | 'document'
+  source: string
+  detail: string
+}
+
+export interface AIAnswer {
+  summary: string
+  facts: string[]
+  factor_explanation: string
+  recommendations: string[]
+  limitations: string
+  citations: AICitation[]
+}
+
+export interface AIResponse {
+  task: 'chat' | 'customer_explain' | 'scenario_explain' | 'report_summary'
+  model: string
+  provider: string
+  grounded: boolean
+  warnings: string[]
+  citations: AICitation[]
+  answer: AIAnswer
+  context: {
+    facts?: string
+    documents?: string
+    latencyMs?: number
+    completionTokens?: number | null
+    riskScore?: number | null
+  }
+}
+
+export type ActionStatus = 'open' | 'in_progress' | 'done' | 'dismissed'
+
+export interface RetentionAction {
+  id: number
+  customerId: number
+  serviceId: number | null
+  code: string
+  title: string
+  detail: string
+  status: ActionStatus
+  note: string | null
+  generation: number
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface RetentionActionList {
+  items: RetentionAction[]
+  statuses: ActionStatus[]
+  note: string
+}
+export interface SourceInfo extends VersionInfo {
+  counts: {
+    accounts?: number
+    services?: number
+    transactions?: number
+    [key: string]: number | undefined
+  }
+  capturedAt: string
+}
+
+export interface SourceAccepted extends VersionInfo {
+  snapshot: {
+    status: string
+    accounts?: number
+    services?: number
+    transactions?: number
+    [key: string]: number | string | undefined
+  }
+  report: {
+    status: string
+    accepted: Record<string, number>
+    rejected: number
+    duplicates: number
+    previous: Record<string, number>
+    message: string
+  }
+}
+
+export interface ObservationItem {
+  sourceVersion: number
+  serviceId: number
+  previousStatus: string | null
+  status: string | null
+  observedAt: string
+  previousObservedAt: string | null
+  eventAt: string | null
+}
+
+export interface ObservationsResponse {
+  items: ObservationItem[]
+  note: string
+}
+
+export type QualitySeverity = 'critical' | 'warning' | 'info'
+
 export interface QualityIssue {
-  level: 'critical' | 'warning' | 'info'
+  level: QualitySeverity
   code: string
   message: string
   count: number
@@ -254,10 +333,126 @@ export interface QualityIssue {
 }
 
 export interface QualityReport {
-  levels: Record<string, string>
-  issues: QualityIssue[]
-  counts: Record<string, number>
-  recordsInspected: number
-  note: string
   asOf: string | null
+  levels: Record<QualitySeverity, string>
+  issues: QualityIssue[]
+  counts: Record<QualitySeverity, number>
+  recordsInspected: {
+    accounts: number
+    services: number
+    transactions: number
+  }
+  note: string
+}
+
+export type PriorityCategoryKey =
+  | 'operational_attention'
+  | 'high_risk_with_exposure'
+  | 'high_risk_review'
+  | 'data_quality_review'
+  | 'normal_review'
+
+export interface PriorityItem {
+  id: number
+  email: string | null
+  riskScore: number | null
+  riskCategory: RiskCategory
+  serviceCount: number
+  highRiskServiceCount: number
+  highRiskShare: number | null
+  revenueAtRiskOnHorizon: Money | null
+  upcomingRenewalsOnHorizon: Money | null
+  overdueOperational: Money | null
+  overdueServiceCount: number | null
+  lifecycleInconsistentCount: number | null
+  categories: PriorityCategoryKey[]
+  urgencyRank: number
+}
+
+export interface PriorityResponse {
+  horizonDays: number
+  total: number
+  categories: Record<string, string>
+  qualityCounts: {
+    critical: number
+    warning: number
+    info: number
+  }
+  items: PriorityItem[]
+  note: string
+}
+
+export interface MetricDelta {
+  baseline: number | null
+  scenario: number | null
+  absolute: number | null
+  relative: number | null
+}
+
+export interface ScenarioCustomerChange {
+  id: number
+  email: string | null
+  scoreBefore: number | null
+  scoreAfter: number | null
+  categoryBefore: RiskCategory
+  categoryAfter: RiskCategory
+  categoryChanged: boolean
+  revenueAtRiskBefore: number | null
+  revenueAtRiskAfter: number | null
+}
+
+export interface FactorAvailabilityShift {
+  availableBefore: number
+  availableAfter: number
+  unknownBefore: number
+  unknownAfter: number
+  becameUnknown: number
+  becameAvailable: number
+}
+
+export interface ScenarioOverrides {
+  horizonDays?: number
+  weights?: Record<string, number>
+  lowMax?: number
+  mediumMax?: number
+  failedRenewalWindowDays?: number | null
+}
+
+export interface ScenarioComparisonResponse {
+  name: string
+  baselineSettings: SettingsPayload
+  scenarioSettings: SettingsPayload
+  appliedOverrides: Record<string, unknown>
+  allowedParameters: string[]
+  asOf: string | null
+  baseline: Summary
+  scenario: Summary
+  comparison: {
+    horizonDays: MetricDelta
+    revenueAtRiskCents: MetricDelta
+    upcomingRenewalsCents: MetricDelta
+    highRiskCustomers: MetricDelta
+    mediumRiskCustomers: MetricDelta
+    highRiskServices: MetricDelta
+    categories: Record<string, MetricDelta>
+    note: string
+  }
+  customers: ScenarioCustomerChange[]
+  factorAvailability: Record<string, FactorAvailabilityShift>
+  note: string
+}
+
+export interface ValidationIssue {
+  loc: Array<string | number>
+  msg: string
+  type: string
+}
+
+export interface CsvExportResult {
+  blob: Blob
+  filename: string
+  rows: number | null
+  asOf: string | null
+  engineVersion: string | null
+  horizonDays: number | null
 }

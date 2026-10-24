@@ -44,7 +44,13 @@ def fixture_result(source):
             "riskCategory": ["low", "low", "high", "insufficient_data"][index % 4], "riskCategoryLabel": "fixture",
             "serviceCount": len(services), "eligibleServiceCount": 0, "highRiskServiceCount": 0,
             "concludedStates": {}, "stateNote": "fixture", "revenueAtRisk": amount(0), "upcomingRenewals": amount(0),
-            "topReasons": [], "missingData": [], "reasons": [], "services": services, "recommendations": [], "renewalDetails": []})
+            "topReasons": [], "missingData": [], "reasons": [], "services": services,
+            "recommendations": [
+                {"code": "overdue_renewal", "title": "Просроченное продление",
+                 "detail": "fixture", "priority": 1},
+                {"code": "review_autoprolong", "title": "Обсудить включение автопродления",
+                 "detail": "fixture", "priority": 3},
+            ], "renewalDetails": []})
     summary = {"generatedAt": AS_OF, "horizonDays": 30,
         "customers": {"total": len(customers), "byCategory": {}, "highRisk": 0, "mediumRisk": 0,
             "insufficientData": 0, "withRevenueAtRisk": 0},

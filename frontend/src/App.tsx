@@ -1,18 +1,21 @@
 import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import { useAuth } from './lib/auth'
+import { AnalysisProvider, GenerationControl, useAnalysis } from './lib/realtime'
 import { Loading } from './components/ui'
 import { ThemeToggle } from './lib/theme'
-import { AezaLogoDropdown } from './components/AezaLogoDropdown'
+import { AezaLogo } from './components/AezaLogo'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
+import PriorityPage from './pages/PriorityPage'
 import CustomersPage from './pages/CustomersPage'
 import CustomerDetailPage from './pages/CustomerDetailPage'
 import SettingsPage from './pages/SettingsPage'
-import ActionCenterPage from './pages/ActionCenterPage'
-import WhatIfPage from './pages/WhatIfPage'
+import AIAnalystPage from './pages/AIAnalystPage'
+import DataSourcePage from './pages/DataSourcePage'
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { email, logout } = useAuth()
+  const { pinnedGeneration, maxGeneration, setPinnedGeneration } = useAnalysis()
   const navigate = useNavigate()
 
   async function onLogout() {
@@ -23,17 +26,19 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <AezaLogoDropdown />
+        <AezaLogo />
         <nav className="app-nav">
           <NavLink to="/" end>
             Дашборд
           </NavLink>
-          <NavLink to="/action-center">Центр действий</NavLink>
+          <NavLink to="/priority">Приоритеты</NavLink>
           <NavLink to="/customers">Клиенты</NavLink>
-          <NavLink to="/what-if">Сценарии</NavLink>
-          <NavLink to="/settings">Настройки модели</NavLink>
+          <NavLink to="/ai">AI-аналитик</NavLink>
+          <NavLink to="/settings">Модель и сценарии</NavLink>
+          <NavLink to="/data">Данные и качество</NavLink>
         </nav>
         <div className="header-user">
+          <GenerationControl />
           <span className="email">{email}</span>
           <ThemeToggle />
           <button type="button" className="btn sm" onClick={onLogout}>
@@ -41,6 +46,23 @@ function Shell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </header>
+      {pinnedGeneration !== null ? (
+        <div className="archive-bar" role="status">
+          <span>
+            Просмотр архивного расчёта: <strong>поколение #{pinnedGeneration}</strong>
+            {maxGeneration && maxGeneration !== pinnedGeneration
+              ? ` (актуальное — #${maxGeneration})`
+              : ''}
+          </span>
+          <button
+            type="button"
+            className="btn sm"
+            onClick={() => setPinnedGeneration(null)}
+          >
+            Вернуться к Live
+          </button>
+        </div>
+      ) : null}
       <main className="page">{children}</main>
     </div>
   )
@@ -67,17 +89,20 @@ export default function App() {
   }
 
   return (
-    <Shell>
-      <Routes>
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/customers" element={<CustomersPage />} />
-        <Route path="/customers/:id" element={<CustomerDetailPage />} />
-        <Route path="/action-center" element={<ActionCenterPage />} />
-        <Route path="/what-if" element={<WhatIfPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/login" element={<Navigate to="/" replace />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Shell>
+    <AnalysisProvider>
+      <Shell>
+        <Routes>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/priority" element={<PriorityPage />} />
+          <Route path="/customers" element={<CustomersPage />} />
+          <Route path="/customers/:id" element={<CustomerDetailPage />} />
+          <Route path="/ai" element={<AIAnalystPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/data" element={<DataSourcePage />} />
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Shell>
+    </AnalysisProvider>
   )
 }

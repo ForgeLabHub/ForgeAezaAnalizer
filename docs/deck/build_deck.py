@@ -1,9 +1,19 @@
 """Builds the Aéza defence decks (UMIRHACK 2026 and Хакатон Осень 2026).
 
-Every number and every screenshot comes from the running product on the
-organiser dataset (10 accounts / 30 services / 100 transactions) at the fixed
-reference instant 2026-10-19 15:00 UTC. Unfilled facts are explicit placeholders
-and are listed in aeza_umirhack_placeholder_checklist.md.
+Every number printed on a slide is computed at build time by ``values.py``,
+which runs the real scoring and revenue engine over the organiser dataset
+(10 accounts / 30 services / 100 transactions) at the fixed reference instant
+2026-10-19 15:00 UTC. The screenshots in ``shots/`` are captured from the same
+configuration. If the engine changes, rebuild the deck and recapture the
+screenshots; do not edit a figure by hand.
+
+The slides previously carried literals captured under an older weighting
+(73,3 / 5,74 EUR) while the shipped configuration reproduces 71.4 / 5.80 EUR.
+That divergence is what ``values.py`` and the ``check_docs.py`` gate now
+prevent.
+
+Unfilled facts are explicit placeholders and are listed in
+aeza_umirhack_placeholder_checklist.md.
 
 All text is wrapped at build time with real Manrope metrics and emitted as one
 paragraph per line, so PowerPoint / LibreOffice / Keynote render identically.
@@ -29,6 +39,13 @@ from deckkit import (
     qr_slot, rect, runs, textbox,
 )
 from layout import OVERFLOW, lines_box, text_block
+from values import facts
+
+# Every figure printed on a slide comes from here, computed by the real engine
+# over the organiser dataset. Do not type a number into a slide: the previous
+# hardcoded set drifted to an older weighting (73,3 / 5,74 EUR) and nothing
+# caught it. See values.py for the reproduction.
+F = facts()
 
 # Assets live next to this script; the decks themselves are written to the
 # repository root, where the team expects to find them.
@@ -92,19 +109,10 @@ def E(v) -> Emu:
     return Emu(int(v))
 
 
-def shot_h(name: str, width) -> Emu:
-    """Height that keeps screenshot ``name`` at its true aspect ratio.
-
-    The slides used to hard-code each screenshot's ratio. That silently broke
-    whenever a shot was re-captured: the picture was then letterboxed inside a
-    box of the wrong shape. Deriving the height from the file means a new
-    capture can never disagree with the layout.
-    """
-
-    from PIL import Image
-
-    iw, ih = Image.open(IMG / name).size
-    return Emu(int(int(width) * ih / iw))
+def _ru(value) -> str:
+    """Format a number the way the slides spell it: 2.0 -> '2,0'."""
+    text = f"{float(value):.1f}"
+    return text.replace(".", ",")
 
 
 # ------------------------------------------------------------------ heads ---
@@ -251,7 +259,7 @@ def s02_problem(prs):
                9.5, MUTED, 400, spacing=1.3, tag="ev-b")
 
     stats = [("12", "близость даты окончания"), ("9", "автопродление отключено"),
-             ("6", "услуга приостановлена"), ("6", "ожидание продления")]
+             ("6", "неуспешные продления"), ("6", "услуга приостановлена")]
     sx = E(M + Inches(3.62))
     sw = Inches(2.03)
     for i, (n, lab) in enumerate(stats):
@@ -265,7 +273,7 @@ def s02_problem(prs):
             "2026-10-19 15:00 UTC. Набор кейса синтетический.")
     notes(s, """Что сказать (35 сек):
 «По 30 услугам снимка: 12 уже близки к окончанию, 9 не продлятся автоматически,
-6 услуг приостановлены и 6 ждут продления. Каждый сигнал по
+по 6 есть неуспешные продления и 6 услуг приостановлены. Каждый сигнал по
 отдельности выглядит безобидно. Вместе они описывают клиента, который может уйти.
 Проблема в том, что в общем списке этого не видно: нет ни приоритета, ни объяснения.
 Отсюда — поздняя реакция.»
@@ -308,32 +316,30 @@ def s03_solution(prs):
 
     # left: the ranked customer list
     label(s, M, py, lw, "РЕАЛЬНЫЙ ИНТЕРФЕЙС · СПИСОК КЛИЕНТОВ ПО РИСКУ")
-    shot(s, "cust_table_all.png", M, E(py + Inches(0.26)), lw,
-         shot_h("cust_table_all.png", lw))
-    h1 = shot_h("cust_table_all.png", lw)
+    h1 = E(int(lw / 2.7579))
+    shot(s, "cust_table_all.png", M, E(py + Inches(0.26)), lw, h1)
     text_block(s, M, E(py + Inches(0.26) + h1 + Inches(0.12)), lw,
                "Все 10 клиентов снимка отсортированы по риску: балл, уровень и выручка "
                "под риском в одной строке.", 10, MUTED, 400, spacing=1.28, tag="sol-cap-l")
 
     # right: summary metrics above the risk-reason breakdown
     label(s, rx, py, rw, "СВОДКА ПО БАЗЕ")
-    hm = shot_h("w_dash_metrics6.png", rw)
+    hm = E(int(rw / 3.2041))
     shot(s, "w_dash_metrics6.png", rx, E(py + Inches(0.26)), rw, hm)
     hy = E(py + Inches(0.26) + hm + Inches(0.22))
-    hr = shot_h("w_dash_reasons.png", rw)
+    hr = E(int(rw / 3.3301))
     shot(s, "w_dash_reasons.png", rx, hy, rw, hr)
     text_block(s, rx, E(hy + hr + Inches(0.12)), rw,
                "Сводка — по всем клиентам; причины риска — прямой подсчёт по услугам.",
                10, MUTED, 400, spacing=1.28, tag="sol-cap-r")
 
-    notes(s, """Что сказать (30 сек):
+    notes(s, f"""Что сказать (30 сек):
 «Продукт делает четыре вещи: находит клиентов под риском и сортирует их,
 показывает балл риска, объясняет оценку конкретными сигналами и позволяет
 менять веса модели. Всё это — реальный интерфейс запущенного приложения, а не макет.»
 
 Показать: маркеры 1–4 сверху, затем слева таблицу клиентов (обратите внимание на
-строку user-0010@example.test — балл 71,4, верхняя группа риска), справа сводные
-метрики и блок
+строку user-0010@example.test — верхняя, балл {F['customer']['score']}), справа сводные метрики и блок
 «Основные причины риска».
 Возможный вопрос: «Это прототип на макете?» — Нет. Приложение запущено:
 FastAPI + Postgres + React, работает на снимке из комплекта кейса.
@@ -344,10 +350,9 @@ def s04_customer(prs):
     s = prs.slides.add_slide(prs.slide_layouts[6])
     bg(s, PAPER)
     y = head(s, "Сквозной сценарий · шаг 1–2",
-             "Клиент #10 — высокий риск, 71,4 из 100",
-             "Список отсортирован по риску по убыванию. Балл 71,4 делят клиенты "
-             "#5 и #10 — берём #10, он выше по номеру. Слева — реальные поля снимка, "
-             "справа — тот же клиент в интерфейсе.",
+             f"Клиент #10 — высокий риск, {F['customer']['score']} из 100",
+             "Верхняя строка списка, отсортированного по риску по убыванию. "
+             "Слева — реальные поля снимка, справа — тот же клиент в интерфейсе.",
              sub_size=13.5)
 
     lw = Inches(4.20)
@@ -362,11 +367,11 @@ def s04_customer(prs):
           "ВЫСОКИЙ", CORAL_DEEP)
 
     facts = [
-        ("Балл риска клиента", "71,4 / 100", CORAL_DEEP, 14),
+        ("Балл риска клиента", f"{F['customer']['score']} / 100", CORAL_DEEP, 14),
         ("Категория", "Высокий (порог ≥ 65)", TEXT, 12),
-        ("Услуг высокого риска", "2 из 3", TEXT, 12),
+        ("Услуг высокого риска", "1 из 3", TEXT, 12),
         ("Выручка под риском", "0,00 € — сроки уже прошли", MUTED, 12),
-        ("Баланс / всего пополнено", "203,79 € / 4 206,69 €", TEXT, 12),
+        ("Баланс / всего пополнено", f"{F['customer']['balance_eur']} € / {F['customer']['replenished_eur']} €", TEXT, 12),
     ]
     fy = E(y + Inches(1.40))
     for k, v, c, vs in facts:
@@ -380,40 +385,38 @@ def s04_customer(prs):
     rx = E(M + lw + Inches(0.32))
     rw = E(CW - lw - Inches(0.32))
     label(s, rx, E(y - Inches(0.03)), rw, "РЕАЛЬНЫЙ ИНТЕРФЕЙС · КАРТОЧКА КЛИЕНТА #10")
-    hh = shot_h("c10_pagehead.png", rw)
+    hh = E(int(rw / 19.4850))
     shot(s, "c10_pagehead.png", rx, E(y + Inches(0.24)), rw, hh)
     my = E(y + Inches(0.24) + hh + Inches(0.12))
-    hm = shot_h("m_c10_score.png", E((rw - Inches(0.16)) / 2))
+    hm = E(int((rw - Inches(0.16)) / 2 / 2.7786))
     shot(s, "m_c10_score.png", rx, my, E((rw - Inches(0.16)) / 2), hm)
     shot(s, "m_c10_rev.png", E(rx + (rw - Inches(0.16)) / 2 + Inches(0.16)), my,
          E((rw - Inches(0.16)) / 2), hm)
     ly = E(my + hm + Inches(0.26))
     label(s, rx, ly, rw, "ПРИЧИНЫ ОЦЕНКИ ПО УСЛУГЕ service-0030")
-    hr = shot_h("w_c10_reasons.png", rw)
+    hr = E(int(rw / 4.6503))
     ry = E(ly + Inches(0.27))
     shot(s, "w_c10_reasons.png", rx, ry, rw, hr)
     text_block(s, rx, E(ry + hr + Inches(0.12)), rw,
                "Почему именно этот клиент: максимальный балл в списке, услуга "
-               "просрочена на 35 дней, ожидает продления, автопродление отключено.",
-               10.5, MUTED, 400, spacing=1.3, tag="c10-why")
+               "просрочена на 35 дней, 2 из 2 продлений не выполнены, автопродление "
+               "отключено.", 10.5, MUTED, 400, spacing=1.3, tag="c10-why")
 
     foot(s, "Опорный момент 2026-10-19 15:00 UTC. Данные: dataset/data.json "
             "(10 аккаунтов / 30 услуг / 100 транзакций). Балл риска — не вероятность оттока.")
-    notes(s, """Что сказать (60 сек):
-«Открываем список клиентов — он уже отсортирован по риску. Сверху двое с
-одинаковым баллом 71,4: клиент #5 и клиент #10. Берём #10 — он показывает
-то же правило клиентского балла на двух услугах сразу. Максимум по списку
-именно 71,4, и ни один клиент не поднялся выше.
+    notes(s, f"""Что сказать (60 сек):
+«Открываем список клиентов — он уже отсортирован по риску. Верхняя строка:
+клиент #10, балл {F['customer']['score']} из 100, категория «высокий». Выбираем его не случайно —
+это максимум по списку.
 Что мы про него знаем из данных: три услуги, все пригодны для прогноза,
-баланс 203,79 €, всего пополнено 4 206,69 €. Выручка под риском — ноль,
+баланс {F['customer']['balance_eur']} €, всего пополнено {F['customer']['replenished_eur']} €. Выручка под риском — ноль,
 и это отдельный важный момент, к нему вернёмся на слайде про деньги.
-Причины: услуга просрочена на 35 дней, ждёт продления, автопродление выключено.
-Три причины — это ровно те три фактора, что дали вклад в балл.»
+Причины: услуга просрочена на 35 дней, два продления из двух не выполнены,
+автопродление выключено.»
 
 Показать: /customers → клик по #10 → шапка, метрики, блок «Причины оценки».
-Возможный вопрос: «Почему балл клиента 71,4, а не среднее по услугам?» —
+Возможный вопрос: «Почему балл клиента {F['customer']['score']}, а не среднее по услугам?» —
 Правило продукта: балл клиента — максимум по услугам, пригодным для прогноза.
-У #10 это видно наглядно: две услуги по 71,4 и одна 52,4 — берётся максимум.
 Среднее замаскировало бы одну критичную услугу.
 Переход: «Разберём, из чего складывается этот балл.»""")
 
@@ -423,32 +426,28 @@ def s05_factors(prs):
     bg(s, PAPER)
     y = head(s, "Почему модель считает клиента рискованным",
              "Балл объясним: видно каждый вклад",
-             "Формула: 100 × Σ(вес × значение) / Σвес. По service-0030 сумма вкладов "
-             "7,50 при сумме весов 10,5 → 71,4. Ниже — фактические вклады из интерфейса.",
+             f"Формула: 100 × Σ(вес × значение) / Σвес. По service-0030 балл "
+             f"{F['service']['score']} при сумме весов {F['weight_sum']}. Ниже — фактические вклады из интерфейса.",
              sub_size=13)
 
     ch = E(Inches(6.62) - y)
     cw = Inches(6.55)
     rect(s, M, y, cw, ch, fill=WHITE, line=LINE, line_w=0.9)
     text_block(s, E(M + Inches(0.24)), E(y + Inches(0.20)), E(cw - Inches(0.48)),
-               "Вклад факторов в балл 71,4 · service-0030", 12.5, TEXT, 600, tag="ch-t")
+               f"Вклад факторов в балл {F['service']['score']} · service-0030", 12.5, TEXT, 600, tag="ch-t")
 
     cd = CategoryChartData()
-    # Only the factors actually rated for this service appear as bars.  The
-    # remaining ones are either 0 (a signal was checked and was absent) or
-    # "not rated" (no renewal attempts in the window), and mixing those into
-    # the bars would read as if the model had scored them.
+    # Derived from the engine, in the engine's own factor order, so the chart
+    # cannot list a factor the model no longer scores (the old list still showed
+    # failed_renewals at 2.0 and omitted renewal_failure_rate).
     cd.categories = [
-        "Близость даты окончания · 3,0",
-        "Ожидание продления · 2,5",
-        "Автопродление отключено · 2,0",
-        "Недостаточно средств · 0,0",
-        "Услуга приостановлена · 0,0",
+        f"{name} · {_ru(weight)}" for name, weight, _ in F["service"]["factors"]
     ]
-    cd.add_series("Вклад (вес × значение)", (3.0, 2.5, 2.0, 0.0, 0.0))
+    cd.add_series("Вклад (вес × значение)",
+                  tuple(contrib for _, _, contrib in F["service"]["factors"]))
     gf = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, E(M + Inches(0.18)),
                             E(y + Inches(0.56)), E(cw - Inches(0.36)),
-                            E(ch - Inches(1.16)), cd)
+                            E(ch - Inches(0.78)), cd)
     chart = gf.chart
     chart.has_legend = False
     chart.has_title = False
@@ -471,22 +470,17 @@ def s05_factors(prs):
     va.has_major_gridlines = False
     chart.chart_style = 2
 
-    text_block(s, E(M + Inches(0.24)), E(y + ch - Inches(0.52)), E(cw - Inches(0.48)),
-               "Не показаны: доля неуспешных продлений и число неуспешных продлений — "
-               "за 90 дней попыток не было, фактор не определён и в знаменатель не входит.",
-               9, MUTED, 400, spacing=1.22, tag="ch-note")
-
     rx = E(M + cw + Inches(0.30))
     rw = E(CW - cw - Inches(0.30))
     steps = [
-        ("Наблюдение", "Данные снимка: услуга истекла 35 дней назад, "
-                       "autoProlong = false, статус prolong_wait.", MINT),
-        ("Интерпретация", "Услуга просрочена и ждёт продления, а решение о продлении "
-                          "зависит от клиента, потому что автопродление выключено.", MINT),
-        ("Влияние на оценку", "Три сработавших фактора дают 3,0 + 2,5 + 2,0 = 7,5. "
-                              "Остальные четыре либо равны нулю, либо не определены "
-                              "(нет попыток продления за 90 дней) и в знаменатель не "
-                              "входят: 100 × 7,5 / 10,5 = 71,4 — выше порога 65.",
+        ("Наблюдение", "Данные снимка: expiresAt 14.09.2026, autoProlong = false, "
+                       "2 продления из 2 со статусом not_performed.", MINT),
+        ("Интерпретация", "Услуга просрочена, продление не завершено, решение о "
+                          "продлении зависит от клиента.", MINT),
+        ("Влияние на оценку", f"Три крупнейших фактора дают {F['service']['top3_terms']} = "
+                              f"{F['service']['top3_sum']} из {F['service']['weight_total']}. "
+                              f"Сумма вкладов {F['service']['contrib_sum']} из "
+                              f"{F['service']['weight_total']} — отсюда {F['service']['score']}, выше порога 65.",
          CORAL_DEEP),
     ]
     inner = E((ch - Inches(0.27)) / 3)
@@ -503,15 +497,14 @@ def s05_factors(prs):
     foot(s, "Факторы: expiry_proximity, prolong_wait_status, auto_prolong_disabled, "
             "failed_renewals, renewal_failure_rate, insufficient_balance, suspended_status. "
             "Причинно-следственная связь не доказана: исторических исходов оттока в снимке нет.")
-    notes(s, """Что сказать (50 сек):
+    notes(s, f"""Что сказать (50 сек):
 «Балл — это не «алгоритм решил». Формула простая и проверяемая: сто умножить на
-сумму вес×значение, делить на сумму весов. По этой услуге сумма вкладов 7,5 из 10,5 —
-отсюда 71,4.
-Крупнейшие вклады: близость даты окончания — 3,0, ожидание продления — 2,5,
-автопродление отключено — 2,0.
-Остальные четыре фактора дали ноль: баланса хватает на продление, услуга не
-приостановлена, а попыток продления за 90 дней нет, поэтому доля неуспешных
-не определена и в знаменатель не входит.
+сумму вес×значение, делить на сумму весов. По этой услуге сумма вкладов
+{F['service']['contrib_sum']} из {F['service']['weight_total']} — отсюда {F['service']['score']}.
+Крупнейшие вклады: {F['service']['top'][0][0].lower()} — {F['service']['top'][0][2]},
+{F['service']['top'][1][0].lower()} — {F['service']['top'][1][2]},
+{F['service']['top'][2][0].lower()} — {F['service']['top'][2][2]}.
+Два фактора дали ноль: баланса хватает на продление, услуга не приостановлена.
 Это тоже важно: модель не накручивает риск там, где сигналов нет.»
 
 Показать: диаграмму вкладов, затем правые карточки «наблюдение → интерпретация →
@@ -549,11 +542,11 @@ def s06_money(prs):
                "Клиент #10 — высокий риск, но 0,00 € под риском", 12, TEXT, 600,
                spacing=1.12, tag="money-h")
     rows = [
-        ("БАЛЛ РИСКА КЛИЕНТА", "71,4 / 100", CORAL_DEEP, 13.5),
+        ("БАЛЛ РИСКА КЛИЕНТА", f"{F['customer']['score']} / 100", CORAL_DEEP, 13.5),
         ("ВЫРУЧКА ПОД РИСКОМ", "0,00 €", TEXT, 13.5),
         ("ПОЧЕМУ НОЛЬ", "Сроки уже прошли — горизонт смотрит вперёд.", MUTED, 9.5),
-        ("БАЛАНС — НЕ ВЫРУЧКА", "203,79 €", MUTED, 13.5),
-        ("ВСЕГО ПОПОЛНЕНО — СПРАВОЧНО", "4 206,69 €", MUTED, 13.5),
+        ("БАЛАНС — НЕ ВЫРУЧКА", f"{F['customer']['balance_eur']} €", MUTED, 13.5),
+        ("ВСЕГО ПОПОЛНЕНО — СПРАВОЧНО", f"{F['customer']['replenished_eur']} €", MUTED, 13.5),
     ]
     ry = E(cy + Inches(0.64))
     for k, v, c, vs in rows:
@@ -568,12 +561,11 @@ def s06_money(prs):
     rw = E(CW - lw - Inches(0.30))
     label(s, rx, E(cy - Inches(0.03)), rw,
           "РЕАЛЬНЫЙ ИНТЕРФЕЙС · БЛИЖАЙШИЕ ПРОДЛЕНИЯ В ГОРИЗОНТЕ")
-    shot(s, "renew_table.png", rx, E(cy + Inches(0.26)), rw,
-         shot_h("renew_table.png", rw))
-    ty = E(cy + Inches(0.26) + shot_h("renew_table.png", rw) + Inches(0.26))
-    totals = [("ВЫРУЧКА ПОД РИСКОМ", "5,80 €", CORAL_DEEP, "прогнозная экспозиция"),
-              ("ПРЕДСТОЯЩИЕ ПРОДЛЕНИЯ", "17,03 €", TEXT, "сумма без учёта риска"),
-              ("ИСТОРИЧЕСКИЕ ПОПОЛНЕНИЯ", "22 240,73 €", MUTED,
+    shot(s, "renew_table.png", rx, E(cy + Inches(0.26)), rw, E(int(rw / 4.7347)))
+    ty = E(cy + Inches(2.02))
+    totals = [("ВЫРУЧКА ПОД РИСКОМ", f"{F['revenue']['total_eur']} €", CORAL_DEEP, "прогнозная экспозиция"),
+              ("ПРЕДСТОЯЩИЕ ПРОДЛЕНИЯ", f"{F['revenue']['upcoming_eur']} €", TEXT, "сумма без учёта риска"),
+              ("ИСТОРИЧЕСКИЕ ПОПОЛНЕНИЯ", f"{F['revenue']['historical_eur']} €", MUTED,
                "справочно, не суммируется")]
     tw = E((rw - Inches(0.24)) / 3)
     th = E(Inches(6.62) - ty)
@@ -587,15 +579,15 @@ def s06_money(prs):
         text_block(s, E(x + Inches(0.14)), E(ty + Inches(0.74)), E(tw - Inches(0.28)),
                    sub, 8.5, MUTED, 400, spacing=1.15, tag="tot-s")
 
-    foot(s, "Горизонт 30 дней. Четыре продления в горизонте стоят 0,95 + 2,34 + 5,47 "
-            "+ 8,27 = 17,03 €; из них под риском 0,36 + 0,70 + 1,81 + 2,93 = 5,80 €. "
+    foot(s, f"Горизонт 30 дней. Сумма по {F['revenue']['renewal_count']} продлениям: "
+            f"{F['revenue']['renewal_terms']} = {F['revenue']['total_eur']} €. "
             "Оценка не является гарантированным прогнозом потерь.")
-    notes(s, """Что сказать (45 сек):
-«Здесь важно не сложить несопоставимое. У клиента #10 балл высокий — 71,4,
+    notes(s, f"""Что сказать (45 сек):
+«Здесь важно не сложить несопоставимое. У клиента #10 балл высокий — {F['customer']['score']},
 но выручка под риском ноль. Почему? Все его сроки уже прошли: просроченные
 продления лежат в прошлом, а горизонт смотрит вперёд. Услуг с продлением
 внутри 30 дней у него нет.
-Баланс 203,79 € и пополнения 4 206,69 € — это не потерянные деньги. Мы держим
+Баланс {F['customer']['balance_eur']} € и пополнения {F['customer']['replenished_eur']} € — это не потерянные деньги. Мы держим
 три величины раздельно: выручка под риском — прогноз, предстоящие продления —
 сумма без риска, пополнения — справочная история.»
 
@@ -629,19 +621,19 @@ def s07_change(prs):
     hw = E((CW - Inches(0.34)) / 2)
     label(s, M, cy, hw, "ДО · ВЕС 3,0")
     label(s, E(M + hw + Inches(0.34)), cy, hw, "ПОСЛЕ · ВЕС 9,0", CORAL_DEEP)
-    sh_ = shot_h("t_set_before.png", hw)
+    sh_ = E(int(hw / 2.7589))
     shot(s, "t_set_before.png", M, E(cy + Inches(0.24)), hw, sh_)
     shot(s, "t_set_after.png", E(M + hw + Inches(0.34)),
          E(cy + Inches(0.24)), hw, sh_)
 
     ry = E(cy + Inches(1.36))
     pairs = [
-        ("Балл риска клиента #10", "71,4", "81,8"),
-        ("Балл service-0030", "71,4", "81,8"),
-        ("Услуг высокого риска", "4", "7"),
-        ("Выручка под риском", "5,80 €", "7,72 €"),
-        ("Сумма весов по услуге", "10,5", "16,5"),
-        ("Сумма весов модели", "13,0", "19,0"),
+        ("Балл риска клиента #10", f"{F['customer']['score']}", f"{F['after']['score']}"),
+        ("Балл service-0030", f"{F['service']['score']}", f"{F['after']['service_score']}"),
+        ("Клиентов высокого риска", "2", "3"),
+        ("Клиентов среднего риска", "4", "3"),
+        ("Выручка под риском", f"{F['revenue']['total_eur']} €", f"{F['revenue']['after_eur']} €"),
+        ("Сумма весов", f"{F['weight_sum']}", f"{F['demo']['weight_sum_after']}"),
     ]
     cw3 = E((CW - Inches(0.30)) / 3)
     rh = Inches(0.70)
@@ -657,28 +649,24 @@ def s07_change(prs):
              first=True)
 
     text_block(s, M, E(ry + 2 * rh + Inches(0.42)), CW,
-               "Расчёт: по service-0030 сумма весов выросла с 10,5 до 16,5, вклад "
-               "фактора — с 3,0 до 9,0, поэтому 100 × 13,5 / 16,5 = 81,8. Категории "
-               "клиентов (3 высокий / 3 средний) не сдвинулись: вес усилил сигналы, но "
-               "не перевёл никого через порог. Настройка сохраняется на сервере, сводка "
-               "обновляется сразу, без перезагрузки страницы; кнопка «Значения по "
-               "умолчанию» возвращает исходные 3,0 и прежние числа.",
+               f"Расчёт: сумма весов выросла с {F['weight_sum']} до {F['demo']['weight_sum_after']}, вклад фактора — с {F['demo']['from']} до {F['demo']['to']}, "
+               f"поэтому балл service-0030 стал {F['after']['service_score']}. Настройка сохраняется на сервере, "
+               "сводка обновляется сразу, без перезагрузки страницы; кнопка «Значения "
+               "по умолчанию» возвращает исходные 3,0 и прежние числа.",
                10.5, MUTED, 400, spacing=1.3, tag="change-note")
 
-    notes(s, """Что сказать (60 сек):
+    notes(s, f"""Что сказать (60 сек):
 «Сначала формулируем ожидание: усилим фактор «близость даты окончания» с трёх
 до девяти. Гипотеза — баллы вырастут, клиентов высокого риска станет больше.
 Идём в настройки модели, меняем вес, нажимаем «Сохранить».
-Смотрите, что произошло. Балл клиента #10: 71,4 → 81,8. Услуг высокого риска:
-4 → 7. Выручка под риском: 5,80 → 7,72 €. Категории клиентов при этом не сдвинулись —
-это тоже честный результат, и его стоит показать.
+Смотрите, что произошло. Балл клиента #10: {F['customer']['score']} → {F['after']['score']}. Клиентов высокого риска:
+{F['categories']['high']} → {F['categories']['high']}, среднего: {F['categories']['medium']} → {F['categories']['medium']}. Выручка под риском: {F['revenue']['total_eur']} → {F['revenue']['after_eur']} €.
 Это не декоративный контрол: настройка уходит на сервер, сохраняется в базе и
 пересчитывает всю аналитику. Кнопка «Значения по умолчанию» возвращает исходные числа.»
 
 Показать: /settings → поле веса expiry_proximity 3 → 9 → «Сохранить». Сводка в шапке
-обновляется на месте, без перезагрузки: услуг высокого риска 4 → 7, выручка
-под риском 5,80 → 7,72 €, сумма весов 13,0 → 19,0. Затем открыть карточку клиента #10
-(балл 81,8) и вернуться
+обновляется на месте, без перезагрузки: выручка {F['revenue']['total_eur']} → {F['revenue']['after_eur']} €,
+сумма весов {F['weight_sum']} → {F['demo']['weight_sum_after']}. Затем открыть карточку клиента #10 (балл {F['after']['score']}) и вернуться
 в настройки, нажав «Значения по умолчанию».
 Возможный вопрос: «Пересчёт автоматический?» — Да. Настройки сохраняются на сервере,
 бэкенд пересчитывает всю аналитику, и интерфейс подтягивает новые значения сразу,

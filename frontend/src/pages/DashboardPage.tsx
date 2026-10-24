@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, api } from '../lib/api'
+import { useAnalysis } from '../lib/realtime'
 import type { Summary } from '../types'
 import {
   BarChart,
@@ -22,6 +23,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 }
 
 export default function DashboardPage() {
+  const { activeGeneration, refreshKey } = useAnalysis()
   const [summary, setSummary] = useState<Summary | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -32,10 +34,12 @@ export default function DashboardPage() {
       setLoading(true)
       setError(null)
       try {
-        const data = await api.summary()
+        const data = await api.summary(activeGeneration)
         if (!cancelled) setSummary(data)
       } catch (err) {
-        if (!cancelled) setError(err instanceof ApiError ? err.detail : 'Не удалось загрузить сводку')
+        if (!cancelled) {
+          setError(err instanceof ApiError ? err.detail : 'Не удалось загрузить сводку')
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -44,7 +48,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [activeGeneration, refreshKey])
 
   if (loading) return <Loading label="Расчёт аналитики…" />
   if (error) return <ErrorBox>{error}</ErrorBox>
@@ -58,16 +62,19 @@ export default function DashboardPage() {
         <div>
           <h1>Дашборд риска оттока</h1>
           <p>
-            Горизонт прогноза — {summary.horizonDays} дн. Данные рассчитаны{' '}
-            {formatDateTime(summary.generatedAt)} UTC. Балл риска — результат прозрачной
-            взвешенной rule-based модели, а не откалиброванная вероятность оттока.
+            Горизонт прогноза — {summary.horizonDays} дн. Момент оценки:{' '}
+            {formatDateTime(summary.asOf ?? summary.generatedAt)} UTC
+            {summary.generation ? ` · поколение #${summary.generation}` : ''}
+            {summary.engineVersion ? ` · движок ${summary.engineVersion}` : ''}. Балл риска —
+            результат прозрачной взвешенной rule-based модели, а не откалиброванная вероятность
+            оттока.
           </p>
         </div>
-        <div className="row" style={{ gap: 8 }}>
-          <Link className="btn" to="/action-center">
-            Центр действий
+        <div className="row">
+          <Link className="btn" to="/priority">
+            Очередь приоритетов
           </Link>
-          <Link className="btn" to="/customers?riskCategory=high">
+          <Link className="btn primary" to="/customers?riskCategory=high">
             Клиенты высокого риска
           </Link>
         </div>
@@ -82,12 +89,12 @@ export default function DashboardPage() {
         <Metric
           label="Открытых услуг"
           value={services.open}
-          foot={`${services.concluded} в завершённом состоянии`}
+          foot={`${services.highRisk} высокого риска · ${services.concluded} завершено`}
         />
         <Metric
           label="Клиентов высокого риска"
           value={customers.highRisk}
-          foot={`средний риск: ${customers.mediumRisk}`}
+          foot={`средний: ${customers.mediumRisk} · мало данных: ${customers.insufficientData}`}
         />
         <Metric
           label="Выручка под риском"
@@ -166,6 +173,7 @@ export default function DashboardPage() {
               rows={summary.topRiskReasons.map((r) => ({ label: r.label, value: r.count }))}
             />
           </div>
+          {summary.historyNote ? <div className="card-note">{summary.historyNote}</div> : null}
         </section>
       </div>
 
@@ -218,6 +226,9 @@ export default function DashboardPage() {
         <section className="card card-statuses-equal">
           <div className="card-head">
             <h2>Статусы услуг</h2>
+            <Link className="hint" to="/data?tab=quality">
+              Качество данных →
+            </Link>
           </div>
           <div className="card-body">
             <dl className="kv">
@@ -235,6 +246,7 @@ export default function DashboardPage() {
               <dd>{services.byStatus.deleted ?? 0}</dd>
             </dl>
           </div>
+          {summary.model?.note ? <div className="card-note">{summary.model.note}</div> : null}
         </section>
       </div>
     </div>

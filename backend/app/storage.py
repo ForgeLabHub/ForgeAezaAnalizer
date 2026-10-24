@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy import String, cast, func, or_, select, update
 
 from core import Analysis, NotReadyError, ResourceNotFoundError, State
-from backend.app.db import AnalysisRow, AuditRow, CurrentRow, CustomerRow, Database, ModelRow, ObservationRow, ServiceIndexRow, SourceRow
+from backend.app.db import ActionRow, AnalysisRow, AuditRow, CurrentRow, CustomerRow, Database, ModelRow, ObservationRow, RecommendationStatusRow, ServiceIndexRow, SourceRow
+from backend.app.domain import actions as actions_domain
 
 EMPTY_SOURCE = {"accounts": [], "services": [], "transactions": []}
+
+#: Allowed playbook workflow states. The lifecycle is intentionally small:
+#: a recommendation is new, being worked on, or done. "done" can be reopened
+#: because a retention action can be found to be premature.
+RECOMMENDATION_STATUSES = ("new", "in_progress", "done")
 
 
 class Storage:
@@ -123,6 +131,73 @@ class Storage:
             row = session.get(ModelRow, analysis.model_version)
             return {"settings": row.payload, "updatedAt": row.created_at.isoformat(), **analysis.summary["version"]}
 
+    # ------------------------------------------------------- retention playbooks
+    def recommendation_statuses(self, customer_id: int) -> dict[str, dict]:
+        """Return the stored workflow status per recommendation code.
+
+        Only codes that have been touched by an operator are returned; a missing
+        code means "new", so an untouched playbook needs no row and no write.
+        """
+
+        with self.database.sessions() as session:
+            rows = session.scalars(
+                select(RecommendationStatusRow).where(
+                    RecommendationStatusRow.customer_id == customer_id
+                )
+            ).all()
+            return {
+                row.code: {
+                    "status": row.status,
+                    "updatedAt": row.updated_at.isoformat(),
+                    "updatedBy": row.updated_by,
+                }
+                for row in rows
+            }
+
+    def set_recommendation_status(
+        self, customer_id: int, code: str, status: str, actor: str
+    ) -> dict:
+        """Set one playbook's status, leaving every other row untouched.
+
+        Uses a dialect-native upsert rather than read-then-insert. The plain
+        read-then-write raced under concurrency: two first-time updates to the
+        same ``(customer, code)`` both saw no row, both inserted, and one failed
+        with a unique-violation 500. Reproduced with 12 concurrent first writes
+        (1 of 12 returned 500). ``ON CONFLICT DO UPDATE`` makes the write
+        atomic, so concurrent updates converge instead of colliding.
+        """
+
+        now = datetime.now(timezone.utc)
+        dialect = self.database.engine.dialect.name
+        values = {
+            "customer_id": customer_id, "code": code, "status": status,
+            "updated_at": now, "updated_by": actor,
+        }
+        with self.database.transaction() as session:
+            if dialect == "sqlite":
+                from sqlalchemy.dialects.sqlite import insert as dialect_insert
+            elif dialect == "postgresql":
+                from sqlalchemy.dialects.postgresql import insert as dialect_insert
+            else:
+                # Fall back to the portable path for any other backend.
+                row = session.get(RecommendationStatusRow, (customer_id, code))
+                if row is None:
+                    session.add(RecommendationStatusRow(**values))
+                else:
+                    row.status = status
+                    row.updated_at = now
+                    row.updated_by = actor
+                return {"code": code, "status": status, "updatedAt": now.isoformat(), "updatedBy": actor}
+
+            statement = dialect_insert(RecommendationStatusRow).values(**values)
+            session.execute(
+                statement.on_conflict_do_update(
+                    index_elements=["customer_id", "code"],
+                    set_={"status": status, "updated_at": now, "updated_by": actor},
+                )
+            )
+        return {"code": code, "status": status, "updatedAt": now.isoformat(), "updatedBy": actor}
+
     def source(self, generation=None) -> dict:
         with self.database.sessions() as session:
             generation = self._generation(session, generation)
@@ -143,3 +218,59 @@ class Storage:
                 "observedAt": row.observed_at.isoformat(),
                 "previousObservedAt": row.previous_observed_at.isoformat() if row.previous_observed_at else None,
                 "eventAt": None} for row in rows]
+
+    # ------------------------------------------------------------------ actions
+    @staticmethod
+    def _action_payload(row) -> dict:
+        return {
+            "id": row.id,
+            "customerId": row.customer_id,
+            "serviceId": row.service_id,
+            "code": row.code,
+            "title": row.title,
+            "detail": row.detail,
+            "status": row.status,
+            "note": row.note,
+            "generation": row.generation,
+            "createdBy": row.created_by,
+            "createdAt": row.created_at.isoformat(),
+            "updatedAt": row.updated_at.isoformat(),
+        }
+
+    def actions(self, *, customer_id: int | None = None, status: str | None = None) -> list[dict]:
+        with self.database.sessions() as session:
+            statement = select(ActionRow)
+            if customer_id is not None:
+                statement = statement.where(ActionRow.customer_id == customer_id)
+            if status is not None:
+                statement = statement.where(ActionRow.status == status)
+            rows = session.scalars(
+                statement.order_by(ActionRow.created_at.desc(), ActionRow.id.desc())
+            ).all()
+            return [self._action_payload(row) for row in rows]
+
+    def create_action(self, *, customer_id: int, service_id: int | None, code: str, title: str,
+                      detail: str, note: str | None, generation: int, actor: str) -> dict:
+        stamp = actions_domain.now()
+        with self.database.transaction() as session:
+            row = ActionRow(
+                customer_id=customer_id, service_id=service_id, code=code, title=title, detail=detail,
+                status="open", note=note, generation=generation, created_by=actor,
+                created_at=stamp, updated_at=stamp,
+            )
+            session.add(row)
+            session.flush()
+            return self._action_payload(row)
+
+    def update_action(self, action_id: int, *, status: str | None, note: str | None) -> dict:
+        with self.database.transaction() as session:
+            row = session.get(ActionRow, action_id)
+            if row is None:
+                raise ResourceNotFoundError(f"Действие {action_id} не найдено")
+            if status is not None:
+                row.status = status
+            if note is not None:
+                row.note = note.strip() or None
+            row.updated_at = actions_domain.now()
+            session.flush()
+            return self._action_payload(row)

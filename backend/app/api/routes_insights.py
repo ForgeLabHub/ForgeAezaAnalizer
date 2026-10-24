@@ -19,15 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from core import InvalidInput
 from backend.app.api.deps import RuntimeDep, UserDep
-from backend.app.domain import insights
-from backend.app.domain.action_status import (
-    ActionStatusError,
-    STATUSES,
-    STATUS_LABELS,
-    load_for_generation,
-    payload as status_payload,
-    upsert as upsert_status,
-)
+from backend.app.domain import insights, llm
 
 router = APIRouter(tags=["insights"])
 
@@ -151,9 +143,6 @@ def priority(
             select(CustomerRow).where(CustomerRow.generation == generation)
         ).all()
         payloads = [row.payload for row in rows]
-        # Workflow state for this generation, read in the same session as the
-        # customer rows so the queue is internally consistent.
-        workflow = load_for_generation(session, generation)
 
     for payload in payloads:
         categories = insights.priority_for(payload, horizon_days=horizon_days, quality_ids=quality_ids)
@@ -177,18 +166,6 @@ def priority(
                 "lifecycleInconsistentCount": payload.get("lifecycleInconsistentCount"),
                 "categories": categories,
                 "urgencyRank": insights.urgency_rank(payload),
-                # Retention actions carried by this customer, each with its
-                # stored workflow state.  Read-only with respect to the score.
-                "actions": [
-                    {
-                        "code": rec.get("code"),
-                        "title": rec.get("title"),
-                        "detail": rec.get("detail"),
-                        "priority": rec.get("priority"),
-                        **status_payload(workflow.get((payload["id"], rec.get("code")))),
-                    }
-                    for rec in (payload.get("recommendations") or [])
-                ],
             }
         )
 
@@ -223,70 +200,69 @@ def priority(
     }
 
 
-class ActionStatusPatch(BaseModel):
-    """Workflow update for one retention recommendation."""
+class AiQuestion(BaseModel):
+    """One analyst question about the published aggregates.
+
+    ``extra="forbid"`` keeps the schema closed, so a caller cannot smuggle
+    fields (settings, a snapshot, a provider URL) into the request. The length
+    bound stops an unbounded prompt from reaching the model.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    customerId: int = Field(ge=1)
-    code: str = Field(min_length=1, max_length=64)
-    status: str | None = None
-    assignee: str | None = Field(default=None, max_length=320)
-    note: str | None = Field(default=None, max_length=1000)
-    expectedGeneration: int | None = Field(default=None, ge=0)
+    question: str = Field(min_length=3, max_length=1000)
 
 
-@router.patch("/priority/actions", summary="Обновить статус рекомендации")
-def update_action_status(patch: ActionStatusPatch, runtime: RuntimeDep, user: UserDep):
-    """Persist the operator's workflow state for one recommendation.
+@router.post("/insights/ai", summary="Ответ на вопрос по агрегатам расчёта с помощью локальной модели")
+def ai_question(payload: AiQuestion, runtime: RuntimeDep, user: UserDep):
+    """Answer a portfolio question from the published aggregates.
 
-    The update is rejected unless the customer and the recommendation code both
-    exist in the *published* generation, so a status cannot be attached to an
-    action the model never produced.  Nothing here touches the risk score, the
-    exposure or the model settings.
+    Read-only: the model receives only aggregated figures from the published
+    calculation and the data-quality summary. Customer e-mails, individual
+    records, the raw snapshot, the renewal list and every credential are never
+    sent. The model narrates; it never computes or writes.
+
+    Failure is honest: a disabled, unreachable or malformed provider returns
+    **503**, and nothing is replaced by a canned answer. A response that
+    invents a number is rejected as ungrounded.
     """
 
-    with runtime.storage.database.sessions() as session:
-        generation = runtime.storage._generation(session, None)
-        if patch.expectedGeneration is not None and patch.expectedGeneration != generation:
-            raise HTTPException(status_code=409, detail="Результаты уже изменились; обновите данные")
+    state = runtime.storage.load()
+    summary = runtime.storage.summary()
+    quality_report = insights.inspect_source(state.source, as_of=state.as_of)
+    as_of = state.as_of.isoformat() if state.as_of else None
 
-        from sqlalchemy import select
-
-        from backend.app.db import CustomerRow
-
-        row = session.get(CustomerRow, (generation, patch.customerId))
-        if row is None:
-            raise HTTPException(status_code=404, detail="Клиент не найден в текущем расчёте")
-
-        known = {rec.get("code") for rec in (row.payload.get("recommendations") or [])}
-        if patch.code not in known:
-            raise HTTPException(
-                status_code=404,
-                detail="Такая рекомендация не сформирована для этого клиента",
-            )
-
-        try:
-            with runtime.storage.database.transaction() as write_session:
-                updated = upsert_status(
-                    write_session,
-                    generation=generation,
-                    customer_id=patch.customerId,
-                    code=patch.code,
-                    status=patch.status,
-                    assignee=patch.assignee,
-                    note=patch.note,
-                    actor=user.email,
-                )
-                body = status_payload(updated)
-        except ActionStatusError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        answer = llm.ask_aggregate(
+            summary,
+            quality_report,
+            settings=runtime.settings,
+            question=payload.question,
+            as_of=as_of,
+        )
+    except llm.LlmUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except llm.LlmUngrounded as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Ответ модели отклонён: он содержит данные, которых нет в расчёте "
+                f"({'; '.join(exc.violations[:3])}). Ответ не показан, чтобы не "
+                "выдавать вымысел за результат расчёта."
+            ),
+        ) from exc
+    except llm.LlmBadResponse as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return {
-        "generation": generation,
-        "customerId": patch.customerId,
-        "code": patch.code,
-        "statuses": list(STATUSES),
-        "statusLabels": STATUS_LABELS,
-        **body,
+        "answer": answer.text,
+        "model": answer.model,
+        "generation": summary.get("generation"),
+        "sources": list(llm.AGGREGATE_SOURCES),
+        "grounded": True,
+        "warning": (
+            "AI-интерпретация не заменяет расчётный движок: числа и категории "
+            "берутся из опубликованного расчёта, а текст лишь объясняет их."
+        ),
     }
+
