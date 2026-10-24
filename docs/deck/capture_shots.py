@@ -20,7 +20,8 @@ HERE = Path(__file__).resolve().parent
 SHOTS = HERE / "shots"
 CHROMIUM = "/usr/lib/chromium/chromium"
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:12000"
-EMAIL, PASSWORD = "analyst@aeza.test", "aeza-demo-password"
+# Matches the Compose default in docker-compose.yml; override with AEZA_ADMIN_PASSWORD.
+EMAIL, PASSWORD = "analyst@aeza.test", "demo123"
 
 
 def main() -> int:

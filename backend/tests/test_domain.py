@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
+import re
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
 from app.domain.money import MoneyError, cents_to_eur, eur_to_cents, validate_non_negative_cents
 from app.domain.risk import (
     DEFAULT_WEIGHTS,
+    DEPRECATED_KEYS,
     FACTOR_BY_KEY,
     RiskConfigError,
     RiskSettings,
+    canonical_weights,
     classify,
     compute_customer_risk,
     compute_service_risk,
@@ -546,3 +551,99 @@ def test_factor_metadata_covers_every_factor():
     assert set(FACTOR_BY_KEY) == set(DEFAULT_WEIGHTS)
     for definition in FACTOR_BY_KEY.values():
         assert definition.label and definition.description and definition.normalization
+
+
+def test_score_stays_within_zero_hundred_when_deprecated_weight_is_re_enabled():
+    """The formula is only valid for features in [0, 1].
+
+    ``failed_renewals`` reports a raw historical count (2, 3, ...), so an
+    operator who re-enables its weight would otherwise push the score above
+    100.  The aggregation must clamp the feature and ignore the deprecated
+    weight entirely.
+    """
+    transactions = [_tx(1, "not_performed"), _tx(2, "not_performed"), _tx(3, "not_performed")]
+    hostile = RiskSettings(weights={**DEFAULT_WEIGHTS, "failed_renewals": 5.0})
+    result = compute_service_risk(
+        service=Service.model_validate(_service()),
+        account=_account(),
+        transactions=transactions,
+        settings=hostile,
+        now=NOW,
+    )
+
+    assert result.score is not None
+    assert 0.0 <= result.score <= 100.0
+
+    diagnostic = next(f for f in result.factors if f.key == "failed_renewals")
+    assert diagnostic.value == pytest.approx(3.0)  # raw count is still reported
+    assert diagnostic.weight == 0.0  # ...but never weighted
+    assert diagnostic.contribution == 0.0
+
+    # Re-enabling the deprecated weight must not move the score at all.
+    baseline = compute_service_risk(
+        service=Service.model_validate(_service()),
+        account=_account(),
+        transactions=transactions,
+        settings=RiskSettings(),
+        now=NOW,
+    )
+    assert result.score == pytest.approx(baseline.score)
+
+
+def test_every_factor_feature_stays_in_unit_range():
+    """No live factor may report a value outside [0, 1]."""
+    service = Service.model_validate(_service())
+    result = compute_service_risk(
+        service=service,
+        account=_account(),
+        transactions=[_tx(1, "not_performed")],
+        settings=RiskSettings(),
+        now=NOW,
+    )
+    for factor in result.factors:
+        if factor.available:
+            assert 0.0 <= factor.value <= 1.0, factor.key
+
+
+def test_deprecated_weights_are_canonicalised_to_zero():
+    """A legacy persisted row must not advertise a weight the rating ignores."""
+    legacy = RiskSettings(weights={**DEFAULT_WEIGHTS, "failed_renewals": 2.0})
+    for key in DEPRECATED_KEYS:
+        assert legacy.weights[key] == 0.0
+        assert legacy.weight(key) == 0.0
+
+    # Live factors are untouched.
+    assert legacy.weights["expiry_proximity"] == 3.0
+
+
+def test_canonical_weights_is_pure_and_keeps_unknown_keys_out_of_the_sum():
+    assert canonical_weights({"failed_renewals": 9.0, "expiry_proximity": 3.0}) == {
+        "failed_renewals": 0.0,
+        "expiry_proximity": 3.0,
+    }
+
+
+def test_reported_weight_sum_excludes_deprecated_factors():
+    """The settings endpoint reports the sum of *effective* weights."""
+    legacy = RiskSettings(weights={**DEFAULT_WEIGHTS, "failed_renewals": 2.0})
+    assert sum(legacy.weights.values()) == pytest.approx(13.0)
+    assert DEPRECATED_KEYS == {"failed_renewals"}
+
+
+def test_bundled_seed_defaults_match_code_defaults():
+    """The seed's advertised defaults must equal the code's.
+
+    The seeded settings row is what a fresh install serves before anyone edits
+    a weight.  If it disagrees with :data:`DEFAULT_WEIGHTS`, resetting the model
+    silently changes the baseline the operator was just looking at.
+    """
+    seed = Path(__file__).resolve().parents[2] / "db" / "analytics_seed.sql"
+    payload = json.loads(
+        re.search(r"'(\{[^']*\"weights\"[^']*\})'::json", seed.read_text(encoding="utf-8")).group(1)
+    )
+    assert payload["weights"] == pytest.approx(DEFAULT_WEIGHTS)
+    assert payload["lowMax"] == RiskSettings().low_max
+    assert payload["mediumMax"] == RiskSettings().medium_max
+    # Omitting this field would deserialise as null ("whole snapshot") and make
+    # the seeded baseline differ from a reset model.
+    assert payload["failedRenewalWindowDays"] == RiskSettings().failed_renewal_window_days

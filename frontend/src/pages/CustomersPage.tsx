@@ -8,6 +8,7 @@ import {
   Loading,
   RiskBadge,
   ScoreCell,
+  SyntheticTag,
   formatEur,
 } from '../components/ui'
 
@@ -220,6 +221,9 @@ export default function CustomersPage() {
                       </td>
                       <td>
                         <span className="cell-primary">{customer.email}</span>
+                        {customer.isSynthetic ? (
+                          <SyntheticTag title={customer.syntheticReason} />
+                        ) : null}
                       </td>
                       <td>
                         <ScoreCell

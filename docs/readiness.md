@@ -34,7 +34,7 @@
 python -m pytest backend/tests -q
 ```
 
-**Результат: 184 passed, 0 failed** (время выполнения ≈ 24 с).
+**Результат: 210 passed, 0 failed** (время выполнения ≈ 29 с).
 Плюс `python -m pytest tests -q` — 69 passed для вспомогательного анализатора;
 вместе 253 (см. `docs/TESTING.md`).
 
@@ -130,7 +130,7 @@ GET  /ready
 | --- | --- | --- |
 | Проверка типов frontend | `npx tsc -b` | Без ошибок |
 | Сборка frontend | `npm run build` | Успешно, 218,00 kB JS / 21,09 kB CSS (gzip 68,93 / 5,41 kB) |
-| Тесты backend | `python -m pytest backend/tests -q` | 184 passed |
+| Тесты backend | `python -m pytest backend/tests -q` | 210 passed |
 | Тесты вспомогательного анализатора | `python -m pytest tests -q` | 69 passed |
 
 По ходу проверки в мобильной вёрстке найдены и исправлены два дефекта:

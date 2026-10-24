@@ -1,174 +1,293 @@
-# API
+# API — канонический продукт (часть B)
 
-Базовый URL: `http://<host>:<port>`. Интерактивная документация (OpenAPI):
-**`/docs`** (Swagger UI), схема — **`/openapi.json`**. Оба доступны на реально
-запущенном сервере.
+Базовый URL в Compose: `http://localhost:8000`. В песочнице демонстрации —
+`http://127.0.0.1:12001`.
 
-Денежные поля возвращаются дважды: `*_cents` (канонические целые евроценты) и
-`*_eur` (строка с двумя знаками). `amount` транзакций деньгами не является.
+- Интерактивная документация: **`/api/v1/docs`** (Swagger UI)
+- Схема OpenAPI: **`/api/v1/openapi.json`**
+- Проверенная копия схемы: [`backend/openapi.json`](../backend/openapi.json)
 
----
+Документ описывает **только реально существующие маршруты** канонического
+продукта — `backend/app/` + `frontend/`. Все 21 маршрут подтверждены живой
+схемой `/api/v1/openapi.json` и кодом в `backend/app/api/`.
 
-## GET /api/health
-
-Проверка живости. Тело: `{"status": "ok"}`. Коды: 200.
-
-## GET /api/meta
-
-Метаданные набора и последнего импорта.
-
-```json
-{
-  "reference_at": "2026-10-19T14:35:53+00:00",
-  "source_sha256": "10af0815…",
-  "source_path": "/app/датасет.zip",
-  "imported_at": "2026-10-23T18:37:16+00:00",
-  "last_import": {"id": 1, "accounts": 10, "services": 30, "transactions": 100, "status": "success"},
-  "default_horizon_days": 30
-}
-```
-
-Коды: 200, 503 (хранилище недоступно).
-
-## GET /api/dashboard
-
-Сводка по данным. Параметр `horizon_days` (1–365, по умолчанию 30).
-
-```json
-{
-  "counts": {"accounts": 10, "services": 30, "transactions": 100},
-  "reference_at": "2026-10-19T14:35:53+00:00",
-  "horizon_days": 30,
-  "service_status": {"active": 6, "blocked": 6, "deleted": 6, "suspended": 6, "prolong_wait": 6},
-  "risk_levels": {"low": 0, "medium": 5, "high": 3, "churned": 2, "unknown": 0},
-  "revenue_at_risk_cents": 748,
-  "revenue_at_risk_eur": "7.48",
-  "eligible_renewal_cents": 1703,
-  "eligible_renewal_eur": "17.03",
-  "high_risk_customers": 3,
-  "weights": {"expiry_proximity": 1.0, "autoprolong_off": 0.8, "insufficient_balance": 1.0, "failed_renewals": 0.6, "status_risk": 0.9},
-  "risk_bands": [{"min": 0, "max": 34, "level": "low"}, {"min": 35, "max": 64, "level": "medium"}, {"min": 65, "max": 100, "level": "high"}]
-}
-```
-
-Коды: 200, 422 (неверный `horizon_days`).
-
-## GET /api/customers
-
-Список клиентов с риском и экспозицией.
-
-| Параметр | Тип | По умолчанию | Описание |
-|---|---|---|---|
-| `horizon_days` | int 1–365 | 30 | горизонт прогноза |
-| `search` | str | — | подстрока в email (без учёта регистра) |
-| `level` | str | — | фильтр: `low`/`medium`/`high`/`churned`/`unknown` |
-| `sort` | str | `risk_score` | `risk_score`, `revenue_at_risk_cents`, `balance_cents`, `account_id`, `service_count` |
-| `order` | str | `desc` | `asc` или `desc` |
-
-```json
-{
-  "total": 10,
-  "items": [{
-    "account_id": 7, "email": "user-0007@example.test",
-    "balance_cents": 54987, "balance_eur": "549.87",
-    "withdraw_balance_cents": 14446, "withdraw_balance_eur": "144.46",
-    "bonus_balance_cents": 9654, "bonus_balance_eur": "96.54",
-    "bonus_state": "locked",
-    "total_replenished_cents": 290501, "total_replenished_eur": "2905.01",
-    "service_count": 3, "live_service_count": 3,
-    "risk_score": 76.74, "risk_level": "high", "confidence": 1.0,
-    "revenue_at_risk_cents": 0, "revenue_at_risk_eur": "0.00",
-    "eligible_renewal_cents": 0, "eligible_renewal_eur": "0.00",
-    "reasons": ["highest-risk service 'service-0027' scored 77/100"]
-  }]
-}
-```
-
-Коды: 200, 400 (недопустимый `sort`), 422.
-
-## GET /api/customers/{account_id}
-
-Карточка клиента с услугами и факторами. Параметр `horizon_days`.
-
-Дополнительно к элементу списка: `services[]` с `factors[]`:
-
-```json
-{
-  "service_id": 27, "service_name": "service-0027", "status": "blocked",
-  "price_cents": 474, "price_eur": "4.74",
-  "expires_at": "2026-10-17T15:00:00+00:00",
-  "score": 76.74, "level": "high", "confidence": 1.0,
-  "reasons": ["Service is close to expiry (service already expired at snapshot time)"],
-  "factors": [
-    {"key": "expiry_proximity", "title": "Service is close to expiry",
-     "value": 1.0, "weight": 1.0, "weighted": 1.0, "unknown": false,
-     "detail": "service already expired at snapshot time"}
-  ]
-}
-```
-
-`value: null` + `unknown: true` означает отсутствие данных для фактора.
-
-Коды: 200, 404 (нет аккаунта), 422.
-
-## GET /api/services
-
-Услуги со скорингом, отсортированы по убыванию риска.
-Параметры: `horizon_days`, `status`. Коды: 200, 422.
-
-## GET /api/weights
-
-```json
-{"weights": {...}, "defaults": {...}, "factors": {"expiry_proximity": "Service is close to expiry", ...}}
-```
-
-## PUT /api/weights
-
-Тело: `{"weights": {"status_risk": 0.5}}` — частичное или полное переопределение.
-**Побочный эффект:** немедленно влияет на все аналитические эндпоинты.
-
-Коды: 200, 400 (неизвестный ключ / не число / отрицательное / сумма ≤ 0), 422.
-
-## POST /api/weights/reset
-
-Сброс к весам по умолчанию. Тело не требуется. Коды: 200.
-
-## POST /api/import
-
-Повторный импорт. Тело (опционально):
-`{"source": "/path/to/archive.zip", "horizon_days": 30}`.
-
-**Побочные эффекты:** заменяет таблицы `accounts`/`services`/`transactions`
-целиком в одной транзакции. Идемпотентно. При отклонённых строках импорт
-прерывается и данные не меняются.
-
-Коды: 200, 400 (архив не найден / повреждён / отклонённые строки), 422.
-
-## GET /api/audit
-
-Воспроизводимый профиль хранилища: счётчики, уникальность, пропуски,
-распределения, диапазоны, целостность. Коды: 200, 503.
-
-## GET /
-
-Отдаёт SPA (`static/index.html`). Статика — `/static/*`.
+> **Legacy.** В репозитории есть вторая, устаревшая реализация —
+> `aeza_analyzer/` (часть A). У неё свой независимый API (`/api/health`,
+> `/api/meta`, `/api/dashboard`, `/api/weights`, `/api/import`, `/api/audit`).
+> Эти маршруты **не существуют** в каноническом продукте. Их документация
+> сохранена в [`API_PART_A_LEGACY.md`](API_PART_A_LEGACY.md) и помечена как
+> устаревшая.
 
 ---
 
-## Общие коды ошибок
+## Деньги и идентификаторы
+
+Денежные поля возвращаются дважды:
+
+- `*Cents` — канонические целые евроценты (100 = €1), без плавающей точки;
+- `*Eur` — та же величина строкой с двумя знаками (`"17.03"`).
+
+Конвертация выполняется один раз на границе API/UI
+(`backend/app/domain/money.py`). `amount` транзакций деньгами **не является**:
+это целое 0–1000 согласно заданию. Баланс клиента и исторические пополнения
+(`totalReplenished`) — не выручка и в `revenueAtRisk` не попадают.
+
+`generation` — монотонный номер опубликованного расчёта. Он возвращается почти
+везде и служит для защиты от гонок: передайте его в `expectedGeneration`, и
+запрос отклонится с `409`, если данные уже изменились.
+
+---
+
+## Аутентификация
+
+Все маршруты `/api/v1/*`, кроме `POST /api/v1/auth/login`, требуют заголовок
+`Authorization: Bearer <access_token>`. Без него — `401`. Отдельный
+`GET /metrics` принимает либо сессионный Bearer, либо `AEZA_METRICS_TOKEN`.
+
+Схема — JWT (HS256) в HTTP-заголовке. Пароли хранятся как scrypt-хеши в SQLite
+(`db/auth.sqlite3`), в открытом виде не хранятся и в ответах не возвращаются.
+Демонстрационные учётные данные Compose: `analyst@aeza.test` / `demo123`
+(меняются через `AEZA_ADMIN_EMAIL` / `AEZA_ADMIN_PASSWORD`).
+
+### POST /api/v1/auth/login
+
+Тело: `{"email": "analyst@aeza.test", "password": "demo123"}` (оба поля обязательны).
+
+```json
+{"access_token": "eyJ...", "token_type": "bearer", "expires_in": 43200}
+```
+
+Коды: `200`, `401` (неверные данные), `422` (нет полей).
+
+### GET /api/v1/auth/me
+
+```json
+{"email": "analyst@aeza.test"}
+```
+
+Коды: `200`, `401`.
+
+### POST /api/v1/auth/logout
+
+Отзывает текущую сессию. Тело: нет. Коды: `204`, `401`.
+
+---
+
+## Аналитика
+
+### GET /api/v1/analytics/summary
+
+Сводка по опубликованному расчёту: распределение клиентов по категориям,
+количество услуг, выручка под риском, предстоящие продления, исторические
+пополнения, топ-причины риска, ближайшие продления.
+
+Параметры: `generation` (query, необязательный).
+
+Коды: `200` (`PublishedSummary`), `401`, `503` (расчёт ещё не опубликован).
+
+### GET /api/v1/analytics/events
+
+Server-Sent Events: поток обновлений опубликованной версии. Заголовок
+`Last-Event-ID` поддерживает повторное подключение без пропуска событий.
+
+Коды: `200`, `401`, `503`.
+
+---
+
+## Клиенты
+
+### GET /api/v1/customers
+
+Постраничный список с серверной сортировкой и фильтрацией.
+
+| Параметр | Тип | Описание |
+| --- | --- | --- |
+| `search` | string | Подстрока по email или ID |
+| `riskCategory` | string | `low`, `medium`, `high`, `insufficient_data`, `not_applicable` |
+| `serviceStatus` | string | Фильтр по статусу услуги клиента |
+| `sortBy` | string | `riskScore`, `id`, `email`, `balance`, `totalReplenished` |
+| `sortDir` | string | `asc` / `desc` |
+| `page` | int | Номер страницы (с 1) |
+| `pageSize` | int | Размер страницы |
+| `generation` | int | Конкретная опубликованная версия |
+
+Числовые поля сортируются численно, `email` — лексикографически. Ответ —
+`CustomerPage` (`items`, `total`, `page`, `pageSize`, `generation`).
+
+Коды: `200`, `401`, `422` (недопустимый `sortBy`), `503`.
+
+### GET /api/v1/customers/{customer_id}
+
+Полная карточка клиента: финансы, услуги с датами и статусами, риск каждой
+услуги, общий риск клиента, причины оценки, выручка под риском, рекомендации,
+предупреждения о недостатке данных.
+
+Параметры: `customer_id` (path, обязательный), `generation` (query).
+
+Коды: `200` (`PublishedCustomerDetail`), `401`, `404`, `503`.
+
+### GET /api/v1/export/customers.csv
+
+CSV-экспорт с теми же фильтрами, что у списка (`search`, `riskCategory`,
+`sortBy`, `sortDir`). Коды: `200`, `401`, `503`.
+
+---
+
+## Настройки модели
+
+### GET /api/v1/model/settings
+
+Текущие параметры: горизонт, веса, пороги категорий, окно неуспешных
+продлений, а также описания факторов и признак `isDefault` (совпадают ли
+текущие значения с дефолтами кода).
+
+Коды: `200` (`ModelSettingsResponse`), `401`, `503`.
+
+### PATCH /api/v1/model/settings
+
+Частичное обновление. Тело — `SettingsPayload`:
+
+```json
+{
+  "horizonDays": 30,
+  "weights": {"expiry_proximity": 3.0, "auto_prolong_disabled": 2.0},
+  "lowMax": 34,
+  "mediumMax": 64,
+  "failedRenewalWindowDays": 90
+}
+```
+
+Отрицательные веса отклоняются. Сумма весов, равная нулю, не допускается.
+Изменение весов немедленно влияет на баллы и на выручку под риском — расчёт
+пересчитывается на сервере, а не только в браузере.
+
+Коды: `200`, `401`, `422` (недопустимые значения), `503`.
+
+### POST /api/v1/model/settings/reset
+
+Возврат к безопасным дефолтам кода. Параметр `expectedGeneration` (query) —
+защита от гонок. Коды: `200`, `401`, `409`, `503`.
+
+---
+
+## Сценарии What-if
+
+### POST /api/v1/scenarios/compare
+
+Сравнивает текущий расчёт с расчётом на переопределённых параметрах, **не
+меняя** опубликованные настройки. Тело: `{"name": "...", "overrides": {...}}`
+(`overrides` — частичный `SettingsPayload`).
+
+Коды: `200`, `401`, `422`, `503`.
+
+---
+
+## Приоритет и рабочий процесс
+
+### GET /api/v1/priority
+
+Очередь удержания: клиенты с рекомендациями, отсортированные по деньгам под
+риском. Параметры: `horizonDays`, `category`, `sortBy`, `sortDir`.
+
+Коды: `200`, `401`, `503`.
+
+### PATCH /api/v1/priority/actions
+
+Сохраняет состояние рабочего процесса для **одной** рекомендации.
+
+Тело (`ActionStatusPatch`, `extra="forbid"`):
+
+| Поле | Тип | Обяз. | Описание |
+| --- | --- | --- | --- |
+| `customerId` | int ≥ 1 | да | Клиент в опубликованном расчёте |
+| `code` | string 1–64 | да | Код рекомендации, сформированной моделью |
+| `status` | string \| null | нет | `new`, `in_progress`, `done` |
+| `assignee` | string ≤ 320 | нет | Исполнитель |
+| `note` | string ≤ 1000 | нет | Заметка (обрезается по краям) |
+| `expectedGeneration` | int ≥ 0 | нет | Защита от гонок |
+
+Семантика:
+
+- обновление **отклоняется**, если клиента или кода нет в опубликованном
+  расчёте — статус нельзя привязать к рекомендации, которой модель не выдавала;
+- статусы: `new` («Новое»), `in_progress` («В работе»), `done` («Выполнено»);
+  переходы обратимы, `done` может вернуться в `in_progress`;
+- рабочий процесс **не влияет** на балл риска, выручку под риском и настройки
+  модели — это организационный слой поверх расчёта.
+
+Коды: `200`, `401`, `404` (нет клиента или кода), `409` (устаревшая
+`expectedGeneration`), `422` (недопустимый статус или лишние поля), `503`.
+
+---
+
+## Данные и качество
+
+### GET /api/v1/source/snapshot
+
+Метаданные снимка: версии, время снятия, `asOf`, счётчики записей.
+Параметры: `generation` (query). Коды: `200` (`SourceInfo`), `401`, `503`.
+
+### PUT /api/v1/source/snapshot
+
+Атомарная загрузка снимка `{accounts, services, transactions}` — ровно формат
+`dataset/data.json`. Полная валидация выполняется **до** любой записи: при
+ошибке система остаётся в прежнем состоянии. Параметр `expectedGeneration`
+защищает от перезаписи более новых данных.
+
+Ответ — `SourceAccepted` со снимком и отчётом импорта (обработано, принято,
+отклонено, дубликаты). Подробности формата и правил — [import.md](import.md).
+
+Коды: `200`, `401`, `409`, `422`, `503`.
+
+### GET /api/v1/source/observations
+
+История наблюдённых изменений статусов услуг. Параметры: `serviceId`, `limit`.
+Коды: `200`, `401`, `503`.
+
+### GET /api/v1/quality
+
+Отчёт о качестве данных: пропуски, аномалии, пригодность к прогнозу.
+Коды: `200`, `401`, `503`.
+
+---
+
+## Служебные
+
+### GET /health
+
+Проверка живости процесса. Тело: `{"status": "ok"}`. Код: `200`.
+
+### GET /ready
+
+Проверка готовности: доступность БД и наличие опубликованного расчёта.
+Коды: `200`, `503`.
+
+### GET /metrics
+
+Метрики в формате Prometheus. Требует Bearer (сессия аналитика или
+`AEZA_METRICS_TOKEN`). Метрики агрегированные, без персональных данных и без
+меток высокой кардинальности. Коды: `200`, `401`.
+
+---
+
+## Ошибки
+
+Все ошибки возвращают единый конверт `ErrorResponse`:
+
+```json
+{"detail": "Результаты уже изменились; обновите данные", "errors": null}
+```
+
+`errors` — необязательный список деталей валидации. Общие коды объявлены в
+`create_app` (`backend/app/main.py`): `401`, `409`, `422`, `502`, `503`.
+
+## Коды состояния
 
 | Код | Когда |
-|---|---|
-| 400 | некорректный запрос (веса, `sort`, импорт) |
-| 404 | ресурс не найден (аккаунт) |
-| 422 | ошибка валидации параметров (Pydantic) |
-| 503 | хранилище недоступно/повреждено |
-
-Тело ошибки: `{"detail": "..."}`.
-
-## Ограничения
-
-- **Аутентификации нет.** Любой, кто имеет сетевой доступ, может менять веса и
-  запускать импорт. Для публичного развёртывания требуется обратный прокси с
-  авторизацией — см. [`SECURITY.md`](SECURITY.md).
-- CORS не настроен: SPA обслуживается тем же origin.
+| --- | --- |
+| `200` / `204` | Успех |
+| `401` | Нет или просрочен токен |
+| `404` | Клиент, услуга или рекомендация не найдены |
+| `409` | Устаревшая `expectedGeneration` |
+| `422` | Ошибка валидации тела или параметров |
+| `503` | Расчёт ещё не опубликован, либо аналитический модуль недоступен |

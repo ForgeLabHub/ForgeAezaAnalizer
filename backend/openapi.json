@@ -33,7 +33,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -102,7 +102,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -166,7 +166,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -247,7 +247,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -318,7 +318,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -387,7 +387,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -611,7 +611,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "409": {
             "content": {
@@ -715,7 +715,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "409": {
             "content": {
@@ -810,7 +810,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "409": {
             "content": {
@@ -905,7 +905,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "409": {
             "content": {
@@ -1000,7 +1000,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "409": {
             "content": {
@@ -1084,7 +1084,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "409": {
             "content": {
@@ -1179,7 +1179,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "409": {
             "content": {
@@ -1274,7 +1274,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "409": {
             "content": {
@@ -1377,7 +1377,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "409": {
             "content": {
@@ -1482,7 +1482,613 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/quality": {
+      "get": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Проверка качества исходных данных",
+        "description": "Audit the raw snapshot. Never modifies a record.",
+        "operationId": "quality_api_v1_quality_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/scenarios/compare": {
+      "post": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Сравнить сценарий параметров с текущими настройками",
+        "description": "Evaluate alternative parameters against the published configuration.\n\nNothing is persisted: the working settings, the stored snapshot and the\npublished generation are untouched.  Applying a scenario to the live\nconfiguration remains an explicit action on ``PATCH /model/settings``.",
+        "operationId": "compare_scenario_api_v1_scenarios_compare_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/priority": {
+      "get": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Очередь приоритетных действий",
+        "description": "Customers with independent risk, exposure, urgency and quality signals.\n\nThe four measurements stay separate; the returned categories organise work\nand carry no probability.  Sorting is deterministic: a stable tie-breaker on\ncustomer id keeps the order reproducible.",
+        "operationId": "priority_api_v1_priority_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "horizonDays",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 365,
+              "minimum": 1,
+              "default": 30,
+              "title": "Horizondays"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "urgency",
+                "riskScore",
+                "exposure",
+                "id"
+              ],
+              "type": "string",
+              "default": "urgency",
+              "title": "Sortby"
+            }
+          },
+          {
+            "name": "sortDir",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string",
+              "default": "asc",
+              "title": "Sortdir"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/priority/actions": {
+      "patch": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Обновить статус рекомендации",
+        "description": "Persist the operator's workflow state for one recommendation.\n\nThe update is rejected unless the customer and the recommendation code both\nexist in the *published* generation, so a status cannot be attached to an\naction the model never produced.  Nothing here touches the risk score, the\nexposure or the model settings.",
+        "operationId": "update_action_status_api_v1_priority_actions_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionStatusPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/insights/ai": {
+      "post": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Объяснение аналитики локальной моделью",
+        "description": "Narrate the published aggregates with the local model.\n\nRead-only in every direction: it does not publish a generation, does not\ntouch model settings, does not write workflow state and does not mutate the\nsnapshot.  The model receives aggregate counts and euro totals only — never\na customer e-mail, a raw account record or a single transaction.\n\nThe endpoint is deliberately *not* a chat: it holds no history and accepts\nno session, so one question cannot steer the next one.",
+        "operationId": "ai_insight_api_v1_insights_ai_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiAskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/export/customers.csv": {
+      "get": {
+        "tags": [
+          "export"
+        ],
+        "summary": "Экспорт текущей выборки клиентов в CSV",
+        "description": "Export the filtered, sorted selection with its calculation metadata.\n\nThe row set and order come from the same storage query the list endpoint\nuses, so the file matches what the analyst sees on screen.",
+        "operationId": "export_customers_api_v1_export_customers_csv_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 320
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "riskCategory",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Riskcategory"
+            }
+          },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "id",
+                "email",
+                "riskScore",
+                "balance",
+                "totalReplenished"
+              ],
+              "type": "string",
+              "default": "riskScore",
+              "title": "Sortby"
+            }
+          },
+          {
+            "name": "sortDir",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string",
+              "default": "desc",
+              "title": "Sortdir"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
           },
           "409": {
             "content": {
@@ -1609,6 +2215,93 @@
           "email"
         ],
         "title": "Account"
+      },
+      "ActionStatusPatch": {
+        "properties": {
+          "customerId": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Customerid"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Code"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 320
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "expectedGeneration": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedgeneration"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "customerId",
+          "code"
+        ],
+        "title": "ActionStatusPatch",
+        "description": "Workflow update for one retention recommendation."
+      },
+      "AiAskRequest": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 3,
+            "title": "Question"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "AiAskRequest",
+        "description": "One analyst question for the local model."
       },
       "CustomerCounts": {
         "properties": {
@@ -1768,6 +2461,22 @@
           "email": {
             "type": "string",
             "title": "Email"
+          },
+          "isSynthetic": {
+            "type": "boolean",
+            "title": "Issynthetic",
+            "default": false
+          },
+          "syntheticReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Syntheticreason"
           },
           "balance": {
             "$ref": "#/components/schemas/Money"
@@ -2186,6 +2895,46 @@
         ],
         "title": "Money"
       },
+      "ProvenanceSummary": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "synthetic": {
+            "type": "integer",
+            "title": "Synthetic"
+          },
+          "real": {
+            "type": "integer",
+            "title": "Real"
+          },
+          "demonstrationRecords": {
+            "type": "integer",
+            "title": "Demonstrationrecords"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "total",
+          "synthetic",
+          "real",
+          "demonstrationRecords",
+          "state",
+          "note"
+        ],
+        "title": "ProvenanceSummary",
+        "description": "Where the loaded records come from: real, synthetic, or a mix."
+      },
       "PublishedCustomerDetail": {
         "properties": {
           "generation": {
@@ -2240,6 +2989,22 @@
           "email": {
             "type": "string",
             "title": "Email"
+          },
+          "isSynthetic": {
+            "type": "boolean",
+            "title": "Issynthetic",
+            "default": false
+          },
+          "syntheticReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Syntheticreason"
           },
           "balance": {
             "$ref": "#/components/schemas/Money"
@@ -2463,6 +3228,16 @@
           "revenue": {
             "$ref": "#/components/schemas/RevenueSummary"
           },
+          "provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProvenanceSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "topRiskReasons": {
             "items": {
               "$ref": "#/components/schemas/RiskReason"
@@ -2487,6 +3262,11 @@
           },
           "model": {
             "$ref": "#/components/schemas/ModelInfo"
+          },
+          "aiEnabled": {
+            "type": "boolean",
+            "title": "Aienabled",
+            "default": false
           }
         },
         "additionalProperties": true,
@@ -2631,6 +3411,26 @@
           "count"
         ],
         "title": "RiskReason"
+      },
+      "ScenarioRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "default": "Custom"
+          },
+          "overrides": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Overrides"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ScenarioRequest",
+        "description": "Alternative parameters for one comparison.\n\n``overrides`` is deliberately narrow: only model parameters are accepted, so\na scenario cannot reach balances, prices, statuses or raw transactions."
       },
       "Service": {
         "properties": {
@@ -3029,6 +3829,19 @@
             ],
             "title": "Mediummax"
           },
+          "failedRenewalWindowDays": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 3650.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failedrenewalwindowdays"
+          },
           "expectedGeneration": {
             "anyOf": [
               {
@@ -3074,6 +3887,19 @@
             "maximum": 100.0,
             "minimum": 1.0,
             "title": "Mediummax"
+          },
+          "failedRenewalWindowDays": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 3650.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failedrenewalwindowdays"
           }
         },
         "additionalProperties": false,

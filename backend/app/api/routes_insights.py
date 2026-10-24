@@ -20,6 +20,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from core import InvalidInput
 from backend.app.api.deps import RuntimeDep, UserDep
 from backend.app.domain import insights
+from backend.app.domain.action_status import (
+    ActionStatusError,
+    STATUSES,
+    STATUS_LABELS,
+    load_for_generation,
+    payload as status_payload,
+    upsert as upsert_status,
+)
 
 router = APIRouter(tags=["insights"])
 
@@ -143,6 +151,9 @@ def priority(
             select(CustomerRow).where(CustomerRow.generation == generation)
         ).all()
         payloads = [row.payload for row in rows]
+        # Workflow state for this generation, read in the same session as the
+        # customer rows so the queue is internally consistent.
+        workflow = load_for_generation(session, generation)
 
     for payload in payloads:
         categories = insights.priority_for(payload, horizon_days=horizon_days, quality_ids=quality_ids)
@@ -166,6 +177,18 @@ def priority(
                 "lifecycleInconsistentCount": payload.get("lifecycleInconsistentCount"),
                 "categories": categories,
                 "urgencyRank": insights.urgency_rank(payload),
+                # Retention actions carried by this customer, each with its
+                # stored workflow state.  Read-only with respect to the score.
+                "actions": [
+                    {
+                        "code": rec.get("code"),
+                        "title": rec.get("title"),
+                        "detail": rec.get("detail"),
+                        "priority": rec.get("priority"),
+                        **status_payload(workflow.get((payload["id"], rec.get("code")))),
+                    }
+                    for rec in (payload.get("recommendations") or [])
+                ],
             }
         )
 
@@ -197,4 +220,73 @@ def priority(
             "Риск, финансовая экспозиция, операционная срочность и качество данных "
             "показаны раздельно. Категории организуют работу и не являются вероятностью оттока."
         ),
+    }
+
+
+class ActionStatusPatch(BaseModel):
+    """Workflow update for one retention recommendation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    customerId: int = Field(ge=1)
+    code: str = Field(min_length=1, max_length=64)
+    status: str | None = None
+    assignee: str | None = Field(default=None, max_length=320)
+    note: str | None = Field(default=None, max_length=1000)
+    expectedGeneration: int | None = Field(default=None, ge=0)
+
+
+@router.patch("/priority/actions", summary="Обновить статус рекомендации")
+def update_action_status(patch: ActionStatusPatch, runtime: RuntimeDep, user: UserDep):
+    """Persist the operator's workflow state for one recommendation.
+
+    The update is rejected unless the customer and the recommendation code both
+    exist in the *published* generation, so a status cannot be attached to an
+    action the model never produced.  Nothing here touches the risk score, the
+    exposure or the model settings.
+    """
+
+    with runtime.storage.database.sessions() as session:
+        generation = runtime.storage._generation(session, None)
+        if patch.expectedGeneration is not None and patch.expectedGeneration != generation:
+            raise HTTPException(status_code=409, detail="Результаты уже изменились; обновите данные")
+
+        from sqlalchemy import select
+
+        from backend.app.db import CustomerRow
+
+        row = session.get(CustomerRow, (generation, patch.customerId))
+        if row is None:
+            raise HTTPException(status_code=404, detail="Клиент не найден в текущем расчёте")
+
+        known = {rec.get("code") for rec in (row.payload.get("recommendations") or [])}
+        if patch.code not in known:
+            raise HTTPException(
+                status_code=404,
+                detail="Такая рекомендация не сформирована для этого клиента",
+            )
+
+        try:
+            with runtime.storage.database.transaction() as write_session:
+                updated = upsert_status(
+                    write_session,
+                    generation=generation,
+                    customer_id=patch.customerId,
+                    code=patch.code,
+                    status=patch.status,
+                    assignee=patch.assignee,
+                    note=patch.note,
+                    actor=user.email,
+                )
+                body = status_payload(updated)
+        except ActionStatusError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return {
+        "generation": generation,
+        "customerId": patch.customerId,
+        "code": patch.code,
+        "statuses": list(STATUSES),
+        "statusLabels": STATUS_LABELS,
+        **body,
     }

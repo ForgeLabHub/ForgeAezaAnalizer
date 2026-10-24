@@ -19,7 +19,7 @@
 | Запуск | `docker-compose.yml` (`api`, `web`, `db`) | локальный скрипт, SQLite |
 | БД по умолчанию | `data/aeza.db` (`analyzer_*`) | `data/aeza.sqlite` |
 | Тесты | `backend/tests/` (181) | `tests/` (69) |
-| Документация | этот документ, `docs/API.md` | `docs/ARCHITECTURE.md` |
+| Документация | `docs/API.md`, этот документ | `docs/ARCHITECTURE.md`, `docs/API_PART_A_LEGACY.md` |
 
 **Основная реализация — платформа `backend/app/`.** Именно её запускает
 `docker-compose.yml`, её обслуживает `frontend/`, и именно её маршруты описаны в

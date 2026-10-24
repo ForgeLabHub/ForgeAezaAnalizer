@@ -7,12 +7,12 @@
 
 | Компонент | Команда | Результат |
 |---|---|---|
-| B: основной продукт | `python -m pytest backend/tests -q` | **184 passed** |
+| B: основной продукт | `python -m pytest backend/tests -q` | **210 passed** |
 | C: auth-модуль | `python -m pytest tests/test_auth.py -q` | **17 passed** |
 | A: анализатор | `python -m pytest tests -q --ignore=tests/test_auth.py` | **52 passed** |
-| Всё вместе | `python -m pytest backend/tests tests -q` | **253 passed** |
+| Всё вместе | `python -m pytest backend/tests tests -q` | **279 passed** |
 
-**Итого 253 теста**, все проходят (проверено 2026-10-23).
+**Итого 279 тестов**, все проходят (проверено 2026-10-24).
 
 Два набора — это два стека: `backend/tests` тестирует платформу
 (`backend/app/`), `tests` — вспомогательный анализатор (`aeza_analyzer/`,
@@ -79,8 +79,8 @@ curl -X POST /api/v1/auth/login \
 
 ```
 summary: customers.total = 10, services.total = 30
-         high = 2, medium = 4, not_applicable = 4
-customers[0]: user-0010@example.test, riskScore 73.3, riskCategory "high",
+         high = 3, medium = 3, not_applicable = 4
+customers[0]: user-0010@example.test, riskScore 71.4, riskCategory "high",
               balance {cents: 20379, eur: "203.79"},
               topReasons: ["Близость даты окончания: Услуга истекла 35.0 дн. назад..."]
 ```
@@ -89,9 +89,9 @@ customers[0]: user-0010@example.test, riskScore 73.3, riskCategory "high",
 
 | Действие | `highRisk` |
 |---|---|
-| До изменения | 2 |
-| `PATCH {"weights":{"expiry_proximity":0.5}}` | **1** |
-| `POST /api/v1/model/settings/reset` | 2 (восстановлено) |
+| До изменения | 3 |
+| `PATCH {"weights":{"expiry_proximity":0.5}}` | **0** (низкий риск 0 → 1, выручка 5,80 € → 4,37 €) |
+| `POST /api/v1/model/settings/reset` | 3 (восстановлено) |
 
 Значение веса после PATCH: `0.5`; после reset: `3.0` (значение по умолчанию).
 Это доказывает, что критерий A6 ТЗ («изменение коэффициента вызывает пересчёт»)

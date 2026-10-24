@@ -418,7 +418,8 @@ docs/             документация по данным, модели, им
 | [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) | Пошаговый сценарий защиты |
 | [`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md) | Реализованное и идеи на будущее |
 | [`docs/AUTH_MODULE.md`](docs/AUTH_MODULE.md) | Модуль аутентификации (OIDC, JWT) |
-| [`docs/API.md`](docs/API.md) | Эндпоинты части A и схемы |
+| [`docs/API.md`](docs/API.md) | Эндпоинты канонического продукта (часть B), схемы, авторизация, ошибки |
+| [`docs/API_PART_A_LEGACY.md`](docs/API_PART_A_LEGACY.md) | LEGACY: эндпоинты части A (`aeza_analyzer/`) |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Устройство части A |
 | [`docs/ANALYTICS_METHODOLOGY.md`](docs/ANALYTICS_METHODOLOGY.md) | Методика риска части A |
 | [`docs/REVENUE_METHODOLOGY.md`](docs/REVENUE_METHODOLOGY.md) | Денежная оценка части A |
@@ -447,6 +448,7 @@ docs/             документация по данным, модели, им
 | `GET` | `/api/v1/customers/{id}` | Карточка клиента с услугами и рекомендациями |
 | `GET` | `/api/v1/analytics/summary` | Сводные показатели дашборда |
 | `GET` | `/api/v1/priority` | Рабочий список удержания: категории, фильтр и сортировка |
+| `PATCH` | `/api/v1/priority/actions` | Статус, исполнитель и заметка по рекомендации |
 | `GET` | `/api/v1/quality` | Отчёт о качестве данных снимка |
 | `POST` | `/api/v1/scenarios/compare` | Сравнение модели-кандидата с опубликованной (без публикации) |
 | `GET` | `/api/v1/analytics/events` | Календарь ближайших продлений |
@@ -489,6 +491,35 @@ docs/             документация по данным, модели, им
 Позиции сортируются по выбранному `sortBy`: `urgency` (операционная срочность),
 `riskScore`, `exposure` (риск-взвешенная экспозиция) или `id`. Порядок переключается
 через `sortDir`.
+
+#### Статусы работы с рекомендациями
+
+Каждая рекомендация в позиции несёт поле `actions` — список задач удержания с текущим
+состоянием рабочего процесса: `code`, `title`, `detail`, `priority`, `status`
+(`new` / `in_progress` / `done`), `assignee`, `note`, `updatedAt`, `updatedBy`.
+Состояние по умолчанию — `new`.
+
+`PATCH /api/v1/priority/actions` сохраняет одно изменение. Тело:
+
+```json
+{
+  "customerId": 15,
+  "code": "notify_expiring",
+  "status": "in_progress",
+  "assignee": "retention-team",
+  "note": "Позвонили, обещали пополнить",
+  "expectedGeneration": 4
+}
+```
+
+Поля `status`, `assignee`, `note` необязательны — передаются только изменяемые.
+Переходы состояний ограничены (`new` → `in_progress` → `done`; `done` можно вернуть в
+`in_progress`). Записи привязаны к поколению расчёта: устаревший `expectedGeneration`
+отклоняется с `409`, чтобы не переносить статус на изменившийся набор данных.
+
+Рабочий процесс **не влияет на аналитику**: балл риска, экспозиция и веса не зависят
+от статусов. Это видно в `test_action_status.py` (тест
+`test_action_status_does_not_change_analytics`).
 
 `POST /api/v1/scenarios/compare` — сравнение модели-кандидата с опубликованной. Тело
 принимает `overrides` с теми же полями, что `PATCH /api/v1/model/settings`
