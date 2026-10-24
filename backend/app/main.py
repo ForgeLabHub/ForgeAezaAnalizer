@@ -17,7 +17,7 @@ from prometheus_client import CONTENT_TYPE_LATEST
 from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
 
-from core import ConflictError, Core, InvalidInput, NotReadyError, ResourceNotFoundError
+from core import Analysis, ConflictError, Core, InvalidInput, NotReadyError, ResourceNotFoundError
 from backend.app.api import routes_actions, routes_ai, routes_analytics, routes_auth, routes_customers, routes_export, routes_insights, routes_model, routes_source, routes_telegram
 from backend.app.api.deps import Runtime, RuntimeDep
 from backend.app.api.schemas import ErrorResponse
@@ -34,13 +34,18 @@ from backend.database import UserRepository
 logger = logging.getLogger("aeza")
 
 
-def dispatch_notifications(runtime: Runtime) -> None:
+def dispatch_notifications(runtime: Runtime, previous: Analysis | None = None) -> None:
     """Push notifications for the newly published generation to linked chats.
 
     Called after a recalculation publishes a new generation, so alerts follow the
     data instead of a timer that might race it. Failures are swallowed and
     logged: a Telegram problem must never affect the analytics run that produced
     the generation.
+
+    ``previous`` is the analysis published *before* the current one. Passing it is
+    what lets the event builder tell a transition (a customer that just became
+    high-risk) from a steady state (one that has been high-risk for days), so a
+    standing condition does not re-alert on every recalculation.
     """
 
     service = getattr(runtime, "telegram", None)
@@ -52,7 +57,7 @@ def dispatch_notifications(runtime: Runtime) -> None:
         analysis = runtime.calculation.calculate(runtime.storage.load())
         for chat_id in service.linked_chats():
             notifications.dispatch(
-                service, analysis, settings=runtime.settings, chat_id=chat_id
+                service, analysis, settings=runtime.settings, previous=previous, chat_id=chat_id
             )
     except Exception:
         logger.exception("telegram notification dispatch failed; analytics unaffected")
@@ -74,6 +79,9 @@ def send_due_digests(runtime: Runtime) -> list[dict]:
     if not notifications.digest_due(runtime.settings):
         return []
     try:
+        # Retention is applied on the same periodic tick as the digest: the
+        # delivery table is the dedupe store, so it must not grow forever.
+        service.purge_old_deliveries()
         analysis = runtime.calculation.calculate(runtime.storage.load())
         return notifications.dispatch_digests(
             service, analysis, settings=runtime.settings
@@ -110,8 +118,14 @@ async def recalculate(runtime: Runtime, stop: asyncio.Event):
             return
         except asyncio.TimeoutError:
             try:
-                await run_in_threadpool(runtime.core.update, actor="clock", recalculate=True)
-                await run_in_threadpool(dispatch_notifications, runtime)
+                # Capture the published analysis *before* the tick so the dispatch
+                # can compare against it. A tick that changes nothing returns the
+                # same generation, and then nothing is dispatched.
+                before = runtime.storage.load()
+                previous_analysis = runtime.storage.published_analysis(before.generation) if before.generation else None
+                state = await run_in_threadpool(runtime.core.update, actor="clock")
+                if state.generation != before.generation:
+                    await run_in_threadpool(dispatch_notifications, runtime, previous_analysis)
             except Exception:
                 logger.exception("scheduled calculation failed; previous result retained")
 
@@ -187,7 +201,7 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
                 runtime.core.update(source=source)
             else:
                 changed_engine = storage.summary()["engineVersion"] != calculation.definition().version
-                runtime.core.update(recalculate=changed_engine)
+                runtime.core.update(force=changed_engine)
 
         try:
             await run_in_threadpool(initialize)

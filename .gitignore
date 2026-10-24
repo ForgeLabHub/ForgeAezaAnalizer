@@ -40,6 +40,10 @@ npm-debug.log*
 # Local data / runtime state (backend)
 backend/data/aeza.db
 backend/data/*.db
+# Database backups produced by scripts/backup.sh. They contain real customer and
+# account data and must never be committed.
+/backups/
+*.sql.dump
 # RAG index is a rebuildable artifact: python -m backend.app.ai.rag --docs docs
 backend/data/rag_index.json
 /db/postgres/

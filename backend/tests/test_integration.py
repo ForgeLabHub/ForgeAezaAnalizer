@@ -64,6 +64,43 @@ def test_module_cannot_mutate_published_inputs(client, analytics):
     assert runtime.storage.load() == before
 
 
+def test_a_plain_tick_does_not_publish_a_new_generation(client, analytics):
+    """A recalculation with no input change must not create a generation.
+
+    Regression: ``Core.update(recalculate=True)`` entered the publication branch
+    unconditionally, so the generation advanced on every tick, the analysis tables
+    grew by one row per customer per minute, and a generation-based dedupe key
+    looked "new" forever.
+    """
+
+    runtime = client.app.state.runtime
+    before = runtime.storage.load()
+    assert before.generation == 1
+
+    for _ in range(3):
+        returned = runtime.core.update(actor="clock")
+        assert returned.generation == before.generation
+
+    assert runtime.storage.load().generation == 1
+
+    # A real input change still publishes, so the guard is not over-broad.
+    published = runtime.core.update(patch={"horizonDays": 7}, actor="analyst")
+    assert published.generation == 2
+
+
+def test_force_publishes_without_an_input_change(client, analytics):
+    """``force`` is the one path that republishes unchanged inputs.
+
+    It exists for an engine-version upgrade, where the inputs are identical but
+    the result must be recomputed.
+    """
+
+    runtime = client.app.state.runtime
+    before = runtime.storage.load()
+    forced = runtime.core.update(force=True, actor="clock")
+    assert forced.generation == before.generation + 1
+
+
 def test_live_clock_recalculates_without_source_change(settings, analytics, auth_settings, monkeypatch):
     from threading import Event
     completed = Event()

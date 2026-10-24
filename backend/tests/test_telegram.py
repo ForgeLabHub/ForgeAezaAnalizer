@@ -11,10 +11,12 @@ wrong secret.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from backend.app.config import Settings
 from backend.app.db import Database, TelegramLinkCodeRow, TelegramLinkRow
@@ -416,6 +418,120 @@ def test_rate_limit_blocks_a_burst(tmp_path):
     assert svc.send("555", "one") is True
     assert svc.send("555", "two") is False
     assert len(stub.sent) == 1
+
+
+def test_rate_limited_event_is_not_lost(tmp_path):
+    """A send skipped by the rate limit must stay deliverable, not be marked sent.
+
+    Regression: the claim row was written before the rate-limit check and left as
+    ``rate_limited``, so a retry with the same dedupe key never sent and the event
+    was lost permanently.
+    """
+
+    settings = _settings(tmp_path, telegram_min_send_interval_seconds=60)
+    database = Database(settings.database_url)
+    database.initialize()
+    stub = StubClient()
+    svc = TelegramService(database, settings, client=stub)
+
+    assert svc.send("555", "A", kind="test", dedupe_key="evt:A") is True
+    assert svc.send("555", "B", kind="test", dedupe_key="evt:B") is False
+
+    # The rate-limited key left no row behind, so it can be retried.
+    keys = {row["dedupeKey"] for row in svc.deliveries()}
+    assert "evt:B" not in keys
+
+    # Once the window passes, the same key delivers.
+    svc._last_send.clear()
+    assert svc.send("555", "B", kind="test", dedupe_key="evt:B") is True
+    assert len(stub.sent) == 2
+    assert svc.deliveries()[0]["dedupeKey"] == "evt:B"
+
+
+def test_deliveries_can_be_scoped_to_one_chat(service):
+    """Diagnostics must not expose other accounts' chats."""
+
+    svc, _, _, _ = service
+    svc.redeem_link_code(svc.create_link_code(EMAIL)["code"], "111")
+    svc.redeem_link_code(svc.create_link_code("other@aeza.test")["code"], "222")
+    svc.send("111", "one", kind="test", dedupe_key="evt:1")
+    svc.send("222", "two", kind="test", dedupe_key="evt:2")
+
+    scoped = svc.deliveries(chat_id="111")
+    assert {row["chatId"] for row in scoped} == {"111"}
+    assert len(svc.deliveries()) == 2
+
+
+def test_old_deliveries_are_purged(tmp_path):
+    from datetime import timedelta
+
+    from backend.app.db import TelegramDeliveryRow
+
+    settings = _settings(tmp_path)
+    database = Database(settings.database_url)
+    database.initialize()
+    svc = TelegramService(database, settings, client=StubClient())
+    svc.send("555", "old", kind="test", dedupe_key="evt:old")
+    svc.send("555", "new", kind="test", dedupe_key="evt:new")
+
+    with database.transaction() as session:
+        row = session.scalar(
+            select(TelegramDeliveryRow).where(TelegramDeliveryRow.dedupe_key == "evt:old")
+        )
+        row.created_at = datetime.now(timezone.utc) - timedelta(days=90)
+
+    assert svc.purge_old_deliveries() == 1
+    assert {row["dedupeKey"] for row in svc.deliveries()} == {"evt:new"}
+
+
+def test_generation_is_read_from_the_version_block(tmp_path):
+    """The dedupe key must carry the real generation, not ``None``.
+
+    Regression: ``build_events`` read ``summary["generation"]``, but the engine
+    nests it under ``summary["version"]``. Every key was then identical across
+    generations, so the first alert suppressed all later ones.
+    """
+
+    settings = _settings(tmp_path)
+    analysis = _analysis(settings)
+    assert analysis.summary["version"]["generation"] == 1
+
+    events = notifications.build_events(analysis, settings=settings, previous=None,
+                                        kinds=["high_risk"])
+    assert events
+    for event in events:
+        assert ":None:" not in event.dedupe_key
+        assert event.dedupe_key.startswith("high_risk:1:")
+
+    # A new generation produces different keys, so a fresh alert can go out.
+    bumped = replace(analysis, summary={**analysis.summary,
+                                        "version": {**analysis.summary["version"], "generation": 2}})
+    next_events = notifications.build_events(bumped, settings=settings, previous=None,
+                                             kinds=["high_risk"])
+    assert {e.dedupe_key for e in next_events}.isdisjoint({e.dedupe_key for e in events})
+
+
+def test_standing_high_risk_does_not_re_alert_when_previous_is_passed(tmp_path):
+    """Passing ``previous`` suppresses a steady state and keeps a real transition.
+
+    Regression: ``dispatch_notifications`` never passed ``previous``, so every
+    high-risk customer was reported as newly high-risk on every recalculation.
+    """
+
+    settings = _settings(tmp_path)
+    analysis = _analysis(settings)
+    assert [c for c in analysis.customers if c.get("riskCategory") == "high"]
+
+    # Same picture twice: nothing changed, so no events.
+    steady = notifications.build_events(analysis, settings=settings, previous=analysis,
+                                        kinds=["high_risk"])
+    assert steady == []
+
+    # Without ``previous`` the builder cannot know it is a steady state; the caller
+    # is what supplies the comparison, which is why dispatch passes it.
+    blind = notifications.build_events(analysis, settings=settings, previous=None,
+                                       kinds=["high_risk"])
+    assert blind
 
 
 # --------------------------------------------------------------------------- #

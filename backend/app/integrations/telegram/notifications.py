@@ -39,6 +39,25 @@ def _money(eur: str | None) -> str:
     return f"{eur} €" if eur else "—"
 
 
+def _generation_of(analysis) -> int | None:
+    """The published generation of an analysis, from either shape.
+
+    The engine nests it under ``version``; an ``analysis`` built directly in a
+    test may carry it at the top level. Both are accepted so a caller never
+    silently loses the version and falls back to a dedupe key that never changes.
+    """
+
+    summary = getattr(analysis, "summary", None) or {}
+    if summary.get("generation") is not None:
+        return summary["generation"]
+    return (summary.get("version") or {}).get("generation")
+
+
+def _generation_label(analysis) -> str:
+    generation = _generation_of(analysis)
+    return str(generation) if generation is not None else "—"
+
+
 def build_events(
     analysis,
     *,
@@ -59,7 +78,11 @@ def build_events(
     limits = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
     enabled = set(kinds if kinds is not None else ("high_risk", "exposure_jump"))
     summary = analysis.summary
-    generation = summary.get("generation")
+    # ``generation`` lives inside the ``version`` block the engine attaches to the
+    # summary, not at the top level. Reading it from the wrong place yielded
+    # ``None``, which made every dedupe key identical across generations and
+    # suppressed every alert after the first.
+    generation = _generation_of(analysis)
     events: list[Event] = []
 
     previous_customers = {
@@ -148,7 +171,7 @@ def digest_text(analysis, *, settings: Settings) -> str:
         f"(высокий {by_category.get('high', 0)}, средний {by_category.get('medium', 0)})\n"
         f"Выручка под риском: {_money(revenue.get('revenueAtRiskEur'))}\n"
         f"Предстоящие продления: {_money(revenue.get('upcomingRenewalsEur'))}\n"
-        f"Поколение расчёта: #{summary.get('generation', '—')}"
+        f"Поколение расчёта: #{_generation_label(analysis)}"
     )
 
 

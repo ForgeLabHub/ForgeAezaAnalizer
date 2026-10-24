@@ -118,7 +118,33 @@ without reloading modules. Keep it lazy.
 Also avoid naming a loop/local variable `service` in API handlers — it shadowed
 the analytics service and caused a 500.
 
+**`generation` lives under `summary["version"]`, not `summary["generation"]`.**
+`CalculationAdapter.calculate` attaches `state.metadata()` as `summary["version"]`.
+Reading `summary["generation"]` yields `None` silently. This bit the Telegram
+dedupe keys: every key became `high_risk:None:<id>`, so the first alert suppressed
+all later ones. Use `notifications._generation_of(analysis)`.
+
+**A "recalculate" tick must not publish a generation.** `Core.update(force=False)`
+returns `previous` when nothing changed. `force=True` exists only for the
+engine-version upgrade path in `main.initialize`. Do not reintroduce an
+unconditional `recalculate=True` branch: it made `generation` a tick counter and
+grew `analyzer_analyses`/`analyzer_customers` by one row per customer per minute.
+
+**Do not recompute the previous analysis to pass it to the notifier.** Use
+`storage.published_analysis(generation)`, which reads the stored rows. Calling
+`calculation.calculate()` again inflates the `analytics.calls` counter that the
+idempotency test asserts on.
+
 ---
+
+# Operations: backup and restore
+
+`scripts/backup.sh` and `scripts/restore.sh` are the supported backup path.
+`backup.sh` uses `pg_dump` for analytics and the SQLite online-backup API for
+`auth.sqlite3` (a plain `cp` can tear under a concurrent write). `restore.sh`
+does nothing without `--yes`, and removes the `-wal`/`-shm` sidecars before
+replacing the auth file — a stale `-wal` shadows the restored database. Backups
+land in `backups/`, which is gitignored: they hold real account data.
 
 # Implementations living in this repository
 
