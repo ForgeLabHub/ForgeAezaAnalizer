@@ -21,19 +21,25 @@ API и метрикам.
 
 | Переменная | Обязательна | Комментарий |
 |---|---|---|
-| `AEZA_JWT_SECRET` | **да** | длинное случайное значение; без него вход небезопасен |
-| `AEZA_ADMIN_EMAIL` | да | логин аналитика при первом старте |
-| `AEZA_ADMIN_PASSWORD` | да | пароль аналитика при первом старте |
-| `AEZA_ALLOW_DEV_SECRET` | да | в общем окружении только `0` |
-| `AEZA_DATABASE_URL` | да | строка подключения к PostgreSQL |
-| `AEZA_AUTH_DATABASE_URL` | да | SQLite-файл сессий и пользователей |
+| `POSTGRES_PASSWORD` | **да** | без него `docker compose up` не стартует |
+| `AEZA_DATABASE_URL` | да | строка подключения к PostgreSQL (её собирает Compose) |
+| `AUTH_ISSUER` | для production | HTTPS-домен приложения; локально `http://localhost:8080` |
+| `AUTH_FRONTEND_LOGIN_URL` | для production | тот же домен + `/login` |
+| `AUTH_COOKIE_SECURE` | для production | `true` вместе с HTTPS-issuer |
 | `AEZA_CORS_ORIGINS` | да | список источников вместо `*` |
 
-Сгенерировать секрет:
+Аутентификацию обслуживает автономный модуль `backend/auth/` (RS256, отдельная
+SQLite). Учётные записи создаются явно:
 
 ```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
+docker compose exec api python -m backend.users create analyst@example.com
 ```
+
+Прежние `AEZA_JWT_SECRET`, `AEZA_ADMIN_EMAIL`, `AEZA_ADMIN_PASSWORD`,
+`AEZA_ALLOW_DEV_SECRET` и `AEZA_AUTH_DATABASE_URL` больше **не читаются** кодом
+и удалены из `docker-compose.yml`: их требования не давали стартовать чистому
+checkout. Модуль отказывается стартовать с HTTPS-issuer и
+`AUTH_COOKIE_SECURE=false`, поэтому небезопасная комбинация не проходит.
 
 ## 3. Запуск
 
@@ -66,7 +72,7 @@ curl -fsS http://localhost:8000/ready
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"'"$AEZA_ADMIN_EMAIL"'","password":"'"$AEZA_ADMIN_PASSWORD"'"}' \
+  -d '{"email":"analyst@example.com","password":"<пароль учётной записи>"}' \
   | python -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 
 curl -X PUT http://localhost:8000/api/v1/source/snapshot \
@@ -128,9 +134,10 @@ docker compose exec db pg_dump -U aeza aeza > backup-$(date +%F).sql
 
 ## 8. Безопасность перед публикацией
 
-- [ ] `AEZA_JWT_SECRET` — случайный, не из примера
-- [ ] `AEZA_ALLOW_DEV_SECRET=0`
-- [ ] `AEZA_ADMIN_PASSWORD` изменён с `demo123`
+- [ ] `POSTGRES_PASSWORD` — случайный, не из примера
+- [ ] `AUTH_ISSUER` и `AUTH_FRONTEND_LOGIN_URL` указывают на HTTPS-домен
+- [ ] `AUTH_COOKIE_SECURE=true`
+- [ ] учётные записи созданы с реальными паролями, демо-пароли не используются
 - [ ] `AEZA_CORS_ORIGINS` сужен до реальных доменов
 - [ ] `api` не опубликован в интернет напрямую
 - [ ] `AEZA_METRICS_TOKEN` задан, если `/metrics` доступен извне

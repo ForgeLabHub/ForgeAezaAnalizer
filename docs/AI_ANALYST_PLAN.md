@@ -81,11 +81,11 @@ class AnalystProvider(Protocol):
 Selection via a new env var, defaulting to off:
 
 ```
-AEZA_ANALYST_FACTORY=backend.app.analyst.local:create   # or empty = disabled
-AEZA_ANALYST_MODEL=...                                   # provider-specific
+AEZA_AI_ENABLED=backend.app.analyst.local:create   # or empty = disabled
+AEZA_AI_MODEL=...                                   # provider-specific
 ```
 
-An empty `AEZA_ANALYST_FACTORY` must yield `UnavailableAnalyst`, whose
+An empty `AEZA_AI_ENABLED` must yield `UnavailableAnalyst`, whose
 `answer()` raises `NotReadyError`, which the existing exception handler already
 maps to 503 with a Russian message. **No new error path is required** — this was
 verified by reading `backend/app/main.py` and the 503 behaviour that
@@ -139,7 +139,7 @@ GET  /api/v1/analyst/health                          → { "enabled", "model", "
 ## 5. Frontend (future)
 
 A side panel on the dashboard and customer card. It renders `citations` as links,
-so a claim is one click from the evidence. When `AEZA_ANALYST_FACTORY` is empty,
+so a claim is one click from the evidence. When `AEZA_AI_ENABLED` is empty,
 the panel shows a disabled state with the same "не подключён" wording the
 analytics 503 already uses — no fake chat.
 
