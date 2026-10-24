@@ -356,6 +356,21 @@ docker compose up --build
 | api | <http://localhost:8000> | REST API и `/metrics` |
 | db | внутренний | PostgreSQL 16 |
 
+### Метрики Prometheus
+
+В Compose endpoint доступен по адресу `http://localhost:8000/metrics`.
+Задайте собственный `AEZA_METRICS_TOKEN` в `.env`, затем пересоздайте API:
+
+```bash
+docker compose up -d api
+curl -H "Authorization: Bearer $AEZA_METRICS_TOKEN" http://localhost:8000/metrics
+```
+
+Если `AEZA_METRICS_TOKEN` не задан, передайте access token аналитика.
+На публичном стенде используйте `https://aeza-sentinel.pixel-minds.ru/metrics`;
+без авторизации он отвечает `401`. Описание метрик и настройка Prometheus —
+в [руководстве по развёртыванию](docs/DEPLOYMENT_PART_B.md#6-наблюдаемость).
+
 Данные и авторизация хранятся в именованных томах Docker (`pg_data`, `auth_data`),
 поэтому запуск не зависит от файлов в рабочем каталоге и переживает перезапуск:
 
@@ -378,7 +393,7 @@ curl -s localhost:8000/ready           # 200
 
 ```bash
 # часть B (канонический продукт)
-cd backend && python -m pytest tests/ -q        # 246 passed
+cd backend && python -m pytest tests/ -q
 
 # корневой набор: часть A + часть C
 python -m pytest tests/ -q                      # 69 passed (52 A + 17 C)
@@ -553,7 +568,7 @@ db/               PostgreSQL seed и SQLite-база авторизации
 | `AUTH_DATABASE` | `db/auth.sqlite3` | SQLite модуля авторизации |
 | `AUTH_PRIVATE_KEY` | `db/private_key.pem` | Ключ RS256 модуля авторизации |
 | `AEZA_SNAPSHOT_PATH` | `dataset/data.json` | Необязательный источник для локальной загрузки при пустой БД |
-| `AEZA_SEED_DEMO_DATA` | `0` | Загружать JSON-снимок при пустой БД; Compose использует SQL seed |
+| `AEZA_SEED_DEMO_DATA` | `0` | Загружать JSON-снимок при пустой БД; Compose включает загрузку официального снимка |
 | `AEZA_AS_OF` | `2026-10-19T15:00:00+00:00` | Опорный момент расчёта; `now` — по стенным часам |
 | `AEZA_ANALYTICS_FACTORY` | `backend.app.domain.module:create` (в `.env.example`/Compose) | Модуль аналитики и Risk Engine; пусто → маршруты возвращают `503` |
 | `AEZA_RECALCULATE_SECONDS` | `60` | Период фонового пересчёта (1–3600) |
@@ -564,7 +579,7 @@ db/               PostgreSQL seed и SQLite-база авторизации
 | `AEZA_AI_MODEL` | `qwen2.5:3b-instruct` | Имя локальной модели |
 | `AEZA_AI_BASE_URL` | `http://127.0.0.1:11434` | Адрес Ollama; внешние URL отклоняются |
 | `AEZA_OLLAMA_URL` | `http://172.18.0.1:11434` | Адрес Ollama для агрегатного ассистента (`/api/v1/insights/ai`) |
-| `AEZA_AI_TIMEOUT_SECONDS` | `180` | Таймаут генерации (1–900) |
+| `AEZA_AI_TIMEOUT_SECONDS` | `420` | Таймаут генерации (1–900) |
 | `AEZA_AI_MAX_CONCURRENCY` | `1` | Одновременных генераций; CPU-инференс не должен голодать event loop |
 | `AEZA_AI_NUM_CTX` | `4096` | Размер контекста модели |
 | `AEZA_AI_MAX_TOKENS` | `1200` | Лимит длины ответа |
