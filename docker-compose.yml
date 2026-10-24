@@ -1,18 +1,14 @@
+version: '3.8'
+
 services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-aeza}
       POSTGRES_USER: ${POSTGRES_USER:-aeza}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-aeza}
     volumes:
-      # Named volume so a clean checkout never depends on host-owned ./db/postgres.
       - pg_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aeza} -d ${POSTGRES_DB:-aeza}"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
     restart: unless-stopped
 
   api:
@@ -21,15 +17,11 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       # Inside the Compose network the API talks to the bundled Postgres.
-<<<<<<< HEAD
-      AEZA_DATABASE_URL: postgresql+psycopg://aeza:aeza@db:5432/aeza
       AUTH_DATABASE: /app/db/auth.sqlite3
       AUTH_PRIVATE_KEY: /app/db/private_key.pem
       AUTH_ISSUER: ${AUTH_ISSUER:?Set AUTH_ISSUER to the public application origin}
       AUTH_FRONTEND_LOGIN_URL: ${AUTH_FRONTEND_LOGIN_URL:?Set AUTH_FRONTEND_LOGIN_URL}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:?Set AUTH_COOKIE_SECURE explicitly}
-      AEZA_SEED_DEMO_DATA: "0"
-=======
       AEZA_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-aeza}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-aeza}
       # No defaults for secrets: Compose refuses to start unless these are set.
       # Generate: python -c "import secrets; print(secrets.token_urlsafe(48))"
@@ -43,7 +35,6 @@ services:
       AEZA_SEED_DEMO_DATA: "1"
       AEZA_SNAPSHOT_PATH: /app/dataset/data.json
       AEZA_AUTH_DATABASE_URL: sqlite:////app/db/auth.sqlite3
->>>>>>> 8bee307f006ccfac1e70afb61de23a22375b331e
       AEZA_AS_OF: ${AEZA_AS_OF:-2026-10-19T15:00:00+00:00}
       AEZA_ANALYTICS_FACTORY: ${AEZA_ANALYTICS_FACTORY:-backend.app.domain.module:create}
       AEZA_RECALCULATE_SECONDS: ${AEZA_RECALCULATE_SECONDS:-60}
@@ -51,29 +42,24 @@ services:
       # The SPA is served through the same nginx origin, so the demo needs no
       # wildcard. Widen this only if you host the UI elsewhere.
       AEZA_CORS_ORIGINS: ${AEZA_CORS_ORIGINS:-http://localhost:8080}
-      # --- Local AI, two conventions in one repo (both off by default) ---
-      # (a) AI Analyst (backend/app/ai): grounded explanations + RAG.
+      # --- Local AI, two conventions in one repo (off by default) ---
+      # AI Analyst (backend/app/ai): grounded explanations + RAG.
       AEZA_AI_ENABLED: ${AEZA_AI_ENABLED:-0}
       AEZA_AI_PROVIDER: ${AEZA_AI_PROVIDER:-ollama}
       AEZA_AI_MODEL: ${AEZA_AI_MODEL:-qwen2.5:3b-instruct}
-      AEZA_AI_BASE_URL: ${AEZA_AI_BASE_URL:-http://host.docker.internal:11434}
-      # (b) Insights narration (backend/app/domain/llm.py). AEZA_OLLAMA_URL is
-      # the canonical name and wins over the older AEZA_LLM_BASE_URL alias; both
-      # are honoured so an existing .env keeps working.
+      AEZA_AI_BASE_URL: ${AEZA_AI_BASE_URL:-http://docker.internal}
+      # Insights narration. Keep disabled unless explicitly enabled in .env.
       AEZA_LLM_ENABLED: ${AEZA_LLM_ENABLED:-0}
-      AEZA_OLLAMA_URL: ${AEZA_OLLAMA_URL:-http://host.docker.internal:11434}
+      AEZA_OLLAMA_URL: ${AEZA_OLLAMA_URL:-http://docker.internal}
       AEZA_OLLAMA_MODEL: ${AEZA_OLLAMA_MODEL:-qwen2.5:3b-instruct}
       AEZA_OLLAMA_TIMEOUT_SECONDS: ${AEZA_OLLAMA_TIMEOUT_SECONDS:-90}
       AEZA_LLM_MAX_TOKENS: ${AEZA_LLM_MAX_TOKENS:-700}
       AEZA_LLM_TEMPERATURE: ${AEZA_LLM_TEMPERATURE:-0.2}
-      # Telegram integration. Off by default; the stack runs normally without a
-      # bot token. Set TELEGRAM_* in the host environment (or an .env file) and
-      # never bake a real token into the image.
       TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL:-}
-      TELEGRAM_API_BASE: ${TELEGRAM_API_BASE:-https://api.telegram.org}
+      TELEGRAM_API_BASE: ${TELEGRAM_API_BASE:-https://telegram.org}
       TELEGRAM_TIMEOUT_SECONDS: ${TELEGRAM_TIMEOUT_SECONDS:-10}
       TELEGRAM_LINK_CODE_TTL_SECONDS: ${TELEGRAM_LINK_CODE_TTL_SECONDS:-600}
       TELEGRAM_LINK_MAX_ATTEMPTS: ${TELEGRAM_LINK_MAX_ATTEMPTS:-5}
@@ -112,3 +98,4 @@ services:
 volumes:
   auth_data:
   pg_data:
+
