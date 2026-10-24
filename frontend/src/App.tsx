@@ -10,6 +10,7 @@ import PriorityPage from './pages/PriorityPage'
 import CustomersPage from './pages/CustomersPage'
 import CustomerDetailPage from './pages/CustomerDetailPage'
 import SettingsPage from './pages/SettingsPage'
+import AIAnalystPage from './pages/AIAnalystPage'
 import DataSourcePage from './pages/DataSourcePage'
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -32,6 +33,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           </NavLink>
           <NavLink to="/priority">Приоритеты</NavLink>
           <NavLink to="/customers">Клиенты</NavLink>
+          <NavLink to="/ai">AI-аналитик</NavLink>
           <NavLink to="/settings">Модель и сценарии</NavLink>
           <NavLink to="/data">Данные и качество</NavLink>
         </nav>
@@ -94,6 +96,7 @@ export default function App() {
           <Route path="/priority" element={<PriorityPage />} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/:id" element={<CustomerDetailPage />} />
+          <Route path="/ai" element={<AIAnalystPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/data" element={<DataSourcePage />} />
           <Route path="/login" element={<Navigate to="/" replace />} />

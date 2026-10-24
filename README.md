@@ -469,6 +469,11 @@ docs/             документация по данным, модели, им
 | `GET` | `/health` | Проверка живости |
 | `GET` | `/ready` | Проверка готовности |
 | `GET` | `/api/v1/docs` | Swagger UI |
+| `GET` | `/api/v1/ai/status` | Состояние AI Analyst: `disabled` / `ready` / `unavailable` |
+| `POST` | `/api/v1/ai/chat` | Вопрос по портфелю |
+| `POST` | `/api/v1/ai/customers/{id}/explain` | Объяснение риска клиента |
+| `POST` | `/api/v1/ai/scenarios/explain` | Объяснение what-if сценария |
+| `POST` | `/api/v1/ai/reports/summary` | Краткий отчёт для аналитика |
 
 Маршруты части A (`/api/health`, `/api/meta`, `/api/dashboard`, `/api/weights`,
 …) описаны отдельно в [`docs/API.md`](docs/API.md).
@@ -498,17 +503,39 @@ docs/             документация по данным, модели, им
 | `AEZA_SEED_DEMO_DATA` | `0` | Загружать JSON-снимок при пустой БД; Compose использует SQL seed |
 | `AEZA_AS_OF` | `2026-10-19T15:00:00+00:00` | Опорный момент расчёта; `now` — по стенным часам |
 | `AEZA_CORS_ORIGINS` | `http://localhost:8080,http://localhost:5173` | Разрешённые источники через запятую; `*` — только для демонстрации |
-| `AEZA_LLM_ENABLED` | `0` | Включить локальную ИИ-модель (Ollama). При `0` ИИ-эндпоинты отвечают 503 и **не** предлагают кнопку |
-| `AEZA_OLLAMA_URL` | `http://172.18.0.1:11434` | Адрес HTTP API Ollama (каноническое имя). Алиас `AEZA_LLM_BASE_URL` тоже поддерживается |
-| `AEZA_OLLAMA_MODEL` | `qwen2.5:7b` | Имя модели Ollama (алиас `AEZA_LLM_MODEL`) |
-| `AEZA_OLLAMA_TIMEOUT_SECONDS` | `90` | Таймаут запроса к модели (алиас `AEZA_LLM_TIMEOUT_SECONDS`) |
-| `AEZA_LLM_MAX_TOKENS` | `700` | Ограничение длины ответа |
-| `AEZA_LLM_TEMPERATURE` | `0.2` | Температура генерации |
+| `AEZA_AI_ENABLED` | `0` | Включить локальный AI Analyst (`/api/v1/ai`) |
+| `AEZA_AI_PROVIDER` | `ollama` | `ollama` (локальный runtime) или `mock` (офлайн, для тестов) |
+| `AEZA_AI_MODEL` | `qwen2.5:3b-instruct` | Имя локальной модели для AI Analyst |
+| `AEZA_AI_BASE_URL` | `http://127.0.0.1:11434` | Адрес Ollama; внешние URL отклоняются |
+| `AEZA_AI_RAG_INDEX_PATH` | `backend/data/rag_index.json` | Локальный индекс документации |
+| `AEZA_OLLAMA_URL` | `http://172.18.0.1:11434` | Адрес Ollama для агрегатного ассистента (`/api/v1/insights/ai`). Алиас `AEZA_LLM_BASE_URL` тоже поддерживается |
+| `AEZA_OLLAMA_MODEL` | `qwen2.5:7b` | Модель агрегатного ассистента (алиас `AEZA_LLM_MODEL`) |
+| `AEZA_OLLAMA_TIMEOUT_SECONDS` | `90` | Таймаут агрегатного ассистента (алиас `AEZA_LLM_TIMEOUT_SECONDS`) |
+| `AEZA_LLM_MAX_TOKENS` | `700` | Ограничение длины ответа агрегатного ассистента |
+| `AEZA_LLM_TEMPERATURE` | `0.2` | Температура агрегатного ассистента |
 
 **Опорный момент.** Снимок Aéza — это состояние на фиксированный момент, и статусы
 услуг в нём не меняются со временем. Поэтому `AEZA_AS_OF` по умолчанию равен
 документированному моменту снимка: так «дней до окончания» и все баллы
 воспроизводимы. Значение `now` включает живой режим по стенным часам.
+
+---
+
+## AI Analyst (локальная LLM)
+
+Модуль `backend/app/ai/` объясняет уже посчитанные оценки Risk Engine через
+локальную модель (Ollama), локальный RAG по документации проекта и read-only
+инструменты backend. Числа берутся из backend, модель их не вычисляет; ответы
+проверяются на неподтверждённые данные. Выключен по умолчанию
+(`AEZA_AI_ENABLED=0`) — продукт работает и без него.
+
+Цикл «риск → объяснение → решение человека» замкнут: рекомендацию Risk Engine
+можно подтвердить в карточке клиента, действие сохраняется (`/api/v1/actions`) и
+становится видно и аналитику, и AI-аналитику. Записывает действие только человек
+через API — у AI-модуля маршрута записи нет.
+
+Установка, запуск модели, пересборка RAG-индекса, API и диагностика:
+[docs/AI_ANALYST.md](docs/AI_ANALYST.md).
 
 ---
 

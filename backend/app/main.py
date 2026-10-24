@@ -18,10 +18,11 @@ from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
 
 from core import ConflictError, Core, InvalidInput, NotReadyError, ResourceNotFoundError
-from backend.app.api import routes_ai, routes_analytics, routes_auth, routes_customers, routes_export, routes_insights, routes_model, routes_source
+from backend.app.api import routes_actions, routes_ai, routes_analytics, routes_auth, routes_customers, routes_export, routes_insights, routes_model, routes_source
 from backend.app.api.deps import Runtime, RuntimeDep
 from backend.app.api.schemas import ErrorResponse
 from backend.app.auth.security import AuthService, RateLimited, Unauthorized
+from backend.app.ai.service import AIDisabled, AIService, AIUnavailable
 from backend.app.config import Settings, get_settings
 from backend.app.db import Database
 from backend.app.metrics import Metrics
@@ -43,6 +44,20 @@ async def recalculate(runtime: Runtime, stop: asyncio.Event):
                 logger.exception("scheduled calculation failed; previous result retained")
 
 
+def build_ai(storage: Storage, calculation: CalculationAdapter) -> AIService | None:
+    """Construct the AI Analyst, or ``None`` if it cannot be built.
+
+    A configuration error in the AI subsystem must not stop the analytics
+    product from starting: the AI surface is optional, the risk engine is not.
+    """
+
+    try:
+        return AIService(storage, calculation)
+    except Exception:
+        logger.exception("AI Analyst could not be initialised; continuing without it")
+        return None
+
+
 def create_app(settings: Settings | None = None, analytics: AnalyticsModule | None = None) -> FastAPI:
     settings = settings or get_settings()
     module = analytics if analytics is not None else load_module(os.getenv("AEZA_ANALYTICS_FACTORY", ""))
@@ -55,7 +70,7 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
         calculation = CalculationAdapter(module)
         auth = AuthService(auth_database, settings)
         runtime = Runtime(settings, database, storage, auth, calculation,
-            Core(storage, calculation, settings.reference_now))
+            Core(storage, calculation, settings.reference_now), ai=None)
         stop = asyncio.Event()
         task = None
 
@@ -76,6 +91,7 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
 
         try:
             await run_in_threadpool(initialize)
+            runtime.ai = build_ai(storage, calculation)
             application.state.runtime = runtime
             application.state.metrics = Metrics(storage)
             if settings.as_of.lower() == "now" and not isinstance(module, UnavailableAnalytics):
@@ -133,6 +149,14 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
     async def unavailable(request: Request, error: NotReadyError):
         return JSONResponse({"detail": str(error)}, status_code=503, headers={"Retry-After": "5"})
 
+    @app.exception_handler(AIDisabled)
+    async def ai_disabled(request: Request, error: AIDisabled):
+        return JSONResponse({"detail": str(error)}, status_code=503, headers={"Retry-After": "30"})
+
+    @app.exception_handler(AIUnavailable)
+    async def ai_unavailable(request: Request, error: AIUnavailable):
+        return JSONResponse({"detail": str(error)}, status_code=503, headers={"Retry-After": "5"})
+
     @app.exception_handler(ResourceNotFoundError)
     async def not_found(request: Request, error: ResourceNotFoundError):
         return JSONResponse({"detail": str(error)}, status_code=404)
@@ -180,6 +204,6 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
 
     for router in (routes_auth.router, routes_customers.router, routes_analytics.router,
                    routes_model.router, routes_source.router, routes_insights.router,
-                   routes_export.router, routes_ai.router):
+                   routes_export.router, routes_ai.router, routes_actions.router):
         app.include_router(router, prefix=settings.api_prefix)
     return app

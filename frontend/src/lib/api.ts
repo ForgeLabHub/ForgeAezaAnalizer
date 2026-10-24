@@ -1,4 +1,7 @@
 import type {
+  AIResponse,
+  AIStatus,
+  ActionStatus,
   CsvExportResult,
   CustomerDetail,
   CustomerPage,
@@ -6,6 +9,8 @@ import type {
   ObservationsResponse,
   PriorityResponse,
   QualityReport,
+  RetentionAction,
+  RetentionActionList,
   ScenarioComparisonResponse,
   ScenarioOverrides,
   SettingsPatch,
@@ -237,6 +242,49 @@ export const api = {
 
   patchSettings: (patch: SettingsPatch) =>
     request<ModelSettings>('/api/v1/model/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+
+  aiStatus: () => request<AIStatus>('/api/v1/ai/status'),
+
+  aiChat: (question: string, customerId?: number) =>
+    request<AIResponse>('/api/v1/ai/chat', {
+      method: 'POST',
+      body: JSON.stringify(customerId ? { question, customerId } : { question }),
+    }),
+
+  aiExplainCustomer: (customerId: number, question?: string) =>
+    request<AIResponse>(`/api/v1/ai/customers/${customerId}/explain`, {
+      method: 'POST',
+      body: JSON.stringify(question ? { question } : {}),
+    }),
+
+  aiExplainScenario: (overrides: Record<string, unknown>, question?: string) =>
+    request<AIResponse>('/api/v1/ai/scenarios/explain', {
+      method: 'POST',
+      body: JSON.stringify(question ? { overrides, question } : { overrides }),
+    }),
+
+  aiReportSummary: (focus?: string) =>
+    request<AIResponse>('/api/v1/ai/reports/summary', {
+      method: 'POST',
+      body: JSON.stringify(focus ? { focus } : {}),
+    }),
+
+  actions: (customerId?: number) =>
+    request<RetentionActionList>(
+      customerId ? `/api/v1/actions?customerId=${customerId}` : '/api/v1/actions',
+    ),
+
+  confirmAction: (customerId: number, code: string, serviceId?: number, note?: string) =>
+    request<RetentionAction>('/api/v1/actions', {
+      method: 'POST',
+      body: JSON.stringify({ customerId, code, serviceId: serviceId ?? null, note: note ?? null }),
+    }),
+
+  updateAction: (actionId: number, patch: { status?: ActionStatus; note?: string }) =>
+    request<RetentionAction>(`/api/v1/actions/${actionId}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
     }),
