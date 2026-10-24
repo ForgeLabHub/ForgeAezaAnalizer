@@ -121,18 +121,20 @@ def main() -> int:
                     f"s{idx:02d} TEXT-TALLER-THAN-BOX need={need:.2f} avail={avail:.2f} "
                     f"txt={shape.text_frame.text[:44]!r}")
 
-        # text-vs-text overlaps
+        # text-vs-text overlaps. Boxes come from distinct shapes, so any real
+        # intersection is a collision; the tolerance only absorbs bbox rounding.
         for i in range(len(boxes)):
             for j in range(i + 1, len(boxes)):
                 ax, ay, aw, ah, at = boxes[i]
                 bx, by, bw, bh, bt = boxes[j]
                 ox = min(ax + aw, bx + bw) - max(ax, bx)
                 oy = min(ay + ah, by + bh) - max(ay, by)
-                if ox > 0.04 and oy > 0.04:
+                if ox > 0.01 and oy > 0.01:
                     area = ox * oy
-                    if area > 0.02:
+                    if area > 0.001:
                         problems.append(
-                            f"s{idx:02d} OVERLAP {area:.2f}in² :: {at!r} <> {bt!r}")
+                            f"s{idx:02d} OVERLAP {area:.3f}in² "
+                            f"({ox * 72:.1f}x{oy * 72:.1f}pt) :: {at!r} <> {bt!r}")
 
     print(f"slides={len(prs.slides._sldIdLst)} canvas={sw:.2f}x{sh:.2f}in")
     if problems:

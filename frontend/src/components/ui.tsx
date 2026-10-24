@@ -144,6 +144,81 @@ export function EmptyState({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>
 }
 
+/** Marks a record that cannot belong to a real customer. */
+export function SyntheticTag({ title }: { title?: string | null }) {
+  return (
+    <span className="synthetic-tag" title={title ?? 'Синтетическая запись, не клиент Aéza'}>
+      демо
+    </span>
+  )
+}
+
+/** Whole days between an ISO instant and now, or null when unparseable. */
+export function daysSince(iso: string): number | null {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return Math.floor((Date.now() - d.getTime()) / 86_400_000)
+}
+
+/**
+ * Timestamp strip that keeps three different times apart, because collapsing
+ * them is exactly how a frozen snapshot comes to look freshly calculated:
+ *
+ * * `asOf` — the analysis reference date. Every "days left" and the horizon are
+ *   measured from here, so a past `asOf` means the whole risk picture is frozen
+ *   at that moment, not at the moment of viewing.
+ * * `calculatedAt` — when the backend last recomputed the published generation.
+ * * `capturedAt` — when the source snapshot itself was captured.
+ */
+export function FreshnessBanner({
+  asOf,
+  calculatedAt,
+  capturedAt,
+  horizonDays,
+}: {
+  asOf?: string | null
+  calculatedAt?: string | null
+  capturedAt?: string | null
+  horizonDays?: number
+}) {
+  const age = asOf ? daysSince(asOf) : null
+  const stale = age !== null && age >= 1
+
+  return (
+    <div className={`freshness${stale ? ' is-stale' : ''}`}>
+      <div className="freshness-row">
+        <span className="freshness-item">
+          <span className="freshness-key">Дата расчёта</span>
+          <span className="freshness-val">{asOf ? `${formatDateTime(asOf)} UTC` : '—'}</span>
+        </span>
+        <span className="freshness-item">
+          <span className="freshness-key">Последний пересчёт</span>
+          <span className="freshness-val">
+            {calculatedAt ? `${formatDateTime(calculatedAt)} UTC` : '—'}
+          </span>
+        </span>
+        <span className="freshness-item">
+          <span className="freshness-key">Снимок получен</span>
+          <span className="freshness-val">{capturedAt ? `${formatDateTime(capturedAt)} UTC` : '—'}</span>
+        </span>
+      </div>
+      {stale ? (
+        <p className="freshness-warn" role="status">
+          <strong>Снимок не обновлялся {age} дн.</strong> Аналитика отсчитывается от{' '}
+          {formatDateTime(asOf as string)} UTC, поэтому сроки продлений и горизонт{' '}
+          {horizonDays ?? 30} дн. рассчитаны от этой даты, а не от текущего момента.
+          Загрузите свежий снимок, чтобы пересчитать.
+        </p>
+      ) : (
+        <p className="freshness-note">
+          Даты продлений и горизонт отсчитываются от даты расчёта, а не от момента
+          просмотра страницы.
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function Loading({ label = 'Загрузка данных…' }: { label?: string }) {
   return (
     <div className="loading">

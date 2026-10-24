@@ -178,8 +178,8 @@ python scripts/load_snapshot.py path/to/snapshot.json
 ### Автоматически при старте
 
 Compose загружает `db/analytics_seed.sql` в PostgreSQL при первом создании каталога
-`db/postgres/`. Этот seed содержит демоданные и историю аналитических поколений;
-таблиц авторизации в нём нет. Для пустой БД вне Compose можно включить
+`db/postgres/`. Этот seed содержит официальный набор организатора и одно
+опубликованное поколение расчёта; таблиц авторизации в нём нет. Для пустой БД вне Compose можно включить
 `AEZA_SEED_DEMO_DATA=1`; тогда приложение возьмёт JSON из `AEZA_SNAPSHOT_PATH`.
 
 ### Через SQL
@@ -192,7 +192,38 @@ psql -X -v ON_ERROR_STOP=1 -d DATABASE_NAME \
   -f db/analytics_seed.sql
 ```
 
-Seed содержит 60 клиентов, 115 услуг, 285 транзакций и три поколения расчёта.
+Seed содержит официальный набор организатора: **10 клиентов, 30 услуг, 100
+транзакций** и одно поколение расчёта — те же данные, что в `dataset/data.json`,
+поэтому цифры стенда совпадают с README и материалами защиты. Seed
+сгенерирован скриптом `backend/scripts/export_seed.py` (см. ниже), а не
+редактируется вручную.
+
+### Перегенерация seed
+
+Seed — это дамп аналитической базы, поэтому его не правят руками. После
+изменения исходных данных:
+
+```bash
+# 1. Загрузить снимок в чистую базу (пример — SQLite во временном файле).
+rm -f /tmp/seed.db
+AEZA_DATABASE_URL="sqlite:////tmp/seed.db" AEZA_JWT_SECRET=x \
+AEZA_ANALYTICS_FACTORY=backend.app.domain.module:create \
+AEZA_AS_OF="2026-10-19T15:00:00+00:00" \
+  python backend/scripts/load_snapshot.py dataset/data.json
+
+# 2. Выгрузить её в seed (CRLF сохраняется автоматически).
+python backend/scripts/export_seed.py \
+  --database-url "sqlite:////tmp/seed.db" \
+  --note "Official organiser snapshot (dataset/data.json): 10 accounts, 30 services, 100 transactions."
+
+# 3. Убедиться, что дефолты seed совпадают с дефолтами кода.
+cd backend && python -m pytest tests/test_domain.py -q -k seed
+```
+
+Скрипт `export_seed.py` выгружает таблицы `analyzer_*` в том же порядке и с теми
+же `::json`-приведениями, что и исходный дамп, и завершает файл CRLF. Тест
+`test_bundled_seed_defaults_match_code_defaults` падает, если выгруженный seed
+разошёлся с `DEFAULT_WEIGHTS` — это защита от повторения расхождения 2026-10-24.
 
 ---
 
