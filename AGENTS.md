@@ -85,6 +85,23 @@ git push https://<TOKEN>@github.com/Pixelminds-hub/aeza-analizer.git main
 
 Never commit a token, and never leave one in the remote URL.
 
+**Verified 2026-10-24:** the credentials injected into the agent environment
+(`GITHUB_TOKEN`, `GITHUB_PERSONAL_ACCESS_TOKEN`) are **read-only** on this repo
+— every write path returns 403, including `create_branch` and the Contents API.
+A **classic** PAT with the `repo` scope is required. With one, the push works:
+
+```bash
+git push https://<user>:<CLASSIC_PAT>@github.com/Pixelminds-hub/aeza-analizer.git HEAD:main
+```
+
+Two things bite when pushing to `main`:
+
+- **`main` moves under you.** Other contributors push to it directly, so a push
+  is often rejected as non-fast-forward. Fetch, merge (never force-push — there
+  are 40+ commits from other authors), re-run the tests, then push.
+- **Do not `git push --force`.** `main` is shared; a force-push destroys other
+  people's work.
+
 ## Gotchas that already bit us
 
 **Leaked `AEZA_*` shell variables break the test suite.** The test fixtures call
