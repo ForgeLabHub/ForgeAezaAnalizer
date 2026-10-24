@@ -11,6 +11,7 @@
 ## Данные, развёртывание и аудит
 
 - [Архитектура данных](DATA_ARCHITECTURE.md) и [развёртывание](DEPLOYMENT_PART_B.md).
+- [Метрики Prometheus](DEPLOYMENT_PART_B.md#6-наблюдаемость): авторизация, `curl` и настройка scrape.
 - [Проверка происхождения данных](PROVENANCE_AUDIT.md).
 - [API части A (устаревшее)](API_PART_A_LEGACY.md): оставлено для истории; актуальный API — OpenAPI текущего запуска.
 

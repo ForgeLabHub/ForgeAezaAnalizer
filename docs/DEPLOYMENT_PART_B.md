@@ -82,10 +82,37 @@ curl -X PUT http://localhost:8000/api/v1/source/snapshot \
 
 ## 6. Наблюдаемость
 
-* `GET /metrics` — формат Prometheus. Доступ: сессия аналитика либо
-  `AEZA_METRICS_TOKEN` (Bearer).
-* Метки агрегированные, без email и идентификаторов клиентов.
+* `GET /metrics` — формат Prometheus. Доступ: access token аналитика либо
+  отдельный `AEZA_METRICS_TOKEN` в заголовке Bearer. Без токена endpoint
+  закрыт и отвечает `401`.
+* Метрики включают готовность и generation анализа, число клиентов и услуг,
+  категории риска, денежные агрегаты, количество HTTP-ответов и их длительность.
+  Метки агрегированные, без email и идентификаторов клиентов.
 * `/health` — живость процесса; `/ready` — готовность отдавать расчёты.
+
+Для локального Compose задайте секрет в `.env` и перезапустите API:
+
+```dotenv
+AEZA_METRICS_TOKEN=replace-with-a-long-random-secret
+```
+
+```bash
+docker compose up -d api
+curl -H "Authorization: Bearer $AEZA_METRICS_TOKEN" http://localhost:8000/metrics
+```
+
+На публичном стенде используйте `https://aeza-sentinel.pixel-minds.ru/metrics`.
+Если отдельный токен вам не выдан, войдите через `POST /api/v1/auth/login`,
+возьмите поле `access_token` из ответа и передайте его в таком же заголовке:
+
+```bash
+curl -H "Authorization: Bearer $ACCESS_TOKEN" \
+  https://aeza-sentinel.pixel-minds.ru/metrics
+```
+
+Ответ содержит строки формата Prometheus (`# HELP`, `# TYPE` и значения
+метрик). Эту же страницу опрашивает Prometheus; используйте HTTPS и храните
+секрет в системе управления credentials, а не в публичном конфиге.
 
 Пример `prometheus.yml`:
 
@@ -94,7 +121,8 @@ scrape_configs:
   - job_name: aeza
     metrics_path: /metrics
     authorization:
-      credentials: <AEZA_METRICS_TOKEN>
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/aeza_metrics_token
     static_configs:
       - targets: ["api:8000"]
 ```
