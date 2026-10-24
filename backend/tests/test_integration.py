@@ -180,15 +180,19 @@ def test_stale_result_cannot_replace_newer_result(client):
     assert runtime.storage.load() == new
 
 
-def test_settings_survive_restart_and_auth_sessions_expire(settings, auth_settings, analytics):
+def test_settings_and_auth_sessions_survive_restart(settings, auth_settings, analytics):
     with TestClient(create_app(settings, analytics, auth_settings)) as client:
         login = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
+        session_cookie = client.cookies.get("auth_session")
         headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
         updated = client.patch("/api/v1/model/settings", json={"horizonDays": 7}, headers=headers)
         assert updated.status_code == 200, updated.text
         calls = analytics.calls
     with TestClient(create_app(settings, analytics, auth_settings)) as restarted:
-        assert restarted.get("/api/v1/auth/me", headers=headers).status_code == 401
+        assert restarted.get("/api/v1/auth/me", headers=headers).status_code == 200
+        restarted.cookies.set("auth_session", session_cookie)
+        refreshed = restarted.post("/api/v1/auth/refresh")
+        assert refreshed.status_code == 200, refreshed.text
         login = restarted.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
         assert login.status_code == 200
         headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
