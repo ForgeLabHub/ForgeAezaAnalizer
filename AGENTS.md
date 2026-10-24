@@ -397,3 +397,20 @@ not N+1 or missing indexes.
 Running the Docker stack plus load tests in the agent sandbox has repeatedly
 triggered environment restarts. Keep sweeps short and bounded; capture each
 result as you go rather than relying on a long single run.
+
+## AI Analyst: docs must be in the image
+`backend/Dockerfile` copies `docs/` and prebuilds the RAG index
+(`python -m backend.app.ai.rag`). Without that step the retriever indexes 0
+chunks, `/api/v1/ai/status` still reports `ready`, and every answer loses its
+grounding silently. If you move `docs/` or change `AEZA_AI_DOCS_PATH`, update the
+Dockerfile in the same change.
+
+The Analyst reads `AEZA_AI_*`; the aggregate assistant (`/api/v1/insights/ai`)
+reads the older `AEZA_LLM_*`/`AEZA_OLLAMA_*` pair. `docker-compose.yml` passes
+both through, so enabling one does not enable the other.
+
+Verified locally against a real model: Ollama `qwen2.5:7b` on the host, API in
+Compose, `AEZA_AI_BASE_URL=http://172.18.0.1:11434`. `/api/v1/ai/status` →
+`ready`, 691 chunks; `POST /api/v1/ai/customers/{id}/explain` returned a grounded
+answer. CPU inference is slow (~20 s short prompt, up to ~3 min with full RAG
+context), so keep `AEZA_AI_MAX_CONCURRENCY=1` and expect the UI to wait.
