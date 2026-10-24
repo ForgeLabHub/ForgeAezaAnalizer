@@ -35,15 +35,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false
     async function restore() {
-      if (!getToken()) {
-        setReady(true)
-        return
-      }
       try {
+        if (!getToken()) {
+          const token = await api.refresh()
+          setToken(token.access_token)
+        }
         const me = await api.me()
         if (!cancelled) setEmail(me.email)
       } catch {
-        // Expired or invalid token: clear it so the login screen appears.
         setToken(null)
       } finally {
         if (!cancelled) setReady(true)

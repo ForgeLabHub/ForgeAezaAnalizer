@@ -124,21 +124,6 @@ class RecommendationStatusRow(Base):
     updated_by: Mapped[str] = mapped_column(String(320))
 
 
-class UserRow(Base):
-    __tablename__ = "analyzer_users"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    email: Mapped[str] = mapped_column(String(320), unique=True)
-    password_hash: Mapped[str] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
-
-
-class AuthSessionRow(Base):
-    __tablename__ = "analyzer_sessions"
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("analyzer_users.id"), index=True)
-    expires_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
-
-
 class ActionRow(Base):
     """A retention action a human confirmed for a customer.
 
@@ -173,9 +158,6 @@ ANALYTICS_TABLES = (
     # Human-confirmed retention actions, created by the same initialise() call.
     ActionRow.__table__,
 )
-AUTH_TABLES = (UserRow.__table__, AuthSessionRow.__table__)
-
-
 class Database:
     def __init__(self, url: str):
         parsed = make_url(url)
@@ -208,9 +190,6 @@ class Database:
             with self.sessions() as session:
                 if session.get(CurrentRow, 1) is None:
                     raise
-
-    def initialize_auth(self):
-        Base.metadata.create_all(self.engine, tables=AUTH_TABLES)
 
     @contextmanager
     def transaction(self):

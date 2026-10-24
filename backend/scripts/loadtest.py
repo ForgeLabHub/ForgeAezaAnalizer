@@ -8,7 +8,7 @@ while a run is in flight.
 
 Usage:
     python backend/scripts/loadtest.py --base-url http://127.0.0.1:8000 \\
-        --email analyst@aeza.test --password demo123 --scenario mixed
+        --email analyst@example.com --password "$ANALYST_PASSWORD" --scenario mixed
 
     # sample the containers while the run is in flight
     python backend/scripts/loadtest.py ... --docker-stats-interval 2

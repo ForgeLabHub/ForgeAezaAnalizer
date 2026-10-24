@@ -32,9 +32,8 @@ aeza_analyzer/
   api/app.py       FastAPI endpoints
   static/          vanilla-JS SPA (index.html, app.js, styles.css)
 tests/             pytest suite (48 tests)
-docs/              REQUIREMENTS_TRACEABILITY.md, ARCHITECTURE.md, DATA_DICTIONARY.md,
-                   ANALYTICS_METHODOLOGY.md, REVENUE_METHODOLOGY.md, IMPORT_AND_DATA_AUDIT.md,
-                   API.md, DEVELOPMENT.md, TESTING.md, DEPLOYMENT.md, SECURITY.md, SCHEMA_MAPPING.md
+docs/              PROJECT_GUIDE.md, AI_ANALYST.md, AI_ASSISTANT.md, AUTH_MODULE.md,
+                   audits/, research/, deck/
 ```
 
 ## Commands
@@ -105,23 +104,23 @@ the analytics service and caused a 500.
 
 # Implementations living in this repository
 
-The repository carries **three** independently written bodies of work for the
-same case. None of them imports from the others, and each has its own storage
-layer, scoring code and entrypoint. Do not delete one to "clean up" another.
+The repository carries **three** bodies of work for the same case. The
+analytics implementations remain independent; the Compose API uses the shared
+`backend/auth/` module for account storage and token verification.
 
 | Area | What it is | Storage | Entrypoint |
 | --- | --- | --- | --- |
 | `aeza_analyzer/` | Python package, CLI, vanilla-JS SPA (documented above) | SQLite (`data/`) | `python -m aeza_analyzer.cli serve` |
-| `backend/app/` + `frontend/` | FastAPI app + React/TypeScript SPA (documented below) | Postgres via Compose, SQLite for tests | `docker compose up` |
-| `backend/auth/`, `backend/main.py` | Standalone auth module (JWT + RSA, own `db/schema.sql`) | SQLite (`db/auth.sqlite3`) | `backend/main.py` |
+| `backend/app/` + `frontend/` | FastAPI app + React/TypeScript SPA; delegates authentication to `backend/auth/` | Postgres analytics + separate SQLite accounts | `docker compose up` |
+| `backend/auth/`, `backend/main.py` | Shared authentication module (JWT + RSA, own `db/schema.sql`) and standalone OIDC entrypoint | SQLite (`db/auth.sqlite3`) | `backend/main.py` or Compose API |
 
-Note the path collision: `backend/` holds two unrelated trees — `backend/app/`
-(below) and `backend/auth/` + `backend/main.py` + `backend/config.py`
-(the standalone auth module). `backend/__init__.py` is shared. Check which one
-you are editing before changing shared names.
+Note the path collision: `backend/` holds `backend/app/` and the shared
+`backend/auth/` module with its standalone `backend/main.py` entrypoint.
+`backend/__init__.py` is shared. Check which one you are editing before
+changing shared names.
 
-`db/auth.sqlite3` is committed but holds no user rows (verified: the `users`
-table is empty). It is the auth module's runtime store, not fixture data.
+`db/auth.sqlite3` is a runtime store and is ignored by Git. Compose persists it
+and `db/private_key.pem` in the `aeza_auth` volume; user records are not seeded.
 
 ## Layout
 
@@ -130,11 +129,11 @@ table is empty). It is the auth module's runtime store, not fixture data.
 | `dataset/` | Case dataset as shipped (`data.json`, schema/seed SQL, `generate.py`, `README.md`). Read-only source material. |
 | `backend/app/domain/` | Business logic: money, scoring, revenue, analytics, importer, settings. No HTTP here. |
 | `backend/app/api/` | FastAPI routers, request/response schemas, serializers. |
-| `backend/app/auth/` | JWT issuing/verification and PBKDF2 password hashing. |
+| `backend/auth/` | Password verification, user repository, RS256 JWTs and OIDC. |
 | `backend/data/snapshot.json` | Seed snapshot served on first boot; loaded from `AEZA_SNAPSHOT_PATH`. |
 | `backend/migrations/` | Postgres DDL/seed used by the Compose stack. |
 | `frontend/src/` | React + TypeScript + Vite SPA. |
-| `docs/` | Data schema, model, import contract, demo script, readiness report. |
+| `docs/` | `PROJECT_GUIDE.md` is the current product guide; specialized AI/auth docs and historical materials are separate. |
 
 ## Commands
 
@@ -172,10 +171,9 @@ sudo docker compose up -d --build
 
 ## Gotchas
 
-- `AEZA_JWT_SECRET` must be set (with `AEZA_ALLOW_DEV_SECRET=0`) outside local
-  development; the app refuses to invent a secret in shared environments.
-- Compose uses a throwaway Postgres password (`aeza`) for local demos. Replace
-  it and the JWT secret before exposing the stack to anyone.
+- Create the first auth user explicitly with `docker compose exec api python -m backend.users create <login>`.
+- Set `AUTH_ISSUER` to the public HTTPS origin and `AUTH_COOKIE_SECURE=true` in production; the RSA key is persisted in the auth volume.
+- Compose uses a throwaway Postgres password (`aeza`) for local demos. Replace it before exposing the stack to anyone.
 - The frontend table must stay inside `.table-wrap`; page-level horizontal
   overflow at narrow widths is a regression (the header wraps at ≤720px).
 
@@ -217,17 +215,15 @@ not in SQL, so `sortBy`/`search` cannot use an index. N+1 is avoided via
 this is CPU-bound, not query-bound. Fine for 10 accounts; it is the first thing
 to change for a real customer base.
 
-## Two JWT libraries in one repository
-`backend/app/auth/security.py` uses `python-jose`; `backend/auth/tokens.py` and
-`backend/auth/service.py` use `pyjwt`. Both are declared now (part B via
-`backend/requirements.txt`, part C via the root `requirements.txt`). Parts B and
-C do not share an auth path: B is HS256 with a shared secret, C is RS256 with a
-generated RSA keypair and OIDC-style discovery/JWKS routes.
+## Authentication dependency
+The Compose API and standalone auth entrypoint share `backend/auth/` and use
+`PyJWT[crypto]` for RS256 tokens. The API does not bootstrap an account or
+require a shared JWT secret; users are created in the auth SQLite database.
 
 ## Test coverage gaps
 No frontend test runner is configured (`frontend/package.json` has no `test`
-script and no vitest/jest/playwright dependency). The UI is verified only by the
-manual browser walkthrough in `docs/demo.md`.
+script and no vitest/jest/playwright dependency). Verify the UI manually before
+release; the current user-facing overview is in `docs/PROJECT_GUIDE.md`.
 
 # Production deployment (verified against the live stand)
 
@@ -236,11 +232,11 @@ Public stand: `https://aeza-sentinel.pixel-minds.ru/` → `84.201.150.227`
 with a Let's Encrypt cert whose SAN covers both names (expires 2027-01-22) and
 proxies to the Compose stack. `http://` answers 301 to `https://`.
 
-**The deployed API equals `origin/main`, not the feature branches.** Its
-OpenAPI has exactly 18 paths; the Retention Playbooks routes
-(`GET/PATCH /api/v1/customers/{id}/recommendations[/{code}]`) exist only on
-`feat/priority-whatif-integration` and later, so they return 404 on the stand.
-Do not describe the stand as having playbooks until it is redeployed.
+The deployed API was last verified with 18 OpenAPI paths. The current local
+OpenAPI includes Retention Playbooks routes
+(`GET/PATCH /api/v1/customers/{id}/recommendations[/{code}]`); their presence
+on the public stand must be checked against that stand's own OpenAPI before
+being documented as deployed.
 
 `/metrics`, `/api/v1/source/snapshot`, `/api/v1/customers`, `/api/v1/model/settings`
 and `/api/v1/analytics/summary` all return 401 without a token — auth is enforced

@@ -7,7 +7,7 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from core import Core
-from backend.app.auth.security import AuthService, Principal, Unauthorized
+from backend.auth.service import AuthService, AuthError
 from backend.app.config import Settings
 from backend.app.db import Database
 from backend.app.modules import CalculationAdapter
@@ -29,6 +29,12 @@ class Runtime:
     ai: object | None = None
 
 
+@dataclass(frozen=True)
+class Principal:
+    email: str
+    session_id: str
+
+
 def get_runtime(request: Request) -> Runtime:
     return request.app.state.runtime
 
@@ -38,8 +44,9 @@ RuntimeDep = Annotated[Runtime, Depends(get_runtime)]
 
 def current_user(runtime: RuntimeDep, credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]) -> Principal:
     if credentials is None:
-        raise Unauthorized("Требуется авторизация")
-    return runtime.auth.authenticate(credentials.credentials)
+        raise AuthError(401, "invalid_token", "Authentication required", {"WWW-Authenticate": "Bearer"})
+    session, user, _ = runtime.auth.bearer(f"Bearer {credentials.credentials}")
+    return Principal(user.login, session.id)
 
 
 UserDep = Annotated[Principal, Depends(current_user)]

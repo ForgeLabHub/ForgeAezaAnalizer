@@ -7,7 +7,7 @@ Run from the repository root:
 It verifies four things that drift silently:
 
 1. every relative ``*.md`` link in tracked Markdown resolves;
-2. every ``AEZA_*`` variable named in the docs exists in ``.env.example``;
+2. every ``AEZA_*`` variable in current docs exists in ``.env.example``;
 3. every ``/api/v1/...`` route named in the docs exists in the OpenAPI schema;
 4. no documentation example embeds something that looks like a real secret.
 
@@ -69,6 +69,9 @@ def check_env_vars() -> list[str]:
                  "AEZA_HOST", "AEZA_PORT", "AEZA_SOURCE_ZIP"}
     problems = []
     for md in markdown_files():
+        # Dated audits record historical settings and are not live guidance.
+        if "audits" in md.relative_to(ROOT).parts:
+            continue
         text = md.read_text(encoding="utf-8", errors="replace")
         for name in set(re.findall(r"\b(AEZA_[A-Z0-9_]+)\b", text)):
             if name in declared or name in ENV_EXEMPT:

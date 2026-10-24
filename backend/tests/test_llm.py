@@ -27,9 +27,6 @@ CUSTOMER_ID = 10
 def _settings(**overrides) -> Settings:
     base = dict(
         database_url="sqlite://",
-        auth_database_url="sqlite://",
-        jwt_secret="test-secret-key",
-        bootstrap_admin_password="demo123",
         seed_demo_data=True,
         snapshot_path=str(ROOT / "dataset/data.json"),
         llm_enabled=True,

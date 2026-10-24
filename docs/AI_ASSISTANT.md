@@ -80,9 +80,11 @@ Content-Type: application/json
 Пример через `curl`:
 
 ```bash
+docker compose exec api python -m backend.users create analyst@example.com
+read -rsp 'Пароль: ' ANALYST_PASSWORD; echo
 TOKEN=$(curl -s -X POST http://127.0.0.1:8000/api/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"analyst@aeza.test","password":"demo123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+  -d "{\"email\":\"analyst@example.com\",\"password\":\"$ANALYST_PASSWORD\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 
 curl -s -X POST http://127.0.0.1:8000/api/v1/insights/ai \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \

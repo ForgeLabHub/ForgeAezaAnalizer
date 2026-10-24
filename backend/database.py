@@ -35,8 +35,11 @@ class UserRepository:
 
     def initialize(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        schema_path = ROOT / "db/schema.sql"
+        if not schema_path.exists():
+            schema_path = Path(__file__).with_name("auth_schema.sql")
         with self.connect() as connection:
-            connection.executescript((ROOT / "db/schema.sql").read_text(encoding="utf-8"))
+            connection.executescript(schema_path.read_text(encoding="utf-8"))
 
     @staticmethod
     def _user(row: tuple) -> User:
