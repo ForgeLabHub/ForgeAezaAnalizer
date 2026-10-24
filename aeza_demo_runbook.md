@@ -1,5 +1,16 @@
 # Aéza Analyzer — сценарий живой демонстрации
 
+> **Историческая заметка (2026-10-24).** Файл написан для защиты вместе с
+> презентацией и содержит числа прежней конфигурации (`expiry_proximity = 15,0`):
+> балл клиента #10 **73,3** и выручка **5,74 €**. Текущая конфигурация
+> (`expiry_proximity = 3,0`, окно 90 дней) даёт **71.4** и **5.80 €**.
+> Команда запуска backend — `python -m uvicorn main:app` **из корня репозитория**
+> (`app.main:app` из `backend/` падает с `ModuleNotFoundError: core`).
+> Адреса вида `*.prod-runtime.all-hands.dev` — временные адреса песочницы, они
+> больше не работают; актуальный стенд — <https://aeza-sentinel.pixel-minds.ru/>.
+> Актуальные значения и команды: `README.md`, `docs/TESTING.md`,
+> `docs/DATA_AND_RISK_MODEL.md`.
+
 Обязательный сценарий организатора: **найти клиента под риском → объяснить причины →
 показать денежную оценку → изменить коэффициент → показать обновление результата.**
 
@@ -11,14 +22,19 @@
 
 1. Поднять стек по README (backend + frontend) и убедиться, что снимок загружен:
    ```bash
-   cd /workspace/aeza/backend
+   # из КОРНЯ репозитория (main.py лежит в корне, core.py тоже)
    export AEZA_JWT_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
    export AEZA_ADMIN_EMAIL="analyst@aeza.test"
    export AEZA_ADMIN_PASSWORD="demo123"
-   python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+   export AEZA_DATABASE_URL="sqlite:///$(pwd)/data/analytics.sqlite"
+   export AEZA_AUTH_DATABASE_URL="sqlite:///$(pwd)/db/auth.sqlite3"
+   export AEZA_ANALYTICS_FACTORY="backend.app.domain.module:create"
+   export AEZA_SEED_DEMO_DATA=1
+   python -m uvicorn main:app --host 127.0.0.1 --port 8000
    # во втором терминале:
-   cd /workspace/aeza/frontend && npm install && npm run dev   # http://127.0.0.1:5173
+   cd frontend && npm install && npm run dev   # http://127.0.0.1:5173
    ```
+   Полный стек с PostgreSQL — `docker compose up --build` (интерфейс `:8080`).
 2. Открыть два окна браузера и войти под учёткой из `AEZA_ADMIN_EMAIL` / `AEZA_ADMIN_PASSWORD` (в демо-среде — `analyst@aeza.test` / `demo123`; пароль задаётся переменной окружения, дефолта в коде нет):
    - окно A: демо-стенд — для показа (в текущей среде проверен
      `https://work-1-vllmnzyteekiqwpn.prod-runtime.all-hands.dev/`, HTTP 200);

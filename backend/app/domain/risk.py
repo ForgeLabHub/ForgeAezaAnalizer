@@ -183,6 +183,15 @@ def validate_settings(settings: RiskSettings) -> None:
             raise RiskConfigError(f"weight for {key} must be finite")
         if weight < 0:
             raise RiskConfigError(f"weight for {key} cannot be negative")
+        # A deprecated factor duplicates a signal already carried by a live one
+        # (failed_renewals vs renewal_failure_rate). Allowing it a non-zero
+        # weight restores the double counting the methodology removed, so the
+        # only accepted value is 0 — the field stays for API compatibility.
+        if FACTOR_BY_KEY[key].deprecated and weight != 0:
+            raise RiskConfigError(
+                f"weight for {key} must be 0: the factor is deprecated and its "
+                f"signal is already counted by another factor"
+            )
 
 
 def classify(score: float | None, settings: RiskSettings) -> str:

@@ -103,6 +103,27 @@ class AuditRow(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
 
 
+class RecommendationStatusRow(Base):
+    """Workflow status of one retention playbook for one customer.
+
+    Deliberately **not** keyed by ``generation``. A generation is republished on
+    every recalculation, so tying a status to it would silently reset the
+    operator's work whenever the snapshot or the model settings changed. The
+    natural key is the pair the analytics layer already uses to deduplicate
+    recommendations: the customer and the stable recommendation ``code``.
+
+    Nothing here feeds back into the model: a status is a workflow fact, not an
+    analytical signal, so it can never change a score or an exposure.
+    """
+
+    __tablename__ = "analyzer_recommendation_status"
+    customer_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16))
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    updated_by: Mapped[str] = mapped_column(String(320))
+
+
 class UserRow(Base):
     __tablename__ = "analyzer_users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -145,6 +166,11 @@ class ActionRow(Base):
 ANALYTICS_TABLES = (
     CurrentRow.__table__, SourceRow.__table__, ModelRow.__table__, AnalysisRow.__table__,
     CustomerRow.__table__, ServiceIndexRow.__table__, ObservationRow.__table__, AuditRow.__table__,
+    # Workflow state for retention playbooks. Grouped with the analytics tables
+    # because it is created by the same initialise() call the runtime makes at
+    # startup; it holds no analytical data and is never versioned by generation.
+    RecommendationStatusRow.__table__,
+    # Human-confirmed retention actions, created by the same initialise() call.
     ActionRow.__table__,
 )
 AUTH_TABLES = (UserRow.__table__, AuthSessionRow.__table__)
