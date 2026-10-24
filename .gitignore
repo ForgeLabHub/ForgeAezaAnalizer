@@ -64,6 +64,10 @@ frontend/tsconfig.tsbuildinfo
 # Deck render output (PDF + rasterised slide previews)
 /render/
 /render_final/
+/docs/deck/render/
+
+# Local-only compose overrides (published sandbox ports).
+docker-compose.override.yml
 
 # Local SQLite authentication database and runtime files
 /db/auth.sqlite3

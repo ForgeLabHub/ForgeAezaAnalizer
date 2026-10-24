@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import sqlite3
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -172,3 +174,54 @@ def test_openapi_describes_responses_and_all_frontend_paths(client):
         assert path in document["paths"]
     schema = document["paths"]["/api/v1/customers"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
     assert schema["$ref"].endswith("/CustomerPage")
+
+
+# Every path the shipped frontend calls must be present in the published schema,
+# otherwise the UI breaks at runtime while the OpenAPI document still looks fine.
+FRONTEND_CALLS = (
+    ("get", "/api/v1/analytics/summary"),
+    ("get", "/api/v1/analytics/events"),
+    ("get", "/api/v1/customers"),
+    ("get", "/api/v1/customers/{customer_id}"),
+    ("get", "/api/v1/priority"),
+    ("get", "/api/v1/quality"),
+    ("post", "/api/v1/scenarios/compare"),
+    ("get", "/api/v1/model/settings"),
+    ("patch", "/api/v1/model/settings"),
+    ("post", "/api/v1/model/settings/reset"),
+    ("get", "/api/v1/source/snapshot"),
+    ("get", "/api/v1/source/observations"),
+    ("get", "/api/v1/export/customers.csv"),
+)
+
+
+def test_openapi_covers_every_frontend_call(client):
+    paths = client.get("/api/v1/openapi.json").json()["paths"]
+    missing = [f"{m.upper()} {p}" for m, p in FRONTEND_CALLS if p not in paths or m not in paths[p]]
+    assert missing == []
+
+
+def test_committed_openapi_matches_the_app(client):
+    # `backend/openapi.json` is published to integrators, so a route added without
+    # regenerating it ships a schema that silently omits that route. Regenerate with
+    # `python backend/scripts/export_openapi.py`.
+    committed = json.loads((Path(__file__).resolve().parents[1] / "openapi.json").read_text(encoding="utf-8"))
+    live = client.get("/api/v1/openapi.json").json()
+    assert set(committed["paths"]) == set(live["paths"])
+    for path, methods in live["paths"].items():
+        assert set(committed["paths"][path]) == set(methods), path
+
+
+def test_openapi_documents_priority_query_parameters(client):
+    parameters = client.get("/api/v1/openapi.json").json()["paths"]["/api/v1/priority"]["get"]["parameters"]
+    names = {p["name"] for p in parameters}
+    assert {"horizonDays", "category", "sortBy", "sortDir"} <= names
+    sort_by = next(p for p in parameters if p["name"] == "sortBy")
+    assert set(sort_by["schema"]["enum"]) == {"urgency", "riskScore", "exposure", "id"}
+
+
+def test_removed_whatif_endpoint_is_not_published(client):
+    # The scenario preview moved to POST /api/v1/scenarios/compare; the old
+    # route must not linger in the schema, or clients keep calling a 404.
+    paths = client.get("/api/v1/openapi.json").json()["paths"]
+    assert "/api/v1/whatif" not in paths

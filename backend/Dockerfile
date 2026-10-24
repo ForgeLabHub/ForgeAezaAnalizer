@@ -23,6 +23,13 @@ COPY docs ./docs
 RUN mkdir -p /app/backend/data \
     && python -m backend.app.ai.rag --docs /app/docs --out /app/backend/data/rag_index.json
 
+# The AI Analyst grounds its answers in docs/ via a prebuilt RAG index
+# (AEZA_AI_DOCS_PATH / AEZA_AI_RAG_INDEX_PATH). Ship the docs and build the
+# index here: without them the retriever silently returns nothing and answers
+# lose their grounding.
+COPY docs ./docs
+RUN python -m backend.app.ai.rag --docs /app/docs --out /app/backend/data/rag_index.json
+
 # Run as an unprivileged user; the auth database is mounted under /app/db.
 RUN useradd --create-home --uid 10001 aeza \
     && mkdir -p /app/data /app/db \
