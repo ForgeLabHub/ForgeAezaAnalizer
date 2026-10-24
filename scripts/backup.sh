@@ -33,9 +33,13 @@ echo "Backing up to $OUT_DIR"
 
 # --- analytics database (PostgreSQL) --------------------------------------- #
 # -T disables the pseudo-TTY so the dump is byte-exact on stdout.
+# --clean --if-exists makes the dump self-contained: it drops each object before
+# recreating it, so restoring over a live database is idempotent instead of
+# failing with "relation already exists". Without this a restore only works into
+# an empty database, which is exactly the case a real restore is not.
 echo "  analytics.sql"
 docker compose exec -T db sh -c \
-  'pg_dump -U "${POSTGRES_USER:-aeza}" -d "${POSTGRES_DB:-aeza}"' \
+  'pg_dump --clean --if-exists -U "${POSTGRES_USER:-aeza}" -d "${POSTGRES_DB:-aeza}"' \
   > "$OUT_DIR/analytics.sql"
 
 # --- auth database (SQLite, inside the api container's volume) ------------- #
