@@ -10,9 +10,8 @@ import PriorityPage from './pages/PriorityPage'
 import CustomersPage from './pages/CustomersPage'
 import CustomerDetailPage from './pages/CustomerDetailPage'
 import SettingsPage from './pages/SettingsPage'
-import AIAnalystPage from './pages/AIAnalystPage'
-import DataSourcePage from './pages/DataSourcePage'
 import TelegramPage from './pages/TelegramPage'
+import { AIAnalystWidget } from './components/AIAnalystPanel'
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { email, logout } = useAuth()
@@ -34,9 +33,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           </NavLink>
           <NavLink to="/priority">Приоритеты</NavLink>
           <NavLink to="/customers">Клиенты</NavLink>
-          <NavLink to="/ai">AI-аналитик</NavLink>
           <NavLink to="/settings">Модель и сценарии</NavLink>
-          <NavLink to="/data">Данные и качество</NavLink>
           <NavLink to="/telegram">Telegram</NavLink>
         </nav>
         <div className="header-user">
@@ -66,6 +63,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
       ) : null}
       <main className="page">{children}</main>
+      <AIAnalystWidget />
     </div>
   )
 }
@@ -98,9 +96,7 @@ export default function App() {
           <Route path="/priority" element={<PriorityPage />} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/:id" element={<CustomerDetailPage />} />
-          <Route path="/ai" element={<AIAnalystPage />} />
           <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/data" element={<DataSourcePage />} />
           <Route path="/telegram" element={<TelegramPage />} />
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
