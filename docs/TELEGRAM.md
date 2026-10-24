@@ -133,15 +133,18 @@ the UI first.
 
 ## Known limitations
 
-- **No scheduler for the daily digest.** The bot command and the preference are
-  implemented and stored, but nothing dispatches the digest on a timer: the
-  project has no background-job infrastructure, and adding Redis or Celery for
-  one message a day was not justified. `notifications.digest_text()` produces the
-  text; a cron entry calling the send path can be added when a scheduler exists.
-  This is stated rather than implied by a switch that does nothing.
+- **The digest scheduler is time-driven and deduplicated per UTC day.** It runs
+  whenever the Telegram integration is on, independently of `AEZA_AS_OF`, and
+  sends at `TELEGRAM_DIGEST_HOUR_UTC` (default 09:00 UTC) to chats that enabled
+  it. `TELEGRAM_DIGEST_CHECK_SECONDS` controls how often it wakes. The
+  `daily_digest:<date>` delivery key guarantees at-most-once delivery, so a
+  restart mid-day cannot resend. What is *not* implemented: per-user timezone
+  selection (the hour is a single UTC setting) and any retry of a digest that
+  failed because Telegram was down at that moment.
 - **Notifications follow the recalculation clock.** `dispatch_notifications()`
-  runs after each scheduled recalculation in `backend/app/main.py`, so alerts
-  track new generations. It is deliberately *not* called from the request path,
-  so a Telegram outage cannot slow down or fail an API call.
+  runs after each scheduled recalculation *and* after a manual snapshot upload,
+  so alerts track new generations. It is deliberately *not* called from the
+  request path in a way that could fail or delay an API response.
 - **Delivery retries are bounded and synchronous** (`TELEGRAM_MAX_RETRIES`).
-  They run in the background task, never inside an analytics request.
+  They run in the background task or the import worker thread, never inside an
+  analytics read request.

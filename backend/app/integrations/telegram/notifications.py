@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from backend.app.config import Settings
 from backend.app.integrations.telegram.client import escape_text
@@ -178,3 +179,35 @@ def dispatch(
         sent = service.send(chat_id, event.text, kind=event.kind, dedupe_key=event.dedupe_key)
         results.append({"kind": event.kind, "dedupeKey": event.dedupe_key, "sent": sent})
     return results
+
+
+def dispatch_digests(service: TelegramService, analysis, *, settings: Settings, now=None) -> list[dict]:
+    """Send the daily digest to every chat that asked for it, at most once a day.
+
+    The dedupe key is the UTC date, so the scheduler can run as often as it likes
+    without sending twice. Chats that have not enabled the digest are skipped
+    even if they are subscribed to other kinds.
+    """
+
+    moment = now or datetime.now(timezone.utc)
+    day = moment.date().isoformat()
+    results = []
+    for chat_id in service.linked_chats():
+        subscription = service.subscription(chat_id)
+        if not subscription["dailyDigest"]:
+            continue
+        sent = service.send(
+            chat_id,
+            digest_text(analysis, settings=settings),
+            kind="daily_digest",
+            dedupe_key=f"daily_digest:{day}",
+        )
+        results.append({"chatId": chat_id, "sent": sent, "day": day})
+    return results
+
+
+def digest_due(settings: Settings, now=None) -> bool:
+    """Whether the configured digest hour has passed for the current UTC day."""
+
+    moment = now or datetime.now(timezone.utc)
+    return moment.hour >= settings.telegram_digest_hour_utc

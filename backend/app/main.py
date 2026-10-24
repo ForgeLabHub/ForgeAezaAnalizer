@@ -14,7 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST
-from sqlalchemy import select, text
+from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
 
 from core import ConflictError, Core, InvalidInput, NotReadyError, ResourceNotFoundError
@@ -46,22 +46,59 @@ def dispatch_notifications(runtime: Runtime) -> None:
         return
     try:
         from backend.app.integrations.telegram import notifications
-        from backend.app.integrations.telegram.service import TelegramLinkRow
 
         analysis = runtime.calculation.calculate(runtime.storage.load())
-        with runtime.database.sessions() as session:
-            chats = [
-                row.chat_id
-                for row in session.scalars(
-                    select(TelegramLinkRow).where(TelegramLinkRow.revoked_at.is_(None))
-                ).all()
-            ]
-        for chat_id in chats:
+        for chat_id in service.linked_chats():
             notifications.dispatch(
                 service, analysis, settings=runtime.settings, chat_id=chat_id
             )
     except Exception:
         logger.exception("telegram notification dispatch failed; analytics unaffected")
+
+
+def send_due_digests(runtime: Runtime) -> list[dict]:
+    """Send the daily digest once per UTC day to chats that enabled it.
+
+    Kept separate from the event dispatch because it is time-driven, not
+    generation-driven. The per-day dedupe key makes it safe to call as often as
+    the scheduler likes.
+    """
+
+    service = getattr(runtime, "telegram", None)
+    if service is None:
+        return []
+    from backend.app.integrations.telegram import notifications
+
+    if not notifications.digest_due(runtime.settings):
+        return []
+    try:
+        analysis = runtime.calculation.calculate(runtime.storage.load())
+        return notifications.dispatch_digests(
+            service, analysis, settings=runtime.settings
+        )
+    except Exception:
+        logger.exception("daily digest dispatch failed; analytics unaffected")
+        return []
+
+
+async def digest_scheduler(runtime: Runtime, stop: asyncio.Event):
+    """Wake periodically and send the digest when its hour has arrived.
+
+    This runs whenever the Telegram integration is on, independently of
+    ``AEZA_AS_OF``: the reference instant only affects *scoring*, not whether
+    notifications may be delivered. The per-day dedupe key in the delivery table
+    is what guarantees at-most-once delivery, so a restart mid-day cannot resend.
+    """
+
+    while True:
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=runtime.settings.telegram_digest_check_seconds)
+            return
+        except asyncio.TimeoutError:
+            try:
+                await run_in_threadpool(send_due_digests, runtime)
+            except Exception:
+                logger.exception("digest scheduler iteration failed")
 
 
 async def recalculate(runtime: Runtime, stop: asyncio.Event):
@@ -149,11 +186,19 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
             application.state.metrics = Metrics(storage)
             if settings.as_of.lower() == "now" and not isinstance(module, UnavailableAnalytics):
                 task = asyncio.create_task(recalculate(runtime, stop))
+            # The digest scheduler runs whenever Telegram is on, independently of
+            # AEZA_AS_OF: the pinned reference instant only affects scoring, not
+            # whether notifications may be delivered.
+            digest_task = None
+            if runtime.telegram is not None:
+                digest_task = asyncio.create_task(digest_scheduler(runtime, stop))
             yield
         finally:
             stop.set()
             if task is not None:
                 await task
+            if digest_task is not None:
+                await digest_task
             database.engine.dispose()
             auth_database.engine.dispose()
 

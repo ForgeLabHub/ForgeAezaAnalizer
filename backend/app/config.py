@@ -79,6 +79,12 @@ class Settings:
     telegram_max_retries: int = field(default_factory=lambda: int(os.getenv("TELEGRAM_MAX_RETRIES", "2")))
     #: Public base URL used to build deep links back into the Sentinel UI.
     telegram_app_base_url: str = field(default_factory=lambda: os.getenv("TELEGRAM_APP_BASE_URL", "http://localhost:8080"))
+    #: How often the digest scheduler checks whether a digest is due. Small
+    #: enough to be punctual, large enough not to spin. The digest itself is
+    #: deduplicated per UTC day, so a check that is too frequent is harmless.
+    telegram_digest_check_seconds: int = field(default_factory=lambda: int(os.getenv("TELEGRAM_DIGEST_CHECK_SECONDS", "300")))
+    #: UTC hour at which the daily digest is sent.
+    telegram_digest_hour_utc: int = field(default_factory=lambda: int(os.getenv("TELEGRAM_DIGEST_HOUR_UTC", "9")))
     api_prefix: str = "/api/v1"
     app_name: str = "Aéza Analyzer"
 
@@ -126,6 +132,10 @@ class Settings:
                 raise ValueError("TELEGRAM_LINK_MAX_ATTEMPTS must be between 1 and 20")
             if not 0 <= self.telegram_max_retries <= 5:
                 raise ValueError("TELEGRAM_MAX_RETRIES must be between 0 and 5")
+            if not 30 <= self.telegram_digest_check_seconds <= 86400:
+                raise ValueError("TELEGRAM_DIGEST_CHECK_SECONDS must be between 30 and 86400")
+            if not 0 <= self.telegram_digest_hour_utc <= 23:
+                raise ValueError("TELEGRAM_DIGEST_HOUR_UTC must be between 0 and 23")
         self.reference_now()
 
     def reference_now(self) -> datetime:

@@ -70,6 +70,8 @@ services:
       TELEGRAM_MIN_SEND_INTERVAL_SECONDS: ${TELEGRAM_MIN_SEND_INTERVAL_SECONDS:-3}
       TELEGRAM_MAX_RETRIES: ${TELEGRAM_MAX_RETRIES:-2}
       TELEGRAM_APP_BASE_URL: ${TELEGRAM_APP_BASE_URL:-http://localhost:8080}
+      TELEGRAM_DIGEST_CHECK_SECONDS: ${TELEGRAM_DIGEST_CHECK_SECONDS:-300}
+      TELEGRAM_DIGEST_HOUR_UTC: ${TELEGRAM_DIGEST_HOUR_UTC:-9}
     # On Linux, host.docker.internal is not resolved automatically; this maps it
     # to the host gateway so the container can reach a host-run Ollama.
     extra_hosts:
