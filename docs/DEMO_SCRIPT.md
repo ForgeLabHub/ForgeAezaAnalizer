@@ -117,6 +117,6 @@ API и показать, что сохранённые значения оста
 ## Проверка перед защитой
 
 ```bash
-cd backend && python -m pytest tests/ -q     # 108 passed
+cd backend && python -m pytest tests/ -q     # 246 passed
 cd frontend && npm run build                  # без ошибок
 ```

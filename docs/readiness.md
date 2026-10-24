@@ -34,17 +34,23 @@
 cd backend && python -m pytest tests/ -q
 ```
 
-**Результат: 108 passed, 0 failed** (время выполнения ≈ 10 с).
+**Результат: 246 passed, 0 failed** (время выполнения ≈ 40 с).
 
 | Файл | Тестов | Что покрыто |
 | --- | --- | --- |
-| `tests/test_domain.py` | 41 | Денежные преобразования, схема и валидация, нормализация факторов, границы порогов, нулевые и отсутствующие веса, некорректные веса, агрегация до клиента |
+| `tests/test_domain.py` | 42 | Денежные преобразования, схема и валидация, нормализация факторов, границы порогов, нулевые и отсутствующие веса, некорректные веса, агрегация до клиента |
 | `tests/test_revenue.py` | 13 | Продления в горизонте, граничные даты, выручка под риском, исключение неподходящих услуг, рекомендации |
-| `tests/test_api.py` | 50 | Авторизация и её ошибки, список клиентов, карточка, фильтры, сортировка по каждому обязательному полю, сводка, настройки модели, импорт снимка, `/metrics` |
-| `tests/test_integration.py` | 4 | Сквозной сценарий из 10 шагов, атомарность отклонённого импорта, детерминизм, воспроизводимость между процессами |
+| `tests/test_money_rounding.py` | 8 | Округление `ROUND_HALF_UP`, евроценты → евро на границе API |
+| `tests/test_methodology.py` | 22 | Согласованные правила методики: окна, статусы, бонусный баланс, агрегация услуг |
+| `tests/test_module_contract.py` | 15 | Контракт внешнего аналитического модуля и отказ при его отсутствии |
+| `tests/test_api.py` | 45 | Авторизация и её ошибки, список клиентов, карточка, фильтры, сортировка по каждому обязательному полю, сводка, настройки модели, импорт снимка, `/metrics` |
+| `tests/test_insights.py` | 24 | Приоритизация, качество данных, сценарии What-if, экспорт |
+| `tests/test_actions.py` | 21 | Действия по удержанию: создание человеком, статусы, запрет записи от AI |
+| `tests/test_ai.py` | 43 | AI Analyst: схемы, контекст, grounding, недоступность модели, mock-провайдер |
+| `tests/test_integration.py` | 13 | Сквозной сценарий, атомарность отклонённого импорта, детерминизм, воспроизводимость между процессами |
 
-Предупреждения (10) — deprecation-сообщения Starlette о коде статуса 422; на
-поведение не влияют.
+Предупреждения — deprecation-сообщения Starlette об интеграции `TestClient` с `httpx`;
+на поведение не влияют.
 
 ---
 
@@ -115,8 +121,8 @@ OpenAPI: 12 схем, схема авторизации `HTTPBearer`. Специ
 | Проверка | Команда | Результат |
 | --- | --- | --- |
 | Проверка типов frontend | `npx tsc -b` | Без ошибок |
-| Сборка frontend | `npm run build` | Успешно, 200,69 kB JS / 14,03 kB CSS (gzip 64,47 / 3,63 kB) |
-| Тесты backend | `python -m pytest tests/ -q` | 108 passed |
+| Сборка frontend | `npm run build` | Успешно, 264,74 kB JS / 30,43 kB CSS (gzip 83,28 / 6,92 kB) |
+| Тесты backend | `python -m pytest tests/ -q` | 246 passed |
 
 По ходу проверки в мобильной вёрстке найден и исправлен дефект: при ширине 390 px
 шапка не переносилась и страница получала горизонтальную прокрутку на 67 px. Навигация
@@ -190,11 +196,13 @@ OpenAPI: 12 схем, схема авторизации `HTTPBearer`. Специ
 # Тесты
 cd backend && python -m pytest tests/ -q
 
-# Запуск API
-cd backend
+# Запуск API (из корня репозитория)
 export AEZA_JWT_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
 export AEZA_ADMIN_PASSWORD=demo123
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+export AEZA_ANALYTICS_FACTORY=backend.app.domain.module:create
+export AEZA_SEED_DEMO_DATA=1
+export AEZA_SNAPSHOT_PATH=backend/data/snapshot.json
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
 
 # Запуск интерфейса
 cd frontend && npm install && npm run dev
