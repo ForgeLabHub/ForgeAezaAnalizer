@@ -3,12 +3,14 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import parse_qsl
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 
 from core import ConflictError, NotReadyError, ResourceNotFoundError
 from backend.auth.service import AuthError
@@ -23,6 +25,7 @@ from backend.app.db import (
     TelegramClientSessionRow,
     TelegramLinkRow,
     TelegramOtpRow,
+    TelegramUpdateRow,
     Database,
 )
 from backend.app.storage import Storage
@@ -35,6 +38,8 @@ from backend.app.telegram.providers import (
     TelegramProvider,
     UnconfiguredEmailProvider,
 )
+
+logger = logging.getLogger("aeza.telegram")
 
 MOSCOW_TZ = timezone(timedelta(hours=3))
 
@@ -186,53 +191,65 @@ class TelegramService:
                         challenge.consumed_at = now
                     failure = "Неверный код"
                 else:
-                    challenge.consumed_at = now
-                    link = session.scalars(select(TelegramLinkRow).where(
-                        TelegramLinkRow.telegram_user_id == telegram_user_id
-                    )).first()
-                    if link is None:
-                        link = TelegramLinkRow(
-                            telegram_user_id=telegram_user_id, account_id=challenge.account_id,
-                            notifications_enabled=False, consent_at=None, created_at=now, updated_at=now,
-                        )
-                        session.add(link)
-                        session.flush()
+                    # Claim the code atomically. ``with_for_update`` is a no-op on
+                    # SQLite, so two concurrent verifications could both pass the
+                    # check above and both link the account. A conditional UPDATE
+                    # whose rowcount must be exactly 1 makes consumption a
+                    # compare-and-set: the loser sees 0 and is refused.
+                    claimed = session.execute(
+                        TelegramOtpRow.__table__.update()
+                        .where(TelegramOtpRow.id == challenge.id, TelegramOtpRow.consumed_at.is_(None))
+                        .values(consumed_at=now)
+                    ).rowcount
+                    if claimed != 1:
+                        failure = "Код уже использован"
                     else:
-                        if link.account_id != challenge.account_id:
-                            link.account_id = challenge.account_id
-                            link.notifications_enabled = False
-                            link.consent_at = None
-                            pending_messages = session.scalars(select(SupportMessageDeliveryRow.message_id).where(
-                                SupportMessageDeliveryRow.link_id == link.id,
-                                SupportMessageDeliveryRow.status != "sent",
-                            )).all()
-                            session.execute(delete(SupportMessageDeliveryRow).where(
-                                SupportMessageDeliveryRow.link_id == link.id,
-                                SupportMessageDeliveryRow.status != "sent",
+                        link = session.scalars(select(TelegramLinkRow).where(
+                            TelegramLinkRow.telegram_user_id == telegram_user_id
+                        )).first()
+                        if link is None:
+                            link = TelegramLinkRow(
+                                telegram_user_id=telegram_user_id, account_id=challenge.account_id,
+                                notifications_enabled=False, consent_at=None, created_at=now, updated_at=now,
+                            )
+                            session.add(link)
+                            session.flush()
+                        else:
+                            if link.account_id != challenge.account_id:
+                                link.account_id = challenge.account_id
+                                link.notifications_enabled = False
+                                link.consent_at = None
+                                pending_messages = session.scalars(select(SupportMessageDeliveryRow.message_id).where(
+                                    SupportMessageDeliveryRow.link_id == link.id,
+                                    SupportMessageDeliveryRow.status != "sent",
+                                )).all()
+                                session.execute(delete(SupportMessageDeliveryRow).where(
+                                    SupportMessageDeliveryRow.link_id == link.id,
+                                    SupportMessageDeliveryRow.status != "sent",
+                                ))
+                                session.execute(delete(NotificationDeliveryRow).where(
+                                    NotificationDeliveryRow.link_id == link.id,
+                                    NotificationDeliveryRow.status != "sent",
+                                ))
+                                for message_id in set(pending_messages):
+                                    remaining = session.scalars(select(SupportMessageDeliveryRow.id).where(
+                                        SupportMessageDeliveryRow.message_id == message_id
+                                    )).first()
+                                    if remaining is None:
+                                        message = session.get(SupportMessageRow, message_id)
+                                        message.delivery_status = "failed"
+                                        message.last_error = "Telegram link changed before delivery"
+                            link.updated_at = now
+                            session.execute(delete(TelegramClientSessionRow).where(
+                                TelegramClientSessionRow.link_id == link.id
                             ))
-                            session.execute(delete(NotificationDeliveryRow).where(
-                                NotificationDeliveryRow.link_id == link.id,
-                                NotificationDeliveryRow.status != "sent",
-                            ))
-                            for message_id in set(pending_messages):
-                                remaining = session.scalars(select(SupportMessageDeliveryRow.id).where(
-                                    SupportMessageDeliveryRow.message_id == message_id
-                                )).first()
-                                if remaining is None:
-                                    message = session.get(SupportMessageRow, message_id)
-                                    message.delivery_status = "failed"
-                                    message.last_error = "Telegram link changed before delivery"
-                        link.updated_at = now
-                        session.execute(delete(TelegramClientSessionRow).where(
-                            TelegramClientSessionRow.link_id == link.id
+                        session.execute(delete(TelegramChatStateRow).where(
+                            TelegramChatStateRow.telegram_user_id == telegram_user_id
                         ))
-                    session.execute(delete(TelegramChatStateRow).where(
-                        TelegramChatStateRow.telegram_user_id == telegram_user_id
-                    ))
-                    result = {
-                        "status": "verified",
-                        "accountId": challenge.account_id, "notificationsEnabled": False,
-                    }
+                        result = {
+                            "status": "verified",
+                            "accountId": challenge.account_id, "notificationsEnabled": False,
+                        }
         if failure:
             raise ValueError(failure)
         return result
@@ -830,4 +847,43 @@ class TelegramService:
         }]]}
 
     def _send_text(self, telegram_user_id: str, text: str, reply_markup: dict | None = None) -> str:
-        return self.telegram_provider.send_message(telegram_user_id, text, reply_markup)
+        """Best-effort reply delivery.
+
+        A Telegram outage must never turn a handled update into a 500: Telegram
+        would then retry the update forever, and the caller would see a server
+        error for what is a downstream problem. The failure is logged (the
+        provider already strips the token) and an empty id is returned.
+        """
+
+        try:
+            return self.telegram_provider.send_message(telegram_user_id, text, reply_markup)
+        except IntegrationNotConfigured as exc:
+            logger.info("telegram reply skipped: %s", exc)
+        except DeliveryError as exc:
+            logger.warning("telegram reply failed: %s", exc)
+        except Exception:  # noqa: BLE001 - a reply must never break update handling
+            logger.exception("unexpected telegram reply failure")
+        return ""
+
+    def claim_update(self, update_id: int) -> bool:
+        """Reserve an ``update_id`` for processing. ``False`` means already seen.
+
+        Telegram redelivers an update when the webhook does not answer in time.
+        The primary key on ``analyzer_telegram_updates`` is the lock: a concurrent
+        duplicate loses the insert, so a linking command or a support message runs
+        exactly once. The insert commits before any business action, which is what
+        makes the guarantee hold across a crash mid-handling.
+        """
+
+        try:
+            with self.database.transaction() as session:
+                session.add(TelegramUpdateRow(update_id=update_id, processed_at=self._now()))
+            return True
+        except IntegrityError:
+            return False
+
+    def purge_old_updates(self, keep_hours: int = 48) -> int:
+        cutoff = self._now() - timedelta(hours=keep_hours)
+        with self.database.transaction() as session:
+            result = session.execute(delete(TelegramUpdateRow).where(TelegramUpdateRow.processed_at < cutoff))
+        return result.rowcount or 0
