@@ -272,6 +272,25 @@ def test_ai_disabled_by_default(monkeypatch):
     assert ai_settings().enabled is False
 
 
+def test_default_timeout_covers_a_cpu_only_cold_start(monkeypatch):
+    """The default budget must survive a cold CPU-only call.
+
+    Measured on a 4 vCPU host with qwen2.5:7b (q4_K_M): a cold explain call took
+    ~197 s (~2 000 prompt tokens at ~17 tokens/s, then ~470 generated at
+    ~4 tokens/s). With the previous 180 s default the first request after an
+    Ollama restart answered 503 while the model was healthy, so the default must
+    clear the measured cold cost with margin.
+    """
+
+    from backend.app.ai.config import ai_settings
+
+    for name in ("AEZA_AI_TIMEOUT_SECONDS",):
+        monkeypatch.delenv(name, raising=False)
+    settings = ai_settings()
+    measured_cold_seconds = 197.0
+    assert settings.request_timeout_seconds >= measured_cold_seconds * 1.5
+
+
 # ------------------------------------------------------------------------ API
 @pytest.fixture
 def ai_settings(tmp_path):

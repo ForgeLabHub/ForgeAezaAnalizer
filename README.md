@@ -1,35 +1,48 @@
-# Aéza · Churn Risk Analyzer
+# Aéza Analyzer
 
-**Продукт (рекомендуемый к запуску):** `backend/app/` + `frontend/` —
-FastAPI + React, собирается в Docker-образ, разворачивается через Docker Compose.
-Аналитический движок подключён по умолчанию
-(`AEZA_ANALYTICS_FACTORY=backend.app.domain.module:create`). Если фабрику не
-задать, аналитические маршруты отвечают 503, а не подставляют нули. Описание
-части B — [ниже](#часть-b--fastapi--react).
+**Backend v2:** ядро (оркестрация версий, атомарная публикация расчётов) находится
+в `core.py`, запуск из корня — `python -m uvicorn main:app --port 8000` после
+установки `backend/requirements.txt`. Реальный аналитический модуль и Risk Engine
+подключаются через `AEZA_ANALYTICS_FACTORY=backend.app.domain.module:create` —
+это значение задано в `.env.example` и `docker-compose.yml`. Если переменная пуста,
+приложение стартует с заглушкой, отвечающей `503`, и не выдаёт фиктивных расчётов.
+Контракт подключения внешнего модуля: [docs/backend-rewrite.md](docs/backend-rewrite.md).
+Канонический продукт — **часть B** (`backend/app/` + `frontend/`), описанная ниже.
 
-Аналитика клиентских данных Aéza для хакатона: выявление риска оттока,
-объяснение причин оценки и выручки под риском на **официальном датасете
-организатора** (10 аккаунтов, 30 услуг, 100 транзакций). Данные синтетические:
-их сгенерировал организатор (`dataset/generate.py`), это снимок состояния, а не
-история событий.
+Аналитика клиентских данных Aéza для хакатона **UMIRHack 2026, кейс №2**:
+выявление риска оттока, объяснение причин оценки и выручки под риском на
+**официальном датасете организатора** (10 аккаунтов, 30 услуг, 100 транзакций).
+Данные синтетические: их сгенерировал организатор (`dataset/generate.py`),
+это снимок состояния, а не история событий.
 
-**Контрольные значения на официальном наборе** (воспроизведены командой, см.
-`docs/audits/calculation-audit.md`): клиент №10 → score **71.4**; `revenueAtRisk`
-→ **5.80 €**; `upcomingRenewals` → **17.03 €**; распределение категорий
-**3 high / 3 medium / 4 not_applicable**. Смена веса `expiry_proximity` 3 → 9
-даёт score **81.8** и выручку **7.72 €**.
+## Канонический продукт
 
-> **В репозитории три независимых набора кода для одного кейса.** Они написаны
-> параллельно, не импортируют друг друга и имеют собственные модели данных,
-> скоринг, API и фронтенд. Выберите нужную.
+**Единственный поддерживаемый runtime — часть B**: FastAPI (`backend/app/`) плюс
+React + TypeScript (`frontend/`). Точка входа одна — корневой `main.py`
+(`uvicorn main:app`); её же использует `backend/Dockerfile`. Запуск одной командой:
+
+```bash
+cp .env.example .env        # обязательно задайте POSTGRES_PASSWORD, AEZA_JWT_SECRET,
+                            # AEZA_ADMIN_EMAIL, AEZA_ADMIN_PASSWORD — Compose без них не стартует
+docker compose up --build   # web :8080, api :8000
+```
+
+При старте подключается реальный аналитический модуль
+(`AEZA_ANALYTICS_FACTORY=backend.app.domain.module:create`) и загружается
+официальный датасет 10/30/100 через штатный импортёр. Если переменная пуста,
+приложение стартует с заглушкой, отвечающей `503`, и не выдаёт фиктивных расчётов.
+
+> **В репозитории есть два архивных набора кода для того же кейса.** Они не входят
+> в канонический сценарий, не импортируются частью B и сохранены как история. Не
+> запускайте их, если вам нужен продукт.
 >
-> | Реализация | Стек | Раздел |
+> | Реализация | Статус | Раздел |
 > | --- | --- | --- |
-> | `aeza_analyzer/` | Python-пакет, SQLite, vanilla-JS SPA, CLI | [Часть A](#часть-a--aeza_analyzer) |
-> | `backend/app/` + `frontend/` | FastAPI + PostgreSQL/SQLite, React + TypeScript + Vite, Docker Compose | [Часть B](#часть-b--fastapi--react) |
-> | `backend/auth/` + `backend/main.py` | Автономный модуль авторизации: JWT (RS256) + RSA, OIDC-подобные маршруты | [AGENTS.md](AGENTS.md) |
+> | `backend/app/` + `frontend/` | **канонический продукт** | [Часть B](#часть-b--fastapi--react-канонический-продукт) |
+> | `aeza_analyzer/` | архив: Python-пакет, SQLite, vanilla-JS SPA, CLI | [Часть A](#часть-a-архив--aeza_analyzer) |
+> | `backend/auth/` + `backend/main.py` | архив: автономный модуль авторизации, JWT (RS256) + RSA | [Часть C](#часть-c-архив--модуль-авторизации-backendauth) |
 >
-> **Что у них общего:** деньги хранятся в **евроцентах** (100 = €1) и
+> **Что общего у всех трёх:** деньги хранятся в **евроцентах** (100 = €1) и
 > конвертируются один раз на границе API/UI; скоринг — **объяснимая взвешенная
 > модель, а не обученная ML-модель**; риск клиента считается отдельно от
 > денежной экспозиции; завершённые события (`deleted`/`blocked`) отделены от
@@ -38,10 +51,11 @@ FastAPI + React, собирается в Docker-образ, разворачив
 
 ---
 
-# Часть A — `aeza_analyzer/`
+# Часть A (архив) — `aeza_analyzer/`
 
 Отдельный Python-пакет с CLI, SQLite-хранилищем и собственным SPA.
-Подробности запуска — в разделе ниже.
+**Не входит в канонический продукт** — сохранён как история. Подробности запуска —
+в разделе ниже.
 
 ---
 
@@ -75,6 +89,8 @@ curl -s localhost:8000/api/dashboard | python -m json.tool
 
 ```bash
 python -m pytest tests/ -v
+```
+
 ## 2. Что реализовано
 
 | Слой | Компонент | Назначение |
@@ -204,21 +220,21 @@ revenue_at_risk = eligible_renewal_amount × risk_score / 100
 - `favicon.ico` не отдаётся (безвредный 404 в консоли).
 
 Полный отчёт аудита данных и найденные дефекты исходных данных —
-[`docs/DATA_AND_RISK_MODEL.md`](docs/DATA_AND_RISK_MODEL.md).
+[`docs/IMPORT_AND_DATA_AUDIT.md`](docs/IMPORT_AND_DATA_AUDIT.md).
 
 
 ---
 
-# Часть B — FastAPI + React
+# Часть B — FastAPI + React (канонический продукт)
 
-Вторая реализация того же кейса: FastAPI-бэкенд с PostgreSQL (или SQLite) и
-React + TypeScript SPA под nginx. Полностью независима от части A — свой
-скоринг, свой импорт снимка, свой фронтенд.
+Единственный поддерживаемый runtime кейса: FastAPI-бэкенд с PostgreSQL (или
+SQLite) и React + TypeScript SPA под nginx. Собственный скоринг, импорт снимка и
+фронтенд. Ниже — полный рабочий сценарий.
 
 Система анализа клиентской базы Aéza: выявление клиентов и услуг с повышенным риском
 оттока, объяснение причин оценки, рекомендации по удержанию и оценка выручки под риском.
 
-Кейс #2, UMIRHack 2026. Источник данных — синтетический снимок PostgreSQL
+Кейс #2, UMIRHack 2026. Источник данных — синтетический снимок
 (`accounts`, `services`, `transactions`): 10 аккаунтов, 30 услуг, 100 транзакций.
 
 ---
@@ -256,30 +272,38 @@ React + TypeScript SPA под nginx. Полностью независима о�
 
 ## Быстрый старт (локально, без Docker)
 
-Нужен Python 3.10+ и Node.js 18+. Команды backend запускаются **из корня
-репозитория** — `main.py` в корне импортирует `backend.app.main:create_app`.
+Нужен Python 3.10+ и Node.js 18+.
 
 ```bash
-# 1. Зависимости backend
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r backend/requirements.txt
+# 1. Backend
+cd backend
+python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cd ..                                                # запуск из корня репозитория
 
 # 2. Демо-доступ и секрет подписи токенов
+# Локальный пароль ниже — пример только для запуска на своей машине.
+# В любом общем окружении задайте собственные значения и AEZA_ALLOW_DEV_SECRET=0.
 export AEZA_JWT_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
 export AEZA_ADMIN_EMAIL="analyst@aeza.test"
 export AEZA_ADMIN_PASSWORD="demo123"
-export AEZA_DATABASE_URL="sqlite:///$(pwd)/data/analytics.sqlite"
-export AEZA_AUTH_DATABASE_URL="sqlite:///$(pwd)/db/auth.sqlite3"
-export AEZA_ANALYTICS_FACTORY="backend.app.domain.module:create"
-export AEZA_SEED_DEMO_DATA=1     # загрузить dataset/data.json при пустой БД
-mkdir -p data
 
-# 3. Запуск API из корня репозитория
+# 3. Подключить реальный аналитический модуль и заполнить БД снимком
+export AEZA_ANALYTICS_FACTORY=backend.app.domain.module:create
+export AEZA_SEED_DEMO_DATA=1
+export AEZA_SNAPSHOT_PATH=backend/data/snapshot.json
+
+# 4. Запуск API из корня репозитория (при старте база создаётся и заполняется из снимка)
 python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
+> Запускать `uvicorn app.main:app` из каталога `backend/` нельзя: модуль импортирует
+> `core.py` из корня и упадёт с `ModuleNotFoundError: No module named 'core'`.
+> Рабочая точка входа — корневой `main.py` (`uvicorn main:app`), он же используется
+> в `backend/Dockerfile`.
+
 ```bash
-# 4. Frontend (в другом терминале)
+# 5. Frontend (в другом терминале)
 cd frontend
 npm install
 npm run dev          # http://127.0.0.1:5173
@@ -288,18 +312,13 @@ npm run dev          # http://127.0.0.1:5173
 Откройте <http://127.0.0.1:5173>, войдите как `analyst@aeza.test` / `demo123`.
 
 Vite проксирует `/api`, `/metrics` и `/health` на `127.0.0.1:8000`, поэтому CORS в
-разработке не требуется. Полный стек с PostgreSQL — в разделе
-[Docker Compose](#запуск-через-docker-compose).
+разработке не требуется.
 
 ### Проверка API напрямую
 
 ```bash
 curl -s http://127.0.0.1:8000/health
-# Токен нужен для /metrics и всех маршрутов /api/v1
-TOKEN=$(curl -s -X POST http://127.0.0.1:8000/api/v1/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"analyst@aeza.test","password":"demo123"}' | python -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
-curl -s http://127.0.0.1:8000/metrics -H "Authorization: Bearer $TOKEN" | grep '^aeza_'
+curl -s http://127.0.0.1:8000/metrics | grep '^aeza_'
 ```
 
 Swagger UI: <http://127.0.0.1:8000/api/v1/docs>
@@ -312,54 +331,94 @@ Swagger UI: <http://127.0.0.1:8000/api/v1/docs>
 Поднимает три сервиса: PostgreSQL, API и веб-интерфейс (nginx).
 
 ```bash
-cp .env.example .env      # обязательно задайте AEZA_JWT_SECRET и пароль
+cp .env.example .env      # обязательно: POSTGRES_PASSWORD, AEZA_JWT_SECRET,
+                          # AEZA_ADMIN_EMAIL, AEZA_ADMIN_PASSWORD
 docker compose up --build
 ```
+
+Секретов по умолчанию нет: `docker compose up` **не стартует**, пока не заданы
+`POSTGRES_PASSWORD`, `AEZA_JWT_SECRET`, `AEZA_ADMIN_EMAIL` и `AEZA_ADMIN_PASSWORD`.
+Это сделано намеренно — общее окружение не должно подниматься с демонстрационными
+паролями. `AEZA_CORS_ORIGINS` по умолчанию ограничен `http://localhost:8080`.
 
 | Сервис | Адрес | Назначение |
 | --- | --- | --- |
 | web | <http://localhost:8080> | Интерфейс (nginx раздаёт SPA и проксирует API) |
 | api | <http://localhost:8000> | REST API и `/metrics` |
-| db | внутренний | PostgreSQL 16, схема и данные загружаются миграциями |
+| db | внутренний | PostgreSQL 16 |
 
-Миграции в `backend/migrations/` применяются автоматически при первом старте
-контейнера `db`:
+Данные и авторизация хранятся в именованных томах Docker (`pg_data`, `auth_data`),
+поэтому запуск не зависит от файлов в рабочем каталоге и переживает перезапуск:
 
-- `001_schema.up.sql` — таблицы, ограничения, индексы;
-- `002_seed.sql` — те же 10/30/100 записей из `dataset/data.json`.
+- при первом старте API создаёт схему и загружает **официальный датасет 10/30/100**
+  из `dataset/data.json` через штатный импортёр (`AEZA_SEED_DEMO_DATA=1`);
+- SQLite-файл авторизации создаётся приложением в томе `auth_data` под
+  непривилегированным пользователем — каталог `/app/db` не монтируется с хоста.
+
+Проверка после старта:
+
+```bash
+curl -s localhost:8000/health          # 200
+curl -s localhost:8000/ready           # 200
+# войти и убедиться, что загружены 10 аккаунтов / 30 услуг / 100 транзакций
+```
 
 ---
 
 ## Тесты
 
 ```bash
-# Backend (FastAPI-приложение) — 210 тестов
-cd backend
-python -m pytest tests/ -q
+# часть B (канонический продукт)
+cd backend && python -m pytest tests/ -q        # 246 passed
 
-# Корневой набор (часть A + модуль авторизации) — 69 тестов
-cd ..
-python -m pytest tests/ -q
+# корневой набор: часть A + часть C
+python -m pytest tests/ -q                      # 69 passed (52 A + 17 C)
 
-# Frontend: типизация и production-сборка
-cd frontend
-npx tsc -b && npm run build
+# фронтенд: типизация и production-сборка
+cd frontend && npm ci && npx tsc -b && npm run build
 ```
 
-Покрытие backend: денежные преобразования, нормализация факторов, границы
-порогов, нулевые и отсутствующие веса, скоринг на уровне услуги и клиента,
-определение продлений в горизонте, выручка под риском, авторизация, ограничение
-частоты входа, безопасные значения по умолчанию, все обязательные сортировки,
-фильтры, импорт (включая атомарность и откат), `/metrics`, сквозной сценарий из
-10 шагов и воспроизводимость расчёта. Полные результаты — `docs/TESTING.md`.
+Покрытие: денежные преобразования, нормализация факторов, границы порогов, нулевые
+и отсутствующие веса, скоринг на уровне услуги и клиента, определение продлений в
+горизонте, выручка под риском, авторизация, все обязательные сортировки, фильтры,
+импорт (включая атомарность и откат), `/metrics`, сквозной сценарий из 10 шагов и
+воспроизводимость расчёта.
+
+### Приёмочный сценарий (проверен на чистом `docker compose`)
+
+Полный сквозной прогон на официальном датасете; числа ниже получены фактически:
+
+| Шаг | Проверка | Результат |
+| --- | --- | --- |
+| 1 | Чистый старт без локальных файлов | `auth.sqlite3` создан как файл в томе `auth_data` |
+| 2 | Загрузка датасета | `10 / 30 / 100` |
+| 3 | Вход без токена | все 11 приватных маршрутов → `401` |
+| 4 | Сортировка по `riskScore` | desc: 71.4, 71.4, 65.4; asc: 34.6, 35.4, 38.4 |
+| 5 | Фильтр `riskCategory=high` | 3 клиента, только `high` |
+| 6 | Поиск `user-0005` | 1 совпадение |
+| 7 | Карточка клиента 5 | score `71.4`, уровень `high`, факторы и причины заполнены |
+| 8 | Выручка под риском (контроль) | **€5.80** (`aeza_revenue_at_risk_eur 5.8`) |
+| 9 | Изменение веса `expiry_proximity` 3.0 → 0.1 | score 71.4 → 60.5, `modelVersion` 1 → 2 |
+| 10 | Сброс настроек | score → 71.4, `modelVersion` 3 |
+| 11 | Перезапуск API | score и версии сохранились, датасет не задублирован |
+| 12 | `/metrics` против интерфейса | совпадают: €5.80, 3 high / 3 medium / 4 n/a |
+| 13 | What-if (`scenarios/compare`) | 3 high → 0 high / 6 medium (реальный пересчёт) |
+| 14 | AI выключен (`AEZA_AI_ENABLED=0`) | `503` с понятным текстом, аналитика продолжает работать |
+| 15 | AI включён (Ollama `qwen2.5:3b-instruct`, CPU) | `status=ready`, `rag_indexed=true` (597 чанка) |
+| 16 | AI: вопрос о деньгах | `grounded=true`, называет **5.80 EUR**, ссылки на `GET /api/v1/analytics/summary` |
+| 17 | AI: объяснение клиента 5 | `grounded=true`, `riskScore=71.4` совпадает со значением движка |
+| 18 | AI: методология (RAG) | цитаты-документы `docs/model.md`, `docs/DEMO_SCRIPT.md` |
+| 19 | AI: prompt injection | отказ, секреты и SQL недоступны |
+| 20 | AI без токена | `/ai/chat` и `/ai/status` → `401` |
 
 ---
 
 ## Загрузка данных вручную
 
-Compose загружает `db/analytics_seed.sql` при первом создании локальной PostgreSQL
-базы. Постоянные файлы PostgreSQL находятся в `db/postgres/`, авторизация хранится
-отдельно в `db/auth.sqlite3`. Чтобы импортировать другой снимок:
+Compose при первом старте загружает официальный датасет `dataset/data.json`
+(10/30/100) через штатный импортёр. Данные PostgreSQL и SQLite-база авторизации
+хранятся в именованных томах Docker (`pg_data`, `auth_data`). Чтобы импортировать
+другой снимок:
 
 ```bash
 cd backend
@@ -385,62 +444,71 @@ curl -X PUT http://127.0.0.1:8000/api/v1/source/snapshot \
 ## Структура репозитория
 
 ```
+main.py           точка входа: `app = create_app()` (Docker и локальный запуск)
+core.py           ядро: версии, атомарная публикация расчётов, ConflictError
 backend/
   app/
     api/          HTTP-слой: маршруты, схемы, сериализация
+    ai/           локальный AI Analyst: провайдеры, RAG, инструменты, safety
     auth/         JWT и хеширование паролей
-    domain/       бизнес-логика: money, schema, risk, revenue, analytics, importer
+    domain/       бизнес-логика: money, schema, risk, revenue, analytics, importer, actions
     config.py     конфигурация из переменных окружения
     db.py         движок SQLAlchemy, модели строк, UTC-тип даты
+    modules.py    контракт внешнего аналитического модуля, CalculationAdapter
+    source.py     нормализация снимка
+    storage.py    версионированное хранилище расчётов
     metrics.py    метрики Prometheus
+    main.py       фабрика `create_app`
   migrations/     SQL-схема и сид для PostgreSQL
   scripts/        загрузчик снимка
   tests/          unit, API и интеграционные тесты
+  data/           snapshot.json (демо-снимок) и локальный RAG-индекс
 frontend/
   src/
-    lib/          API-клиент и контекст авторизации
-    components/   переиспользуемые UI-элементы и графики
-    pages/        дашборд, клиенты, карточка клиента, настройки, вход
+    lib/          API-клиент, контекст авторизации, live-обновления, тема
+    components/   UI-элементы, AI-панель, действия по удержанию
+    pages/        дашборд, приоритеты, клиенты, карточка клиента, AI-аналитик,
+                  настройки, данные и качество, вход
 dataset/          исходный комплект кейса (data.json, SQL, README, generate.py)
-db/               PostgreSQL seed, файлы PostgreSQL и SQLite-база авторизации
-docs/             документация по данным, модели, импорту и демонстрации
+db/               PostgreSQL seed и SQLite-база авторизации
+```
 
 
 | Документ | Содержание |
 | --- | --- |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Устройство приложения: слои, точки входа, поток данных |
-| [`docs/API.md`](docs/API.md) | HTTP-эндпоинты **части A** (`/api/*`, `aeza_analyzer/api/app.py`). Для части B источник истины — `backend/openapi.json` |
-| [`docs/DATA_AND_RISK_MODEL.md`](docs/DATA_AND_RISK_MODEL.md) | Данные, единицы, факторы, формула, пороги, интерпретация score |
-| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Локальная разработка и структура |
-| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Развёртывание, Docker Compose, диагностика |
-| [`docs/SECURITY.md`](docs/SECURITY.md) | Модель угроз и принятые меры |
-| [`docs/TESTING.md`](docs/TESTING.md) | Команды и фактические результаты тестов |
-| [`docs/research/README.md`](docs/research/README.md) | Исследование: кейсы Aéza и найденные репозитории (и блокировка) |
-| [`docs/audits/final-project-completion.md`](docs/audits/final-project-completion.md) | Итоговый отчёт о завершении |
-| [`docs/audits/release-gate.md`](docs/audits/release-gate.md) | Ворота релиза: что готово, что проверяется на production, откат |
-| [`docs/audits/project-inventory.md`](docs/audits/project-inventory.md) | Инвентаризация репозитория и классификация файлов |
-| [`docs/audits/requirements-traceability.md`](docs/audits/requirements-traceability.md) | Матрица соответствия ТЗ с доказательствами |
-| [`docs/audits/frontend-preservation.md`](docs/audits/frontend-preservation.md) | Зафиксированный интерфейс и правила его сохранения |
-| [`docs/audits/security-audit.md`](docs/audits/security-audit.md) | Аудит безопасности, находки и их статус |
-| [`docs/audits/calculation-audit.md`](docs/audits/calculation-audit.md) | Формулы, восстановленные из кода, и контрольные расчёты |
-| [`docs/audits/architecture-audit.md`](docs/audits/architecture-audit.md) | Архитектурные находки |
-| [`docs/audits/production-readiness-audit.md`](docs/audits/production-readiness-audit.md) | Готовность стенда и команды для владельца |
-| [`docs/deck/README.md`](docs/deck/README.md) | Генератор презентаций для защиты |
-| [`docs/AUTH_MODULE.md`](docs/AUTH_MODULE.md) | Модуль авторизации части C (OIDC, JWT) |
-| [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md) | Словарь полей |
-| [`docs/SCHEMA_MAPPING.md`](docs/SCHEMA_MAPPING.md) | Источник → модель приложения |
-| [`docs/ANALYTICS_METHODOLOGY.md`](docs/ANALYTICS_METHODOLOGY.md) | Методика риска |
-| [`docs/REVENUE_METHODOLOGY.md`](docs/REVENUE_METHODOLOGY.md) | Денежная оценка |
+| [`docs/data.md`](docs/data.md) | Структура исходных данных, денежные единицы, качество данных |
+| [`docs/model.md`](docs/model.md) | Факторы риска, формула, пороги, агрегация до клиента, ограничения |
+| [`docs/import.md`](docs/import.md) | Формат снимка, правила валидации, атомарность |
+| [`docs/demo.md`](docs/demo.md) | Сценарий демонстрации на 3–5 минут |
+| [`docs/readiness.md`](docs/readiness.md) | Отчёт о готовности: что проверено и что осталось |
+| [`docs/REQUIREMENTS_TRACEABILITY.md`](docs/REQUIREMENTS_TRACEABILITY.md) | Матрица соответствия официальному ТЗ |
+| [`docs/IMPLEMENTATION_AUDIT.md`](docs/IMPLEMENTATION_AUDIT.md) | Аудит всех реализаций в репозитории |
+| [`docs/ARCHITECTURE_DECISION.md`](docs/ARCHITECTURE_DECISION.md) | Выбор основного продукта и судьба остальных |
+| [`docs/TESTING.md`](docs/TESTING.md) | Фактические команды, тесты и результаты |
 | [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) | Пошаговый сценарий защиты |
 | [`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md) | Реализованное и идеи на будущее |
+| [`docs/AUTH_MODULE.md`](docs/AUTH_MODULE.md) | Модуль аутентификации (OIDC, JWT) |
+| [`docs/API.md`](docs/API.md) | Эндпоинты части A и схемы |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Устройство части A |
+| [`docs/ANALYTICS_METHODOLOGY.md`](docs/ANALYTICS_METHODOLOGY.md) | Методика риска части A |
+| [`docs/REVENUE_METHODOLOGY.md`](docs/REVENUE_METHODOLOGY.md) | Денежная оценка части A |
+| [`docs/IMPORT_AND_DATA_AUDIT.md`](docs/IMPORT_AND_DATA_AUDIT.md) | Импорт и профиль данных части A |
+| [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md) | Словарь полей |
+| [`docs/SCHEMA_MAPPING.md`](docs/SCHEMA_MAPPING.md) | Источник → модель приложения |
+| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Разработка части A |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Развёртывание |
+| [`docs/SECURITY.md`](docs/SECURITY.md) | Безопасность |
+| [`docs/AI_ANALYST.md`](docs/AI_ANALYST.md) | AI Analyst: локальная LLM, RAG, инструменты, безопасность |
+| [`docs/METHODOLOGY_SPEC.md`](docs/METHODOLOGY_SPEC.md) | Спецификация методики и её проверки |
+| [`docs/SENSITIVITY_ANALYSIS.md`](docs/SENSITIVITY_ANALYSIS.md) | Анализ чувствительности весов и устойчивости рейтинга |
+| [`docs/ANALYTICS_FORENSIC_AUDIT.md`](docs/ANALYTICS_FORENSIC_AUDIT.md) | Независимый аудит формул и денежных расчётов |
 
 ---
 
 ## API
 
-Полный список — в `backend/openapi.json` и в Swagger UI. Ниже — основные
-маршруты части B. Все, кроме `/health`, `/ready`, `/metrics`, `/api/v1/docs` и
-входа, требуют `Authorization: Bearer <token>`.
+Все маршруты, кроме `/health`, `/metrics`, `/api/v1/docs` и входа, требуют
+`Authorization: Bearer <token>`.
 
 | Метод | Маршрут | Назначение |
 | --- | --- | --- |
@@ -449,34 +517,30 @@ docs/             документация по данным, модели, им
 | `POST` | `/api/v1/auth/logout` | Завершить сессию |
 | `GET` | `/api/v1/customers` | Список клиентов: поиск, фильтры, сортировка, пагинация |
 | `GET` | `/api/v1/customers/{id}` | Карточка клиента с услугами и рекомендациями |
-| `GET` | `/api/v1/customers/{id}/recommendations` | Playbooks клиента со статусом |
-| `PATCH` | `/api/v1/customers/{id}/recommendations/{code}` | Сменить статус playbook |
 | `GET` | `/api/v1/analytics/summary` | Сводные показатели дашборда |
-| `GET` | `/api/v1/analytics/events` | Поток событий (SSE) |
-| `GET` | `/api/v1/priority` | Очереди приоритизации |
-| `GET` | `/api/v1/quality` | Аудит качества данных |
-| `GET` | `/api/v1/ai/status` | Доступность локальной ИИ-модели |
-| `POST` | `/api/v1/ai/customers/{id}/explain` | ИИ-объяснение риска клиента (только чтение) |
-| `POST` | `/api/v1/scenarios/compare` | Сравнение сценария с baseline (what-if) |
-| `GET` | `/api/v1/export/customers.csv` | CSV текущей выборки (потоково) |
+| `GET` | `/api/v1/analytics/events` | Лента событий/изменений для live-обновления |
+| `GET` | `/api/v1/priority` | Очередь работы с клиентами (операционный приоритет) |
+| `GET` | `/api/v1/quality` | Отчёт о качестве данных |
+| `POST` | `/api/v1/scenarios/compare` | What-if: сравнение конфигураций модели |
+| `GET` | `/api/v1/actions` | Список действий по удержанию |
+| `POST` | `/api/v1/actions` | Подтвердить действие по удержанию (только человек) |
+| `PATCH` | `/api/v1/actions/{id}` | Обновить статус действия |
 | `GET` | `/api/v1/model/settings` | Текущие веса, горизонт, пороги |
 | `PATCH` | `/api/v1/model/settings` | Изменить веса, горизонт, пороги |
 | `POST` | `/api/v1/model/settings/reset` | Вернуть значения по умолчанию |
 | `GET` | `/api/v1/source/snapshot` | Текущие объём и отчёт последнего импорта |
 | `PUT` | `/api/v1/source/snapshot` | Импортировать снимок (атомарно) |
-| `GET` | `/api/v1/source/observations` | Наблюдения по снимку |
+| `GET` | `/api/v1/source/observations` | Наблюдения по исходным данным |
+| `GET` | `/api/v1/export/customers.csv` | Экспорт клиентов в CSV |
 | `GET` | `/metrics` | Метрики Prometheus |
 | `GET` | `/health` | Проверка живости |
-| `GET` | `/ready` | Проверка готовности |
+| `GET` | `/ready` | Готовность (включая подключённый аналитический модуль) |
 | `GET` | `/api/v1/docs` | Swagger UI |
 | `GET` | `/api/v1/ai/status` | Состояние AI Analyst: `disabled` / `ready` / `unavailable` |
 | `POST` | `/api/v1/ai/chat` | Вопрос по портфелю |
 | `POST` | `/api/v1/ai/customers/{id}/explain` | Объяснение риска клиента |
 | `POST` | `/api/v1/ai/scenarios/explain` | Объяснение what-if сценария |
 | `POST` | `/api/v1/ai/reports/summary` | Краткий отчёт для аналитика |
-
-Маршруты части A (`/api/health`, `/api/meta`, `/api/dashboard`, `/api/weights`,
-…) описаны отдельно в [`docs/API.md`](docs/API.md).
 
 Параметры `/api/v1/customers`: `search`, `riskCategory`, `serviceStatus`, `sortBy`
 (`id`, `email`, `riskScore`, `balance`, `totalReplenished`), `sortDir`
@@ -493,26 +557,32 @@ docs/             документация по данным, модели, им
 | `AEZA_DATABASE_URL` | `postgresql+psycopg://aeza:aeza@localhost:5432/aeza` | Аналитическая БД PostgreSQL |
 | `AEZA_AUTH_DATABASE_URL` | `sqlite:///./db/auth.sqlite3` | SQLite для пользователей и сессий |
 | `AEZA_JWT_SECRET` | — | Секрет подписи токенов; обязателен в production |
-| `AEZA_ALLOW_DEV_SECRET` | `0` | Разрешить временный секрет, если `AEZA_JWT_SECRET` не задан. По умолчанию **запрещено**; для локальной разработки задайте `1` |
+| `AEZA_ALLOW_DEV_SECRET` | `1` | Разрешить временный секрет, если `AEZA_JWT_SECRET` не задан |
 | `AEZA_ADMIN_EMAIL` | `analyst@aeza.test` | Логин аналитика при первом старте |
 | `AEZA_ADMIN_PASSWORD` | — | Пароль аналитика при первом старте |
 | `AEZA_TOKEN_TTL_MINUTES` | `720` | Время жизни токена |
-| `AEZA_LOGIN_MAX_ATTEMPTS` | `10` | Неудачных попыток входа на email+клиента до ответа 429 |
-| `AEZA_LOGIN_WINDOW_SECONDS` | `300` | Окно, в котором считается бюджет попыток |
 | `AEZA_SNAPSHOT_PATH` | `dataset/data.json` | Необязательный источник для локальной загрузки при пустой БД |
 | `AEZA_SEED_DEMO_DATA` | `0` | Загружать JSON-снимок при пустой БД; Compose использует SQL seed |
 | `AEZA_AS_OF` | `2026-10-19T15:00:00+00:00` | Опорный момент расчёта; `now` — по стенным часам |
-| `AEZA_CORS_ORIGINS` | `http://localhost:8080,http://localhost:5173` | Разрешённые источники через запятую; `*` — только для демонстрации |
-| `AEZA_AI_ENABLED` | `0` | Включить локальный AI Analyst (`/api/v1/ai`) |
-| `AEZA_AI_PROVIDER` | `ollama` | `ollama` (локальный runtime) или `mock` (офлайн, для тестов) |
-| `AEZA_AI_MODEL` | `qwen2.5:3b-instruct` | Имя локальной модели для AI Analyst |
+| `AEZA_ANALYTICS_FACTORY` | `backend.app.domain.module:create` (в `.env.example`/Compose) | Модуль аналитики и Risk Engine; пусто → маршруты возвращают `503` |
+| `AEZA_RECALCULATE_SECONDS` | `60` | Период фонового пересчёта (1–3600) |
+| `AEZA_METRICS_TOKEN` | — | Отдельный Bearer-токен для `/metrics`; иначе нужна сессия аналитика |
+| `AEZA_CORS_ORIGINS` | `*` | Разрешённые источники через запятую |
+| `AEZA_AI_ENABLED` | `0` | Включить локальный AI Analyst |
+| `AEZA_AI_PROVIDER` | `mock` | `ollama` (локальный runtime) или `mock` (офлайн, тесты) |
+| `AEZA_AI_MODEL` | `qwen2.5:3b-instruct` | Имя локальной модели |
 | `AEZA_AI_BASE_URL` | `http://127.0.0.1:11434` | Адрес Ollama; внешние URL отклоняются |
+| `AEZA_AI_TIMEOUT_SECONDS` | `180` | Таймаут генерации (1–900) |
+| `AEZA_AI_MAX_CONCURRENCY` | `1` | Одновременных генераций; CPU-инференс не должен голодать event loop |
+| `AEZA_AI_NUM_CTX` | `4096` | Размер контекста модели |
+| `AEZA_AI_MAX_TOKENS` | `1200` | Лимит длины ответа |
+| `AEZA_AI_TEMPERATURE` | `0.1` | Температура сэмплинга |
+| `AEZA_AI_MAX_QUESTION_CHARS` | `2000` | Максимальная длина вопроса пользователя |
+| `AEZA_AI_MAX_CONTEXT_CHARS` | `1600` | Бюджет символов для блока документации из RAG |
+| `AEZA_AI_RAG_TOP_K` | `2` | Сколько фрагментов документации подмешивать |
+| `AEZA_AI_MAX_RETRIES` | `1` | Повторы при невалидном ответе модели |
 | `AEZA_AI_RAG_INDEX_PATH` | `backend/data/rag_index.json` | Локальный индекс документации |
-| `AEZA_OLLAMA_URL` | `http://172.18.0.1:11434` | Адрес Ollama для агрегатного ассистента (`/api/v1/insights/ai`). Алиас `AEZA_LLM_BASE_URL` тоже поддерживается |
-| `AEZA_OLLAMA_MODEL` | `qwen2.5:7b` | Модель агрегатного ассистента (алиас `AEZA_LLM_MODEL`) |
-| `AEZA_OLLAMA_TIMEOUT_SECONDS` | `90` | Таймаут агрегатного ассистента (алиас `AEZA_LLM_TIMEOUT_SECONDS`) |
-| `AEZA_LLM_MAX_TOKENS` | `700` | Ограничение длины ответа агрегатного ассистента |
-| `AEZA_LLM_TEMPERATURE` | `0.2` | Температура агрегатного ассистента |
+| `AEZA_AI_DOCS_PATH` | `docs` | Каталог документов для индексации RAG |
 
 **Опорный момент.** Снимок Aéza — это состояние на фиксированный момент, и статусы
 услуг в нём не меняются со временем. Поэтому `AEZA_AS_OF` по умолчанию равен
@@ -545,18 +615,10 @@ docs/             документация по данным, модели, им
   сохраняется.
 - Токены — JWT (HS256) с настраиваемым временем жизни.
 - Рабочие секреты не вшиты в код: `AEZA_JWT_SECRET` задаётся окружением.
-- `AEZA_ALLOW_DEV_SECRET` по умолчанию `0`: без явного секрета приложение
-  отказывается стартовать, а не генерирует временный ключ. Для локальной
-  разработки задайте `1`.
-- Неудачные попытки входа ограничены (`AEZA_LOGIN_MAX_ATTEMPTS` за
-  `AEZA_LOGIN_WINDOW_SECONDS`); при превышении — **429** с `Retry-After`.
+- В production задайте `AEZA_ALLOW_DEV_SECRET=0`, чтобы приложение отказывалось
+  стартовать без явного секрета.
 - В логи и метрики не попадают email, идентификаторы клиентов и иные персональные
   данные: метрики агрегированы, меток с высокой кардинальностью нет.
-- Стенд по-прежнему отдаёт CORS `*`, пока не переразвёрнут с этой ветки; на
-  сервере задайте конкретный origin в `AEZA_CORS_ORIGINS`.
-- Развёртывание на сервере требует задать `AEZA_JWT_SECRET` и
-  `AEZA_ADMIN_PASSWORD` — подробности в `docs/SECURITY.md` и
-  `docs/audits/production-readiness-audit.md`.
 
 ---
 
@@ -570,7 +632,7 @@ docs/             документация по данным, модели, им
 
 ---
 
-# Часть C — модуль авторизации (`backend/auth/`)
+# Часть C (архив) — модуль авторизации (`backend/auth/`)
 
 Автономный модуль: логин и пароль в SQLite, JWT access token, HttpOnly cookie
 серверной сессии, RS256/JWKS и OIDC-провайдер для одного доверенного сайта.
@@ -582,134 +644,47 @@ docs/             документация по данным, модели, им
 
 ## Запуск
 
-Python 3.12+. Из корня проекта в PowerShell:
+Нужны Docker и Docker Compose. Сначала создайте локальный файл настроек и задайте собственные секрет и пароль администратора:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m backend.users create alice
-.\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
+Copy-Item .env.example .env
+python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-Команда создания пользователя запросит пароль дважды; минимум 12 символов. База `db/auth.sqlite3` и таблица `users` создаются автоматически из `db/schema.sql`. Для создания пустой базы: `python -m backend.users init`.
-
-Открыть [API](http://localhost:8000/docs). При первом запуске автоматически создаётся RSA-ключ `db/private_key.pem`; он сохраняется между перезапусками. Базу и приватный ключ нужно хранить вне публичного доступа, с правами только для процесса приложения.
-
-Настройки перечислены в `.env.example`. Приложение читает переменные окружения; файл `.env` автоматически не загружается. Например:
+Скопируйте выведенное значение в `AEZA_JWT_SECRET`, замените `AEZA_ADMIN_PASSWORD` и задайте для локального Compose `AEZA_CORS_ORIGINS=http://localhost:8080`. Затем запустите стек:
 
 ```powershell
-$env:AUTH_ISSUER = "https://auth.example.com"
-$env:AUTH_FRONTEND_LOGIN_URL = "https://app.example.com/login"
-$env:AUTH_COOKIE_SECURE = "true"
-$env:OIDC_CLIENT_ID = "website"
-$env:OIDC_REDIRECT_URIS = "https://app.example.com/auth/callback"
+docker compose up -d --build
 ```
 
-В локальной разработке используйте `localhost` и на фронтенде, и для API. Cookie имеют `SameSite=Lax`: фронтенд страницы входа и сервер авторизации должны быть на одном site, например `app.example.com` и `auth.example.com`. CORS разрешён только origin страницы входа, указанной в `AUTH_FRONTEND_LOGIN_URL`.
+Интерфейс: <http://localhost:8080>. API: <http://localhost:8000>. Swagger: <http://localhost:8000/api/v1/docs>. Логин задаётся через `AEZA_ADMIN_EMAIL` и `AEZA_ADMIN_PASSWORD` в `.env`.
 
-## Вход с фронтенда
-
-```javascript
-const requestId = new URLSearchParams(location.search).get("request_id");
-const response = await fetch("http://localhost:8000/auth/login", {
-  method: "POST",
-  credentials: "include",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ login, password, request_id: requestId }),
-});
-const result = await response.json();
-if (!response.ok) throw new Error(result.error_description || "Ошибка входа");
-if (result.redirect_url) location.assign(result.redirect_url);
-```
-
-Ответ содержит `access_token`, `token_type: "Bearer"`, `expires_in`, `scope` и `user: {sub, preferred_username}`. При входе в рамках OIDC-запроса также возвращается `redirect_url` с одноразовым кодом. Access token передаётся в `Authorization: Bearer …`; cookie отправляется браузером при `credentials: "include"`.
-
-| Метод | Адрес | Назначение |
-| --- | --- | --- |
-| POST | `/auth/login` | JSON `{login, password, request_id?}`, проверка пароля, токен и cookie |
-| GET | `/auth/me` | Данные пользователя по Bearer-токену или cookie |
-| POST | `/auth/refresh` | Новый access token по действующей cookie, без повторного ввода пароля |
-| POST | `/auth/logout` | Отзыв текущей сессии и удаление cookie |
-| GET | `/.well-known/openid-configuration` | OIDC discovery |
-| GET | `/oidc/authorize` | Authorization Code + PKCE S256 |
-| POST | `/oidc/token` | Обмен кода на access token и ID token |
-| GET | `/oidc/jwks` | Публичный ключ проверки подписи JWT |
-| GET, POST | `/oidc/userinfo` | OIDC claims по Bearer access token |
-
-## Подключение сайта по OIDC
-
-Issuer по умолчанию: `http://localhost:8000`. Client ID: `website`. Зарегистрированный redirect URI: `http://localhost:3000/auth/callback`. Адрес возврата проверяется точным совпадением с одним из `OIDC_REDIRECT_URIS` через запятую.
-
-1. Сайт генерирует криптографически случайные `state`, `nonce` и `code_verifier` длиной 43–128 символов. Хранит их в контексте текущей попытки входа.
-2. Вычисляет `code_challenge = BASE64URL(SHA256(code_verifier))` без padding и направляет браузер на `/oidc/authorize` с параметрами `client_id`, `redirect_uri`, `response_type=code`, `scope=openid profile`, `state`, `nonce`, `code_challenge`, `code_challenge_method=S256`.
-3. При наличии сессии сервер сразу перенаправляет на callback сайта с `code` и исходным `state`. Без сессии перенаправляет на `AUTH_FRONTEND_LOGIN_URL?request_id=…`; фронтенд выполняет описанный выше POST `/auth/login` и переходит по `redirect_url`. Попытка входа привязана к браузеру отдельной HttpOnly cookie.
-4. Сайт проверяет `state` и обменивает код через POST `/oidc/token`, Content-Type `application/x-www-form-urlencoded`:
-
-```text
-grant_type=authorization_code
-client_id=website
-code=<полученный код>
-redirect_uri=http://localhost:3000/auth/callback
-code_verifier=<исходный verifier>
-```
-
-5. OIDC-библиотека сайта проверяет подпись ID token по JWKS, `iss`, `aud`, `exp` и сохранённый `nonce`, затем создаёт сессию сайта. Самостоятельно декодировать JWT без проверки подписи недостаточно.
-
-Для браузерного клиента `OIDC_CLIENT_SECRET` остаётся пустым: используется public client с обязательным PKCE. Для сайта с сервером задайте секрет и используйте HTTP Basic на `/oidc/token`; секрет должен быть только на сервере сайта. PKCE обязателен в обоих режимах. Поддерживаются scopes `openid`, `profile`, параметры `prompt=none`, `prompt=login`, `max_age`; refresh token и динамическая регистрация клиентов не реализованы.
-
-`/auth/login` выдаёт access token для API. OIDC ID token сайт получает при обмене кода: для входа на сайт необходимо пройти описанный OIDC-поток.
-
-## Кеш и сроки действия
-
-- Пароли в SQLite представлены scrypt-хешами с уникальной солью, `N=131072, r=8, p=1`.
-- Сессия живёт 8 часов, access token — 15 минут, код — 60 секунд, попытка OIDC-входа — 5 минут. Срок токена ограничен остатком жизни сессии.
-- Профиль кешируется на 30 секунд; после этого перечитывается из SQLite. `is_active=0` или изменение `auth_version` отзывают доступ при следующем обновлении профиля.
-- `/auth/logout` немедленно прекращает использование токенов этой сессии на `/auth/me` и `/oidc/userinfo`. Уже выданные JWT, проверяемые сторонним сайтом автономно, действуют до своего `exp`; собственную сессию сайт завершает сам.
-- Кеш ограничен 10 000 записей на тип. Коды потребляются атомарно один раз. Не более 10 попыток входа с IP за окно 60 секунд; одновременно выполняются до 4 проверок scrypt.
-- Кеш находится в памяти одного процесса: используйте `--workers 1`. Перезапуск завершает все сессии и незавершённые OIDC-попытки. Для нескольких процессов понадобится общее хранилище с атомарным потреблением кодов.
+Compose запускает PostgreSQL, API и frontend. Seed загружается при первой инициализации пустого тома PostgreSQL. Данные сохраняются между перезапусками. `docker compose down` останавливает сервисы, не удаляя тома.
 
 ## Проверки
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+python -m pytest backend/tests/ -q
+python -m pytest tests/ -q
+cd frontend
+npm ci
+npm run build
+cd ..
+python backend/scripts/check_docs.py
 ```
 
-Проверяются вход, кеш профиля, обновление токена, отзыв сессии, подписи и сроки JWT, OIDC-переход, PKCE, одноразовое потребление кода в двух потоках, привязка к браузеру, redirect URI, клиентский секрет, scopes, CORS/Origin и ограничения попыток входа.
+Перед тестами проверьте, что в окружении не остались посторонние `AEZA_*` переменные. Набор тестов не закреплён числом: используйте вывод актуального запуска.
 
----
+## Что считает приложение
 
-# Презентация для защиты (`docs/deck/`)
+- Риск оценивается по открытым услугам и объясняется факторами модели. `deleted` и `blocked` отражают уже известное состояние и не включаются в прогноз будущего оттока.
+- Риск клиента определяется максимальным score среди прогнозируемых услуг.
+- Выручка под риском считается отдельно от риска. Цена услуги не повышает score.
+- Денежные значения хранятся в целых евроцентах; конвертация в евро выполняется на границе отображения.
+- Опорное время по умолчанию закреплено на `2026-10-19T15:00:00Z`, чтобы расчёты воспроизводились.
 
-Колода для защиты кейса — `aeza_hackathon_osen_2026.pptx` (10 слайдов, 16:9),
-резервная PDF-копия рядом с ней. Она **собирается кодом**: генератор
-импортирует настоящие доменные модули `backend/app/domain/` и прогоняет их по
-`dataset/data.json`, поэтому ни одна цифра не вписана руками и колода не может
-разойтись с продуктом.
+Подробности модели, API, разработки, безопасности и запуска собраны в [индексе документации](docs/README.md).
 
-```bash
-pip install -r requirements-dev.txt   # python-pptx
-python3 docs/deck/build_deck.py
-```
+## Production stand
 
-Плейсхолдеры (`[НАЗВАНИЕ КОМАНДЫ]`, `[АДРЕС СТЕНДА]`, QR-коды) оставлены
-намеренно: этих данных в репозитории нет. Подробности — [docs/deck/README.md](docs/deck/README.md).
-
----
-
-# Общие ограничения
-
-Обе реализации работают на **синтетических данных организатора**: это снимок
-состояния, а не полная история событий. Поэтому:
-
-- риск-скор — **объяснимая эвристика, не вероятность**. Размеченных исходов
-  оттока в данных нет, поэтому обучить и провалидировать статистическую модель
-  невозможно; точность модели нигде не заявляется;
-- восстановить исторический отток по снимку нельзя: отсутствие записи не
-  доказывает отсутствие события;
-- транзакции содержат только типы `order` и `prolong`, полной истории
-  пополнений нет; балансы заданы независимо от транзакций;
-- объём набора — 10 аккаунтов / 30 услуг / 100 транзакций, поэтому поведение
-  на больших объёмах не измерялось.
-
-Ни одна из реализаций не передаёт данные клиентов наружу, не отправляет
-сообщения клиентам и не изменяет их аккаунты: это аналитический инструмент.
+Публичный стенд: <https://aeza-sentinel.pixel-minds.ru/>. По состоянию на 24.10.2026 его API соответствует `origin/main`; локальные изменения и маршруты playbooks на стенде не подтверждены. Проверяйте `/api/v1/openapi.json` конкретного окружения перед использованием новых маршрутов.
