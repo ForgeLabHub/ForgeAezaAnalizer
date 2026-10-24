@@ -281,6 +281,24 @@ export interface ScenarioComparison {
 
 export type RecommendationState = 'new' | 'in_progress' | 'done'
 
+export interface AiStatus {
+  enabled: boolean
+  reachable: boolean
+  model: string
+  provider: string
+  detail: string | null
+}
+
+export interface AiExplanation {
+  customerId: number
+  generation: number | null
+  text: string
+  model: string
+  provider: string
+  grounded: boolean
+  note: string
+}
+
 export interface PlaybookItem {
   code: string
   title: string
