@@ -14,12 +14,12 @@
    cd backend
    export AEZA_JWT_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
    export AEZA_ADMIN_EMAIL="analyst@aeza.test"
-   export AEZA_ADMIN_PASSWORD="aeza-demo-password"
+   export AEZA_ADMIN_PASSWORD="demo123"
    python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
    # во втором терминале:
    cd frontend && npm install && npm run dev   # http://127.0.0.1:5173
    ```
-2. Открыть два окна браузера и войти под учёткой из `AEZA_ADMIN_EMAIL` / `AEZA_ADMIN_PASSWORD` (в демо-среде — `analyst@aeza.test` / `aeza-demo-password`; пароль задаётся переменной окружения, дефолта в коде нет):
+2. Открыть два окна браузера и войти под учёткой из `AEZA_ADMIN_EMAIL` / `AEZA_ADMIN_PASSWORD` (в демо-среде — `analyst@aeza.test` / `demo123`; пароль задаётся переменной окружения, дефолта в коде нет):
    - окно A: демо-стенд — для показа (в текущей среде проверен
      `https://work-1-vllmnzyteekiqwpn.prod-runtime.all-hands.dev/`, HTTP 200);
    - окно B: тот же стенд — резерв, если окно A потеряет состояние.

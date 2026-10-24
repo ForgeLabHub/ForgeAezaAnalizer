@@ -170,7 +170,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid-main">
-        <section className="card">
+        <section className="card card-table-equal">
           <div className="card-head">
             <h2>Ближайшие продления в горизонте</h2>
             <span className="hint">{summary.upcomingRenewals.length} из ближайших</span>
@@ -180,7 +180,7 @@ export default function DashboardPage() {
               В пределах горизонта {summary.horizonDays} дн. нет продлений открытых услуг.
             </EmptyState>
           ) : (
-            <div className="table-wrap">
+            <div className="table-wrap table-scroll-equal">
               <table className="data">
                 <thead>
                   <tr>
@@ -215,48 +215,27 @@ export default function DashboardPage() {
           )}
         </section>
 
-        <div className="stack">
-          <section className="card">
-            <div className="card-head">
-              <h2>Статусы услуг</h2>
-            </div>
-            <div className="card-body">
-              <dl className="kv">
-                <dt>Всего услуг</dt>
-                <dd>{services.total}</dd>
-                <dt>Активные</dt>
-                <dd>{services.byStatus.active ?? 0}</dd>
-                <dt>Ожидают продления</dt>
-                <dd>{services.byStatus.prolong_wait ?? 0}</dd>
-                <dt>Приостановлены</dt>
-                <dd>{services.byStatus.suspended ?? 0}</dd>
-                <dt>Заблокированы</dt>
-                <dd>{services.byStatus.blocked ?? 0}</dd>
-                <dt>Удалены</dt>
-                <dd>{services.byStatus.deleted ?? 0}</dd>
-              </dl>
-            </div>
-          </section>
-
-          <section className="card">
-            <div className="card-head">
-              <h2>Модель и данные</h2>
-            </div>
-            <div className="card-body stack" style={{ gap: 10 }}>
-              <div className="notice warn">
-                <strong>Динамика недоступна.</strong> {summary.historyNote}
-              </div>
-              <div className="notice">
-                <strong>Ограничение модели.</strong> {summary.model.note}
-              </div>
-              <div className="notice info">
-                Выручка под риском рассчитывается отдельно от баланса клиента:{' '}
-                <code>стоимость продления × балл риска / 100</code> и только для продлений внутри
-                горизонта.
-              </div>
-            </div>
-          </section>
-        </div>
+        <section className="card card-statuses-equal">
+          <div className="card-head">
+            <h2>Статусы услуг</h2>
+          </div>
+          <div className="card-body">
+            <dl className="kv">
+              <dt>Всего услуг</dt>
+              <dd>{services.total}</dd>
+              <dt>Активные</dt>
+              <dd>{services.byStatus.active ?? 0}</dd>
+              <dt>Ожидают продления</dt>
+              <dd>{services.byStatus.prolong_wait ?? 0}</dd>
+              <dt>Приостановлены</dt>
+              <dd>{services.byStatus.suspended ?? 0}</dd>
+              <dt>Заблокированы</dt>
+              <dd>{services.byStatus.blocked ?? 0}</dd>
+              <dt>Удалены</dt>
+              <dd>{services.byStatus.deleted ?? 0}</dd>
+            </dl>
+          </div>
+        </section>
       </div>
     </div>
   )

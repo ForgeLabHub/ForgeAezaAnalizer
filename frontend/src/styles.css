@@ -304,6 +304,215 @@ code {
   font-size: 18px;
   color: var(--n-900);
   letter-spacing: -0.03em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.brand-dropdown-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.brand-logo-frame {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.brand-dropdown-wrapper:hover .brand-logo-frame {
+  transform: scale(1.08) rotate(-3deg);
+}
+
+.aeza-official-glyph {
+  width: 32px;
+  height: 32px;
+  display: block;
+}
+
+.aeza-glyph-bg {
+  color: var(--brand-500);
+  transition: color 0.2s;
+}
+
+.brand-name {
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: -0.03em;
+  color: var(--n-900);
+}
+
+.brand-sub {
+  color: var(--brand-500);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--brand-50);
+  border: 1px solid var(--brand-100);
+  margin-left: 2px;
+}
+
+.brand-chevron {
+  color: var(--n-400);
+  transition: transform 0.2s ease, color 0.2s ease;
+  margin-left: -2px;
+}
+
+.brand-chevron.rotated {
+  transform: rotate(180deg);
+  color: var(--brand-500);
+}
+
+/* Dropdown menu for Aeza ecosystem */
+.brand-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: -8px;
+  width: 360px;
+  background: var(--surface);
+  border: 1px solid var(--n-200);
+  border-radius: 18px;
+  box-shadow: 0 12px 36px -8px rgba(0, 0, 0, 0.2), 0 4px 16px rgba(0, 0, 0, 0.08);
+  padding: 12px;
+  z-index: 100;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px) scale(0.98);
+  transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.2s;
+  pointer-events: none;
+}
+
+.brand-dropdown-menu.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.brand-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px 10px;
+  border-bottom: 1px solid var(--n-100);
+  margin-bottom: 8px;
+}
+
+.header-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--n-400);
+}
+
+.header-link {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-500);
+}
+
+.brand-dropdown-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.brand-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  text-decoration: none;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.brand-dropdown-item:hover {
+  background: var(--n-50);
+  transform: translateX(2px);
+  text-decoration: none;
+}
+
+.brand-dropdown-item.is-current {
+  background: var(--brand-50);
+}
+
+.item-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--n-100);
+  color: var(--n-600);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.item-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.brand-dropdown-item:hover .item-icon {
+  background: var(--brand-500);
+  color: #fff;
+}
+
+.item-icon.active {
+  background: var(--brand-500);
+  color: #fff;
+}
+
+.item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--n-900);
+  line-height: 1.25;
+}
+
+.external-mark {
+  font-size: 11px;
+  color: var(--n-400);
+  transition: color 0.15s;
+}
+
+.brand-dropdown-item:hover .external-mark {
+  color: var(--brand-500);
+}
+
+.item-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 100px;
+  background: var(--brand-500);
+  color: #fff;
+}
+
+.item-desc {
+  font-size: 12px;
+  color: var(--n-500);
+  margin-top: 2px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .brand-mark {
@@ -318,16 +527,6 @@ code {
   font-size: 15px;
   font-weight: 800;
   letter-spacing: 0;
-}
-
-.brand-sub {
-  color: var(--n-500);
-  font-weight: 500;
-  font-size: 13px;
-  letter-spacing: -0.005em;
-  padding-left: 12px;
-  margin-left: 2px;
-  border-left: 1px solid var(--n-200);
 }
 
 .app-nav {
@@ -547,7 +746,27 @@ code {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 380px;
   gap: 20px;
-  align-items: start;
+  align-items: stretch;
+}
+
+.card-table-equal,
+.card-statuses-equal {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.card-statuses-equal .card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+}
+
+.table-scroll-equal {
+  flex: 1;
+  max-height: 480px;
+  overflow-y: auto;
 }
 
 @media (max-width: 1100px) {

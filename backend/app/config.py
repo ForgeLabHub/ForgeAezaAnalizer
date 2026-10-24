@@ -23,14 +23,16 @@ def flag(name: str, default: bool) -> bool:
 @dataclass(frozen=True)
 class Settings:
     database_url: str = field(default_factory=lambda: os.getenv(
-        "AEZA_DATABASE_URL", f"sqlite:///{(ROOT / 'data' / 'aeza.db').as_posix()}"))
+        "AEZA_DATABASE_URL", "postgresql+psycopg://aeza:aeza@localhost:5432/aeza"))
+    auth_database_url: str = field(default_factory=lambda: os.getenv(
+        "AEZA_AUTH_DATABASE_URL", f"sqlite:///{(ROOT / 'db' / 'auth.sqlite3').as_posix()}"))
     jwt_secret: str = field(default_factory=lambda: os.getenv("AEZA_JWT_SECRET", ""))
     allow_dev_secret: bool = field(default_factory=lambda: flag("AEZA_ALLOW_DEV_SECRET", True))
     bootstrap_admin_email: str = field(default_factory=lambda: os.getenv("AEZA_ADMIN_EMAIL", "analyst@aeza.test"))
     bootstrap_admin_password: str = field(default_factory=lambda: os.getenv("AEZA_ADMIN_PASSWORD", ""))
     access_token_ttl_minutes: int = field(default_factory=lambda: int(os.getenv("AEZA_TOKEN_TTL_MINUTES", "720")))
-    seed_demo_data: bool = field(default_factory=lambda: flag("AEZA_SEED_DEMO_DATA", True))
-    snapshot_path: str = field(default_factory=lambda: os.getenv("AEZA_SNAPSHOT_PATH", str(ROOT / "backend/data/snapshot.json")))
+    seed_demo_data: bool = field(default_factory=lambda: flag("AEZA_SEED_DEMO_DATA", False))
+    snapshot_path: str = field(default_factory=lambda: os.getenv("AEZA_SNAPSHOT_PATH", str(ROOT / "dataset/data.json")))
     as_of: str = field(default_factory=lambda: os.getenv("AEZA_AS_OF", DEFAULT_AS_OF))
     recalculate_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_RECALCULATE_SECONDS", "60")))
     metrics_token: str = field(default_factory=lambda: os.getenv("AEZA_METRICS_TOKEN", ""))

@@ -2,6 +2,7 @@ import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import { useAuth } from './lib/auth'
 import { Loading } from './components/ui'
 import { ThemeToggle } from './lib/theme'
+import { AezaLogoDropdown } from './components/AezaLogoDropdown'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import CustomersPage from './pages/CustomersPage'
@@ -22,13 +23,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            A
-          </span>
-          Aéza
-          <span className="brand-sub">Churn Risk Analyzer</span>
-        </div>
+        <AezaLogoDropdown />
         <nav className="app-nav">
           <NavLink to="/" end>
             Дашборд
