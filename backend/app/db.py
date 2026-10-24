@@ -269,6 +269,19 @@ class NotificationDeliveryRow(Base):
     __table_args__ = (UniqueConstraint("notification_id", "link_id", name="analyzer_telegram_delivery_key"),)
 
 
+class TelegramUpdateRow(Base):
+    """One processed Telegram ``update_id``, for at-most-once webhook handling.
+
+    Telegram redelivers an update when the webhook does not answer in time. The
+    primary key is the update id, so a concurrent duplicate loses the insert and
+    the business action runs once. ``processed_at`` lets a cleanup drop old rows.
+    """
+
+    __tablename__ = "analyzer_telegram_updates"
+    update_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    processed_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
+
+
 ANALYTICS_TABLES = (
     CurrentRow.__table__, SourceRow.__table__, ModelRow.__table__, AnalysisRow.__table__,
     CustomerRow.__table__, ServiceIndexRow.__table__, ObservationRow.__table__, AuditRow.__table__,
@@ -281,6 +294,7 @@ ANALYTICS_TABLES = (
     TelegramLinkRow.__table__, TelegramOtpRow.__table__, TelegramChatStateRow.__table__,
     TelegramClientSessionRow.__table__, SupportConversationRow.__table__, SupportMessageRow.__table__,
     SupportMessageDeliveryRow.__table__, NotificationQueueRow.__table__, NotificationDeliveryRow.__table__,
+    TelegramUpdateRow.__table__,
 )
 class Database:
     def __init__(self, url: str):
