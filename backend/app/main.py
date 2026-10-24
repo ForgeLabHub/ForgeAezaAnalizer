@@ -18,7 +18,7 @@ from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
 
 from core import ConflictError, Core, InvalidInput, NotReadyError, ResourceNotFoundError
-from backend.app.api import routes_actions, routes_ai, routes_analytics, routes_auth, routes_customers, routes_export, routes_insights, routes_model, routes_source
+from backend.app.api import routes_actions, routes_ai, routes_analytics, routes_auth, routes_client, routes_customers, routes_export, routes_insights, routes_model, routes_source, routes_telegram
 from backend.app.api.deps import Runtime, RuntimeDep
 from backend.app.api.schemas import ErrorResponse
 from backend.app.ai.service import AIDisabled, AIService, AIUnavailable
@@ -27,6 +27,7 @@ from backend.app.db import Database
 from backend.app.metrics import Metrics
 from backend.app.modules import AnalyticsModule, CalculationAdapter, ModuleContractError, UnavailableAnalytics, load_module
 from backend.app.storage import Storage
+from backend.app.telegram import EmailProvider, TelegramProvider, TelegramService
 from backend.auth.service import AuthError, AuthService
 from backend.config import Settings as AuthSettings
 from backend.database import UserRepository
@@ -46,6 +47,22 @@ async def recalculate(runtime: Runtime, stop: asyncio.Event):
                 logger.exception("scheduled calculation failed; previous result retained")
 
 
+async def telegram_worker(runtime: Runtime, stop: asyncio.Event):
+    while True:
+        try:
+            if runtime.settings.telegram_bot_enabled:
+                await run_in_threadpool(runtime.telegram.process_notifications)
+                await run_in_threadpool(runtime.telegram.process_support_deliveries)
+            await run_in_threadpool(runtime.telegram.purge_support_history)
+        except Exception:
+            logger.exception("Telegram worker iteration failed")
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=runtime.settings.telegram_worker_interval_seconds)
+            return
+        except asyncio.TimeoutError:
+            pass
+
+
 def build_ai(storage: Storage, calculation: CalculationAdapter) -> AIService | None:
     """Construct the AI Analyst, or ``None`` if it cannot be built.
 
@@ -61,7 +78,9 @@ def build_ai(storage: Storage, calculation: CalculationAdapter) -> AIService | N
 
 
 def create_app(settings: Settings | None = None, analytics: AnalyticsModule | None = None,
-               auth_settings: AuthSettings | None = None) -> FastAPI:
+               auth_settings: AuthSettings | None = None,
+               email_provider: EmailProvider | None = None,
+               telegram_provider: TelegramProvider | None = None) -> FastAPI:
     settings = settings or get_settings()
     auth_settings = auth_settings or AuthSettings.from_env()
     module = analytics if analytics is not None else load_module(os.getenv("AEZA_ANALYTICS_FACTORY", ""))
@@ -73,10 +92,11 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
         calculation = CalculationAdapter(module)
         users = UserRepository(auth_settings.database)
         auth = AuthService(auth_settings, users)
+        telegram = TelegramService(database, storage, settings, email_provider, telegram_provider)
         runtime = Runtime(settings, database, storage, auth, calculation,
-            Core(storage, calculation, settings.reference_now), ai=None)
+            Core(storage, calculation, settings.reference_now), ai=None, telegram=telegram)
         stop = asyncio.Event()
-        task = None
+        tasks = []
         def initialize():
             database.initialize()
             users.initialize()
@@ -97,12 +117,13 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
             application.state.runtime = runtime
             application.state.metrics = Metrics(storage)
             if settings.as_of.lower() == "now" and not isinstance(module, UnavailableAnalytics):
-                task = asyncio.create_task(recalculate(runtime, stop))
+                tasks.append(asyncio.create_task(recalculate(runtime, stop)))
+            tasks.append(asyncio.create_task(telegram_worker(runtime, stop)))
             yield
         finally:
             stop.set()
-            if task is not None:
-                await task
+            if tasks:
+                await asyncio.gather(*tasks)
             database.engine.dispose()
 
     app = FastAPI(title=settings.app_name, version="2.0.0", lifespan=lifespan,
@@ -202,6 +223,7 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
 
     for router in (routes_auth.router, routes_customers.router, routes_analytics.router,
                    routes_model.router, routes_source.router, routes_insights.router,
-                   routes_export.router, routes_ai.router, routes_actions.router):
+                   routes_export.router, routes_ai.router, routes_actions.router,
+                   routes_telegram.router, routes_client.router):
         app.include_router(router, prefix=settings.api_prefix)
     return app

@@ -27,6 +27,7 @@ class Runtime:
     #: Optional local AI Analyst. ``None`` when the feature is not built, which
     #: is distinct from "enabled but unreachable".
     ai: object | None = None
+    telegram: object | None = None
 
 
 @dataclass(frozen=True)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Index, Integer, JSON, String, TypeDecorator, create_engine, event, insert
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, String, TypeDecorator, UniqueConstraint, create_engine, event, insert
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
@@ -148,6 +148,127 @@ class ActionRow(Base):
     __table_args__ = (Index("analyzer_actions_customer_idx", "customer_id", "created_at"),)
 
 
+class TelegramLinkRow(Base):
+    __tablename__ = "analyzer_telegram_links"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    telegram_user_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    consent_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class TelegramOtpRow(Base):
+    __tablename__ = "analyzer_telegram_otps"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    telegram_user_id: Mapped[str] = mapped_column(String(64), index=True)
+    email: Mapped[str] = mapped_column(String(320), index=True)
+    account_id: Mapped[int] = mapped_column(BigInteger)
+    code_hash: Mapped[str] = mapped_column(String(128))
+    code_salt: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    next_send_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=5)
+    consumed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    __table_args__ = (Index("analyzer_telegram_otp_lookup_idx", "telegram_user_id", "email", "created_at"),)
+
+
+class TelegramChatStateRow(Base):
+    __tablename__ = "analyzer_telegram_chat_states"
+    telegram_user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    state: Mapped[str] = mapped_column(String(16))
+    email: Mapped[str | None] = mapped_column(String(320))
+    otp_id: Mapped[str | None] = mapped_column(String(64))
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class TelegramClientSessionRow(Base):
+    __tablename__ = "analyzer_telegram_sessions"
+    token_hash: Mapped[str] = mapped_column(String(128), primary_key=True)
+    link_id: Mapped[int] = mapped_column(ForeignKey("analyzer_telegram_links.id", ondelete="CASCADE"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+
+class SupportConversationRow(Base):
+    __tablename__ = "analyzer_support_conversations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="open")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    __table_args__ = (Index("analyzer_support_conversation_account_idx", "account_id", "updated_at"),)
+
+
+class SupportMessageRow(Base):
+    __tablename__ = "analyzer_support_messages"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("analyzer_support_conversations.id", ondelete="CASCADE"), index=True)
+    sender: Mapped[str] = mapped_column(String(16))
+    text: Mapped[str] = mapped_column(String(4000))
+    telegram_message_id: Mapped[str | None] = mapped_column(String(128))
+    delivery_status: Mapped[str] = mapped_column(String(16), default="received")
+    delivery_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    delivered_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_error: Mapped[str | None] = mapped_column(String(1000))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    __table_args__ = (
+        Index("analyzer_support_message_conversation_idx", "conversation_id", "created_at"),
+        UniqueConstraint("telegram_message_id", name="analyzer_support_telegram_message_key"),
+    )
+
+
+class SupportMessageDeliveryRow(Base):
+    __tablename__ = "analyzer_support_message_deliveries"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("analyzer_support_messages.id", ondelete="CASCADE"), index=True)
+    link_id: Mapped[int] = mapped_column(ForeignKey("analyzer_telegram_links.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_error: Mapped[str | None] = mapped_column(String(1000))
+    __table_args__ = (UniqueConstraint("message_id", "link_id", name="analyzer_support_delivery_key"),)
+
+
+class NotificationQueueRow(Base):
+    __tablename__ = "analyzer_telegram_notifications"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    service_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    interval_days: Mapped[int] = mapped_column(Integer)
+    scheduled_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    delivered_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_error: Mapped[str | None] = mapped_column(String(1000))
+    cancelled_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    __table_args__ = (
+        UniqueConstraint("account_id", "service_id", "expires_at", "interval_days", name="analyzer_telegram_notification_key"),
+        Index("analyzer_telegram_notification_due_idx", "status", "scheduled_at"),
+    )
+
+
+class NotificationDeliveryRow(Base):
+    __tablename__ = "analyzer_telegram_notification_deliveries"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    notification_id: Mapped[int] = mapped_column(ForeignKey("analyzer_telegram_notifications.id", ondelete="CASCADE"), index=True)
+    link_id: Mapped[int] = mapped_column(ForeignKey("analyzer_telegram_links.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_error: Mapped[str | None] = mapped_column(String(1000))
+    __table_args__ = (UniqueConstraint("notification_id", "link_id", name="analyzer_telegram_delivery_key"),)
+
+
 ANALYTICS_TABLES = (
     CurrentRow.__table__, SourceRow.__table__, ModelRow.__table__, AnalysisRow.__table__,
     CustomerRow.__table__, ServiceIndexRow.__table__, ObservationRow.__table__, AuditRow.__table__,
@@ -157,6 +278,9 @@ ANALYTICS_TABLES = (
     RecommendationStatusRow.__table__,
     # Human-confirmed retention actions, created by the same initialise() call.
     ActionRow.__table__,
+    TelegramLinkRow.__table__, TelegramOtpRow.__table__, TelegramChatStateRow.__table__,
+    TelegramClientSessionRow.__table__, SupportConversationRow.__table__, SupportMessageRow.__table__,
+    SupportMessageDeliveryRow.__table__, NotificationQueueRow.__table__, NotificationDeliveryRow.__table__,
 )
 class Database:
     def __init__(self, url: str):
