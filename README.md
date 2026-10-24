@@ -282,6 +282,8 @@ pip install -r requirements.txt
 cd ..                                                # запуск из корня репозитория
 
 # 2. Демо-доступ и секрет подписи токенов
+# Локальный пароль ниже — пример только для запуска на своей машине.
+# В любом общем окружении задайте собственные значения и AEZA_ALLOW_DEV_SECRET=0.
 export AEZA_JWT_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
 export AEZA_ADMIN_EMAIL="analyst@aeza.test"
 export AEZA_ADMIN_PASSWORD="demo123"
