@@ -50,6 +50,21 @@ services:
       AEZA_OLLAMA_TIMEOUT_SECONDS: ${AEZA_OLLAMA_TIMEOUT_SECONDS:-90}
       AEZA_LLM_MAX_TOKENS: ${AEZA_LLM_MAX_TOKENS:-700}
       AEZA_LLM_TEMPERATURE: ${AEZA_LLM_TEMPERATURE:-0.2}
+      # AI Analyst (backend/app/ai, routes under /api/v1/ai).  Off by default.
+      # Unlike the aggregate assistant above, this surface reads AEZA_AI_* and
+      # is grounded in a RAG index over docs/ (built into the image).
+      # The model defaults to qwen2.5:7b, matching AEZA_OLLAMA_MODEL.
+      AEZA_AI_ENABLED: ${AEZA_AI_ENABLED:-0}
+      AEZA_AI_PROVIDER: ${AEZA_AI_PROVIDER:-mock}
+      AEZA_AI_MODEL: ${AEZA_AI_MODEL:-qwen2.5:7b}
+      AEZA_AI_BASE_URL: ${AEZA_AI_BASE_URL:-http://172.18.0.1:11434}
+      AEZA_AI_TIMEOUT_SECONDS: ${AEZA_AI_TIMEOUT_SECONDS:-180}
+      AEZA_AI_MAX_CONCURRENCY: ${AEZA_AI_MAX_CONCURRENCY:-1}
+      AEZA_AI_NUM_CTX: ${AEZA_AI_NUM_CTX:-4096}
+      AEZA_AI_MAX_TOKENS: ${AEZA_AI_MAX_TOKENS:-1200}
+      AEZA_AI_TEMPERATURE: ${AEZA_AI_TEMPERATURE:-0.1}
+      AEZA_AI_RAG_TOP_K: ${AEZA_AI_RAG_TOP_K:-2}
+      AEZA_AI_MAX_RETRIES: ${AEZA_AI_MAX_RETRIES:-1}
     depends_on:
       db:
         condition: service_healthy

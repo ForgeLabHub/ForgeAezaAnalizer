@@ -166,9 +166,6 @@ class RiskSettings:
 
     def __post_init__(self) -> None:
         validate_settings(self)
-        # Deprecated factors must not advertise a weight the rating ignores,
-        # even when the caller passed one (e.g. a legacy persisted row).
-        object.__setattr__(self, "weights", canonical_weights(self.weights))
 
     def weight(self, key: str) -> float:
         return self.weights.get(key, 0.0)
