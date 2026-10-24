@@ -349,6 +349,21 @@ class TelegramService:
             ))
         return True
 
+    def _release(self, dedupe_key: str) -> None:
+        """Drop a claim so the same event may be attempted again later.
+
+        Used when the claim did not result in an attempt — a rate-limited send.
+        Keeping the row would make the key permanently "seen", so the event would
+        be lost rather than retried once the window passes.
+        """
+
+        with self.database.transaction() as session:
+            row = session.scalar(
+                select(TelegramDeliveryRow).where(TelegramDeliveryRow.dedupe_key == dedupe_key)
+            )
+            if row is not None:
+                session.delete(row)
+
     def _finish(self, dedupe_key: str, status: str, detail: str | None = None) -> None:
         with self.database.transaction() as session:
             row = session.scalar(
@@ -377,7 +392,9 @@ class TelegramService:
 
         if not self._rate_limit_ok(chat):
             if dedupe_key:
-                self._finish(dedupe_key, "rate_limited")
+                # Release rather than mark: a rate-limited send never happened, so
+                # the event must stay deliverable once the window passes.
+                self._release(dedupe_key)
             logger.warning("telegram send skipped: rate limited")
             return False
 
@@ -409,13 +426,19 @@ class TelegramService:
         self._last_send[chat_id] = now
         return True
 
-    def deliveries(self, limit: int = 50) -> list[dict]:
+    def deliveries(self, limit: int = 50, *, chat_id: str | None = None) -> list[dict]:
+        """Recent delivery records, optionally scoped to one chat.
+
+        ``chat_id`` is how the diagnostics route limits the view to the caller's
+        own linked chat: without it any authenticated user would see every chat's
+        identifier and delivery history.
+        """
+
         with self.database.sessions() as session:
-            rows = session.scalars(
-                select(TelegramDeliveryRow)
-                .order_by(TelegramDeliveryRow.created_at.desc())
-                .limit(limit)
-            ).all()
+            statement = select(TelegramDeliveryRow).order_by(TelegramDeliveryRow.created_at.desc())
+            if chat_id is not None:
+                statement = statement.where(TelegramDeliveryRow.chat_id == str(chat_id))
+            rows = session.scalars(statement.limit(limit)).all()
         return [
             {
                 "dedupeKey": row.dedupe_key,

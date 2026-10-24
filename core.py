@@ -73,7 +73,7 @@ class Core:
     def update(
         self, *, source: dict | None = None, patch: dict | None = None,
         reset: bool = False, expected_generation: int | None = None,
-        actor: str = "system", recalculate: bool = False,
+        actor: str = "system", force: bool = False,
     ) -> State:
         source = self.calculation.source(deepcopy(source)) if source is not None else None
         for _ in range(3):
@@ -85,7 +85,14 @@ class Core:
             source_changed = next_source != previous.source or previous.generation == 0
             model_changed = settings != previous.settings or previous.generation == 0
             as_of = self.reference_time()
-            if not (source_changed or model_changed or recalculate or as_of != previous.as_of):
+            # A new generation is published only for a real input change: source,
+            # settings, or the reference instant. ``force`` exists for the one case
+            # not visible in the inputs — the analytics engine itself changed
+            # version, so the same inputs must be re-evaluated. A plain
+            # "recalculate" tick does *not* force a publication on its own, which
+            # keeps ``generation`` a version of the inputs rather than a tick
+            # counter and stops the analysis tables growing with no change.
+            if not (source_changed or model_changed or force or as_of != previous.as_of):
                 return previous
             now = datetime.now(timezone.utc)
             candidate = replace(

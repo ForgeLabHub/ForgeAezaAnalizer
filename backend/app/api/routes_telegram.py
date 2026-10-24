@@ -186,11 +186,17 @@ def diagnostics(runtime: RuntimeDep, user: UserDep):
     if not settings.telegram_enabled:
         return {"enabled": False, "detail": "Интеграция отключена."}
     service = _service(runtime)
+    # Scope the delivery log to the caller's own chat. There are no roles in this
+    # deployment, so "administrative" cannot mean "sees every account's chat". An
+    # unlinked caller has no chat, so they see no delivery history at all rather
+    # than everyone else's.
+    link = service.link_status(user.email)
+    recent = service.deliveries(limit=20, chat_id=link.chat_id) if link.linked and link.chat_id else []
     return {
         "enabled": True,
         "webhookConfigured": bool(settings.telegram_webhook_url),
         "webhookSecretConfigured": bool(settings.telegram_webhook_secret),
-        "recentDeliveries": service.deliveries(limit=20),
+        "recentDeliveries": recent,
     }
 
 

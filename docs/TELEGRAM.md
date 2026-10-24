@@ -180,3 +180,13 @@ the UI first.
 - **Delivery retries are bounded and synchronous** (`TELEGRAM_MAX_RETRIES`).
   They run in the background task or the import worker thread, never inside an
   analytics read request.
+- **The send rate limit is per process.** `TELEGRAM_MIN_SEND_INTERVAL_SECONDS`
+  is enforced with an in-memory map, so it holds for the single uvicorn worker
+  the Dockerfile starts. Running the API with `--workers N` would apply the limit
+  N times over; move the limiter to the database or Redis before scaling out.
+- **`/telegram/diagnostics` is scoped to the caller.** It returns only the
+  caller's own linked chat and delivery history, never every chat: there are no
+  roles in this deployment, so "administrative" cannot mean "sees every account".
+- **An event skipped by the rate limit is not lost.** The claim is released so
+  the same dedupe key can be delivered once the window passes; only an event that
+  actually reached the Bot API is recorded as sent.

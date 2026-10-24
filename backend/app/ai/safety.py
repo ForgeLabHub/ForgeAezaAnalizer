@@ -111,7 +111,12 @@ def _ungrounded_numbers(text: str, allowed: set[float]) -> list[str]:
 
 
 def check_numbers(answer: AIAnswer, context_text: str) -> list[str]:
-    """Return numbers used in the answer that do not appear in the context."""
+    """Return numbers used in the answer that do not appear in the context.
+
+    ``citations`` are checked too: a citation is shown to the user as the source
+    of a claim, so an invented figure in ``citation.detail`` is as misleading as
+    one in the prose.
+    """
 
     allowed = _allowed_numbers(context_text)
     invented: list[str] = []
@@ -119,6 +124,9 @@ def check_numbers(answer: AIAnswer, context_text: str) -> list[str]:
         invented.extend(_ungrounded_numbers(getattr(answer, field_name) or "", allowed))
     for item in answer.facts + answer.recommendations:
         invented.extend(_ungrounded_numbers(item, allowed))
+    for citation in answer.citations:
+        invented.extend(_ungrounded_numbers(citation.detail or "", allowed))
+        invented.extend(_ungrounded_numbers(citation.source or "", allowed))
     return invented
 
 
@@ -215,6 +223,12 @@ def enforce(answer: AIAnswer, *, context_text: str, risk_score: float | None) ->
     cleaned.recommendations = [
         item for item in cleaned.recommendations if not _ungrounded_numbers(item, allowed)
     ]
+    cleaned.citations = [
+        citation
+        for citation in cleaned.citations
+        if not _ungrounded_numbers(citation.detail or "", allowed)
+        and not _ungrounded_numbers(citation.source or "", allowed)
+    ]
 
     summary_violations = [v for v in report.claim_violations if v.startswith("summary")]
     if summary_violations or _ungrounded_numbers(cleaned.summary, allowed):
@@ -226,6 +240,11 @@ def enforce(answer: AIAnswer, *, context_text: str, risk_score: float | None) ->
         cleaned.factor_explanation, allowed
     ):
         cleaned.factor_explanation = ""
+    # ``limitations`` is stripped exactly like the other fields. Leaving an
+    # invented figure here while appending a notice that claims it was removed
+    # would serve the fabrication *and* a false assurance that it was dropped.
+    if _ungrounded_numbers(cleaned.limitations, allowed):
+        cleaned.limitations = ""
 
     notice = (
         "Ответ прошёл автоматическую проверку: неподтверждённые числа и утверждения удалены. "

@@ -87,6 +87,29 @@ class Storage:
         with self.database.sessions() as session:
             return session.get(AnalysisRow, self._generation(session, generation)).summary
 
+    def published_analysis(self, generation: int | None = None) -> Analysis | None:
+        """The stored analysis for a generation, without re-running the engine.
+
+        Used to give the notification dispatcher the *previous* published picture
+        so it can tell a change from a steady state. Reconstructing it from the
+        stored rows keeps the read cheap and side-effect free, unlike calling the
+        calculation module again.
+        """
+
+        with self.database.sessions() as session:
+            current = session.get(CurrentRow, 1)
+            if generation is None:
+                if current is None or not current.generation:
+                    return None
+                generation = current.generation
+            analysis = session.get(AnalysisRow, generation)
+            if analysis is None:
+                return None
+            rows = session.scalars(
+                select(CustomerRow).where(CustomerRow.generation == generation)
+            ).all()
+        return Analysis(summary=analysis.summary, customers=[row.payload for row in rows])
+
     def customers(self, *, generation=None, search=None, risk_category=None,
                   service_status=None, sort_by="riskScore", sort_dir="desc", page=1, page_size=25) -> dict:
         with self.database.sessions() as session:
