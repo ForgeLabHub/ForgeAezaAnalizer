@@ -465,11 +465,12 @@ code {
 }
 
 .app-nav a {
-  padding: 8px 16px;
+  padding: 8px 14px;
   border-radius: var(--radius-pill);
   color: var(--n-600);
   font-weight: 600;
   font-size: 14px;
+  white-space: nowrap;
   transition: background 0.15s, color 0.15s;
 }
 
@@ -517,6 +518,27 @@ code {
   width: 40px;
   height: 4px;
   margin-top: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--brand-gradient);
+}
+
+.page-head .page-title-row {
+  position: relative;
+  padding-bottom: 14px;
+  align-items: center;
+}
+
+.page-head .page-title-row h1::after {
+  content: none;
+}
+
+.page-head .page-title-row::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 40px;
+  height: 4px;
   border-radius: var(--radius-pill);
   background: var(--brand-gradient);
 }
@@ -678,7 +700,9 @@ code {
 }
 
 .card-table-equal,
-.card-statuses-equal {
+.card-statuses-equal,
+.card-quality-main,
+.card-quality-equal {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -689,6 +713,21 @@ code {
   display: flex;
   flex-direction: column;
   justify-content: space-around;
+}
+
+.card-quality-equal .card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.card-quality-equal .notice {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .table-scroll-equal {
@@ -843,6 +882,9 @@ th.sortable:hover {
 .badge.neutral {
   background: var(--n-100);
   color: var(--n-600);
+}
+.badge.neutral .dot {
+  background: var(--n-400);
 }
 
 .badge.status-active {
@@ -1502,14 +1544,221 @@ th.sortable:hover {
   border: 0;
 }
 
-@media (max-width: 720px) {
+/* ---------------------------------------------------------------- generation & live SSE */
+
+.gen-wrap {
+  position: relative;
+}
+
+.gen-pill {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--n-200);
+  background: var(--surface);
+  color: var(--n-700);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.gen-pill:hover {
+  border-color: var(--brand-300);
+  background: var(--brand-50);
+  color: var(--n-900);
+}
+
+.gen-pill.is-pinned {
+  border-color: var(--risk-med-border);
+  background: var(--risk-med-bg);
+  color: var(--risk-med-fg);
+}
+
+.gen-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--n-400);
+}
+
+.gen-dot.live {
+  background: var(--risk-low-line);
+  box-shadow: 0 0 0 3px var(--risk-low-bg);
+}
+
+.gen-dot.pinned {
+  background: var(--risk-med-line);
+}
+
+.gen-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--n-200);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  z-index: 50;
+  color: var(--n-800);
+}
+
+.gen-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13.5px;
+}
+
+.gen-kv {
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+  border: 1px solid var(--n-100);
+}
+
+.archive-bar {
+  background: var(--risk-med-bg);
+  border-bottom: 1px solid var(--risk-med-border);
+  color: var(--risk-med-fg);
+  padding: 8px 28px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ---------------------------------------------------------------- priority, quality & import */
+
+.badge-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.error-issues {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dropzone {
+  border: 1.5px dashed var(--n-300);
+  border-radius: var(--radius-lg);
+  padding: 28px 20px;
+  text-align: center;
+  background: var(--surface-muted);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.dropzone.is-drag,
+.dropzone:hover {
+  border-color: var(--brand-500);
+  background: var(--brand-50);
+}
+
+.dropzone-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--n-900);
+  margin-bottom: 6px;
+}
+
+.quality-item {
+  border: 1px solid var(--n-200);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quality-msg {
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--n-900);
+}
+
+.record-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.chip-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--n-200);
+  background: var(--surface-muted);
+  color: var(--brand-600);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.chip-link:hover {
+  border-color: var(--brand-300);
+  background: var(--brand-50);
+  color: var(--brand-500);
+}
+
+.link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--brand-600);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  color: var(--brand-500);
+  text-decoration: underline;
+}
+
+@media (max-width: 1180px) {
+  .brand-sub,
+  .header-user .email {
+    display: none;
+  }
+  .app-nav a {
+    padding: 7px 11px;
+    font-size: 13.5px;
+  }
+}
+
+@media (max-width: 920px) {
   .app-header {
-    /* Wrap the nav onto its own row: at 390px the brand, three nav links and
-       the sign-out button cannot share one line without overflowing. */
+    /* Wrap the nav onto its own row so five nav links, live pill and controls
+       never cause page-level horizontal overflow. */
     flex-wrap: wrap;
     height: auto;
     min-height: var(--header-h);
-    padding: 10px 12px;
+    padding: 10px 14px;
     gap: 8px 12px;
   }
   .app-nav {
@@ -1525,10 +1774,12 @@ th.sortable:hover {
   .header-user {
     margin-left: auto;
   }
-  .brand-sub,
-  .header-user .email {
-    display: none;
+  .archive-bar {
+    padding: 8px 14px;
   }
+}
+
+@media (max-width: 720px) {
   .page {
     padding: 20px 12px 40px;
   }

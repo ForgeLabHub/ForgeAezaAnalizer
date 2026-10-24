@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { api, getToken, setToken } from './api'
+import { api, getToken, setToken, setUnauthorizedListener } from './api'
 
 interface AuthState {
   email: string | null
@@ -21,6 +21,16 @@ const AuthContext = createContext<AuthState | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [email, setEmail] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    setUnauthorizedListener(() => {
+      setToken(null)
+      setEmail(null)
+    })
+    return () => {
+      setUnauthorizedListener(null)
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
