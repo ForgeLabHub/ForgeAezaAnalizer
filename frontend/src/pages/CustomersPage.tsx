@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ApiError, api } from '../lib/api'
+import { ApiError, api, triggerBlobDownload } from '../lib/api'
+import { useAnalysis } from '../lib/realtime'
 import type { CustomerPage, CustomerSummary } from '../types'
 import {
   EmptyState,
@@ -29,10 +30,13 @@ const COLUMNS: Array<{
 const PAGE_SIZE = 25
 
 export default function CustomersPage() {
+  const { activeGeneration, refreshKey } = useAnalysis()
   const [params, setParams] = useSearchParams()
   const [data, setData] = useState<CustomerPage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
+  const [toast, setToast] = useState<{ text: string; err?: boolean } | null>(null)
 
   const sortBy = params.get('sortBy') ?? 'riskScore'
   const sortDir = (params.get('sortDir') as SortDir) ?? 'desc'
@@ -47,11 +51,18 @@ export default function CustomersPage() {
     setSearch(searchParam)
   }, [searchParam])
 
+  useEffect(() => {
+    if (!toast) return
+    const timer = setTimeout(() => setToast(null), 3500)
+    return () => clearTimeout(timer)
+  }, [toast])
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       const result = await api.customers({
+        generation: activeGeneration,
         search: searchParam || undefined,
         riskCategory: riskCategory || undefined,
         serviceStatus: serviceStatus || undefined,
@@ -66,11 +77,11 @@ export default function CustomersPage() {
     } finally {
       setLoading(false)
     }
-  }, [searchParam, riskCategory, serviceStatus, sortBy, sortDir, page])
+  }, [activeGeneration, searchParam, riskCategory, serviceStatus, sortBy, sortDir, page])
 
   useEffect(() => {
     void load()
-  }, [load])
+  }, [load, refreshKey])
 
   function update(next: Record<string, string | null>) {
     const merged = new URLSearchParams(params)
@@ -94,6 +105,30 @@ export default function CustomersPage() {
     update({ search: search.trim() || null, page: '1' })
   }
 
+  async function handleExportCsv() {
+    setExporting(true)
+    try {
+      const result = await api.exportCustomersCsv({
+        generation: activeGeneration,
+        search: searchParam || undefined,
+        riskCategory: riskCategory || undefined,
+        serviceStatus: serviceStatus || undefined,
+        sortBy,
+        sortDir,
+      })
+      triggerBlobDownload(result.blob, result.filename)
+      const countPart = result.rows !== null ? ` (${result.rows} строк)` : ''
+      setToast({ text: `Экспортирован файл ${result.filename}${countPart}.` })
+    } catch (err) {
+      setToast({
+        text: err instanceof ApiError ? err.detail : 'Не удалось экспортировать CSV',
+        err: true,
+      })
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const activeFilters = useMemo(
     () => [riskCategory && 'риск', serviceStatus && 'статус', searchParam && 'поиск'].filter(Boolean),
     [riskCategory, serviceStatus, searchParam],
@@ -106,12 +141,24 @@ export default function CustomersPage() {
           <h1>Клиенты</h1>
           <p>
             Поиск, фильтрация и сортировка по реальным полям источника. Числовые поля сортируются
-            численно, email — по строке без учёта регистра.
+            численно, email — по строке без учёта регистра. Выгрузка CSV учитывает активные фильтры
+            и защищена от формульных инъекций.
           </p>
         </div>
-        <div className="hint">
-          {data ? `${data.total} записей` : ''}
-          {activeFilters.length ? ` · активны: ${activeFilters.join(', ')}` : ''}
+        <div className="row">
+          <span className="hint">
+            {data ? `${data.total} записей` : ''}
+            {data?.generation ? ` · поколение #${data.generation}` : ''}
+            {activeFilters.length ? ` · активны: ${activeFilters.join(', ')}` : ''}
+          </span>
+          <button
+            type="button"
+            className="btn"
+            onClick={handleExportCsv}
+            disabled={exporting || loading || !data || data.total === 0}
+          >
+            {exporting ? 'Формирование CSV…' : 'Экспорт в CSV'}
+          </button>
         </div>
       </div>
 
@@ -211,45 +258,70 @@ export default function CustomersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.items.map((customer: CustomerSummary) => (
-                    <tr key={customer.id}>
-                      <td className="num">
-                        <Link to={`/customers/${customer.id}`} className="cell-primary">
-                          {customer.id}
-                        </Link>
-                      </td>
-                      <td>
-                        <span className="cell-primary">{customer.email}</span>
-                      </td>
-                      <td>
-                        <ScoreCell
-                          score={customer.riskScore}
-                          category={customer.riskCategory}
-                        />
-                      </td>
-                      <td className="num">{formatEur(customer.balance.eur)}</td>
-                      <td className="num">{formatEur(customer.totalReplenished.eur)}</td>
-                      <td className="num">
-                        {customer.serviceCount}
-                        <span className="cell-sub">
-                          {' '}
-                          / {customer.eligibleServiceCount} в прогнозе
-                        </span>
-                      </td>
-                      <td>
-                        <RiskBadge
-                          category={customer.riskCategory}
-                          label={customer.riskCategoryLabel}
-                        />
-                      </td>
-                      <td className="num">{formatEur(customer.revenueAtRisk.eur)}</td>
-                      <td>
-                        <Link className="btn sm" to={`/customers/${customer.id}`}>
-                          Карточка
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
+                  {data.items.map((customer: CustomerSummary) => {
+                    const overdue = customer.overdueServiceCount ?? 0
+                    const highShare =
+                      customer.highRiskShare !== undefined && customer.eligibleServiceCount > 0
+                        ? ` · выс. ${Math.round(customer.highRiskShare * 100)}%`
+                        : ''
+                    return (
+                      <tr key={customer.id}>
+                        <td className="num">
+                          <Link to={`/customers/${customer.id}`} className="cell-primary">
+                            {customer.id}
+                          </Link>
+                        </td>
+                        <td>
+                          <span className="cell-primary">{customer.email}</span>
+                          {overdue > 0 ? (
+                            <div className="cell-sub">
+                              просрочено откр.: {overdue}
+                              {(customer.lifecycleInconsistentCount ?? 0) > 0
+                                ? ` (регл.: ${customer.lifecycleInconsistentCount})`
+                                : ''}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td>
+                          <ScoreCell
+                            score={customer.riskScore}
+                            category={customer.riskCategory}
+                          />
+                        </td>
+                        <td className="num">{formatEur(customer.balance.eur)}</td>
+                        <td className="num">{formatEur(customer.totalReplenished.eur)}</td>
+                        <td className="num">
+                          <div>
+                            {customer.serviceCount}
+                            <span className="cell-sub">
+                              {' '}
+                              / {customer.eligibleServiceCount} в прогнозе
+                            </span>
+                          </div>
+                          {highShare ? <div className="cell-sub">{highShare.slice(3)}</div> : null}
+                        </td>
+                        <td>
+                          <RiskBadge
+                            category={customer.riskCategory}
+                            label={customer.riskCategoryLabel}
+                          />
+                        </td>
+                        <td className="num">
+                          <div>{formatEur(customer.revenueAtRisk.eur)}</div>
+                          {(customer.overdueOperational?.cents ?? 0) > 0 ? (
+                            <div className="cell-sub">
+                              операц.: {formatEur(customer.overdueOperational?.eur)}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td>
+                          <Link className="btn sm" to={`/customers/${customer.id}`}>
+                            Карточка
+                          </Link>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -278,6 +350,8 @@ export default function CustomersPage() {
           </>
         )}
       </section>
+
+      {toast ? <div className={`toast${toast.err ? ' err' : ''}`}>{toast.text}</div> : null}
     </div>
   )
 }

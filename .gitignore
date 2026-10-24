@@ -58,3 +58,8 @@ frontend/tsconfig.tsbuildinfo
 # Deck render output (PDF + rasterised slide previews)
 /render/
 /render_final/
+
+# Local SQLite authentication database and runtime files
+/db/auth.sqlite3
+/db/auth.sqlite3-wal
+/db/auth.sqlite3-shm
