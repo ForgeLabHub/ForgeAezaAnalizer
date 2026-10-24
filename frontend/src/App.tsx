@@ -12,6 +12,7 @@ import PriorityPage from './pages/PriorityPage'
 import CustomersPage from './pages/CustomersPage'
 import CustomerDetailPage from './pages/CustomerDetailPage'
 import SettingsPage from './pages/SettingsPage'
+import MiniAppPage from './pages/MiniAppPage'
 import { AIAnalystWidget } from './components/AIAnalystPanel'
 
 const NAV_ITEMS: SlidingNavItem[] = [
@@ -92,6 +93,17 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const { email, ready } = useAuth()
+
+  // The Telegram Mini App has its own session (exchanged for signed initData),
+  // so it must render before — and independently of — the analyst auth gate.
+  if (window.location.pathname.startsWith('/mini-app')) {
+    return (
+      <Routes>
+        <Route path="/mini-app" element={<MiniAppPage />} />
+        <Route path="/mini-app/*" element={<MiniAppPage />} />
+      </Routes>
+    )
+  }
 
   if (!ready) {
     return (

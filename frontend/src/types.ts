@@ -259,6 +259,65 @@ export interface AIResponse {
 export type SupportConversationStatus = 'open' | 'closed'
 export type SupportDeliveryStatus = 'received' | 'pending' | 'delivered' | 'failed' | 'stubbed'
 
+// ------------------------------------------------------- Telegram Mini App client
+// The client surface is separate from the analyst session: the server derives the
+// account from a token exchanged for signed Telegram initData.
+
+export interface ClientSession {
+  accessToken: string
+  tokenType: string
+  expiresIn: number
+}
+
+export interface ClientMe {
+  telegramUserId: string
+  accountId: number
+  email: string
+  notificationsEnabled: boolean
+}
+
+export interface ClientAccount {
+  id: number
+  email: string
+  /** ``cents`` is null when the source has no balance — never zero. */
+  balance: { cents: number | null; eur: string | null }
+}
+
+export interface ClientService {
+  id: number
+  name: string
+  status: string
+  autoProlong: boolean | null
+  expiresAt: string | null
+  price: { cents: number | null; eur: string | null }
+}
+
+export interface ClientServices {
+  accountId: number
+  items: ClientService[]
+}
+
+export interface ClientSupportMessage {
+  id: number
+  conversationId: number
+  sender: 'client' | 'analyst'
+  text: string
+  deliveryStatus: SupportDeliveryStatus
+  deliveryError: string | null
+  createdAt: string
+  deliveredAt: string | null
+}
+
+export interface ClientSupport {
+  conversation: { id: number; accountId: number; status: SupportConversationStatus; createdAt: string; updatedAt: string } | null
+  items: ClientSupportMessage[]
+}
+
+export interface ClientSupportSend {
+  conversation: { id: number; accountId: number; status: SupportConversationStatus; createdAt: string; updatedAt: string }
+  message: ClientSupportMessage
+}
+
 export interface SupportConversation {
   id: number
   accountId: number
