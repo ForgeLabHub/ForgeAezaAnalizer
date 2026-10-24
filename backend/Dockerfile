@@ -17,8 +17,9 @@ COPY backend/app ./backend/app
 COPY backend/scripts ./backend/scripts
 # The standalone auth module reads its DDL from this file at startup.
 COPY db/schema.sql ./backend/auth_schema.sql
-# Official organiser dataset: seeded at startup through the app's importer.
+# Official baseline and presentation snapshot with 30 additional customers.
 COPY dataset/data.json ./dataset/data.json
+COPY dataset/presentation.json ./dataset/presentation.json
 # Local documentation corpus for the AI Analyst's RAG retrieval.
 COPY docs ./docs
 
