@@ -409,7 +409,7 @@ docs/             документация по данным, модели, им
 | Документ | Содержание |
 | --- | --- |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Устройство приложения: слои, точки входа, поток данных |
-| [`docs/API.md`](docs/API.md) | Эндпоинты и схемы; источник истины — `backend/openapi.json` |
+| [`docs/API.md`](docs/API.md) | HTTP-эндпоинты **части A** (`/api/*`, `aeza_analyzer/api/app.py`). Для части B источник истины — `backend/openapi.json` |
 | [`docs/DATA_AND_RISK_MODEL.md`](docs/DATA_AND_RISK_MODEL.md) | Данные, единицы, факторы, формула, пороги, интерпретация score |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Локальная разработка и структура |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Развёртывание, Docker Compose, диагностика |
@@ -437,8 +437,9 @@ docs/             документация по данным, модели, им
 
 ## API
 
-Все маршруты, кроме `/health`, `/metrics`, `/api/v1/docs` и входа, требуют
-`Authorization: Bearer <token>`.
+Полный список — в `backend/openapi.json` и в Swagger UI. Ниже — основные
+маршруты части B. Все, кроме `/health`, `/ready`, `/metrics`, `/api/v1/docs` и
+входа, требуют `Authorization: Bearer <token>`.
 
 | Метод | Маршрут | Назначение |
 | --- | --- | --- |
@@ -447,15 +448,27 @@ docs/             документация по данным, модели, им
 | `POST` | `/api/v1/auth/logout` | Завершить сессию |
 | `GET` | `/api/v1/customers` | Список клиентов: поиск, фильтры, сортировка, пагинация |
 | `GET` | `/api/v1/customers/{id}` | Карточка клиента с услугами и рекомендациями |
+| `GET` | `/api/v1/customers/{id}/recommendations` | Playbooks клиента со статусом |
+| `PATCH` | `/api/v1/customers/{id}/recommendations/{code}` | Сменить статус playbook |
 | `GET` | `/api/v1/analytics/summary` | Сводные показатели дашборда |
+| `GET` | `/api/v1/analytics/events` | Поток событий (SSE) |
+| `GET` | `/api/v1/priority` | Очереди приоритизации |
+| `GET` | `/api/v1/quality` | Аудит качества данных |
+| `POST` | `/api/v1/scenarios/compare` | Сравнение сценария с baseline (what-if) |
+| `GET` | `/api/v1/export/customers.csv` | CSV текущей выборки (потоково) |
 | `GET` | `/api/v1/model/settings` | Текущие веса, горизонт, пороги |
 | `PATCH` | `/api/v1/model/settings` | Изменить веса, горизонт, пороги |
 | `POST` | `/api/v1/model/settings/reset` | Вернуть значения по умолчанию |
 | `GET` | `/api/v1/source/snapshot` | Текущие объём и отчёт последнего импорта |
 | `PUT` | `/api/v1/source/snapshot` | Импортировать снимок (атомарно) |
+| `GET` | `/api/v1/source/observations` | Наблюдения по снимку |
 | `GET` | `/metrics` | Метрики Prometheus |
 | `GET` | `/health` | Проверка живости |
+| `GET` | `/ready` | Проверка готовности |
 | `GET` | `/api/v1/docs` | Swagger UI |
+
+Маршруты части A (`/api/health`, `/api/meta`, `/api/dashboard`, `/api/weights`,
+…) описаны отдельно в [`docs/API.md`](docs/API.md).
 
 Параметры `/api/v1/customers`: `search`, `riskCategory`, `serviceStatus`, `sortBy`
 (`id`, `email`, `riskScore`, `balance`, `totalReplenished`), `sortDir`
