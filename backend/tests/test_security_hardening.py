@@ -25,6 +25,8 @@ def test_login_limiter_blocks_after_budget():
     limiter = LoginLimiter(capacity=10, attempts=3, window=60)
     assert all(limiter.check("127.0.0.1") for _ in range(3))
     assert not limiter.check("127.0.0.1")
+    limiter.reset("127.0.0.1")
+    assert limiter.check("127.0.0.1")
 
 
 @pytest.fixture
@@ -50,8 +52,23 @@ def test_login_endpoint_rate_limits_and_reports_retry_after(throttled_client):
 
 
 def test_successful_login_is_not_rate_limited(throttled_client):
-    for _ in range(5):
+    for _ in range(12):
         response = throttled_client.post(
             "/api/v1/auth/login",
             json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
         assert response.status_code == 200
+
+
+def test_login_limiter_is_scoped_to_login(throttled_client):
+    second_login = "second@aeza.test"
+    throttled_client.app.state.runtime.auth.users.create(second_login, TEST_PASSWORD)
+    for _ in range(10):
+        response = throttled_client.post(
+            "/api/v1/auth/login", json={"email": TEST_LOGIN, "password": "wrong"})
+        assert response.status_code == 401
+    blocked = throttled_client.post(
+        "/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
+    assert blocked.status_code == 429
+    unaffected = throttled_client.post(
+        "/api/v1/auth/login", json={"email": second_login, "password": TEST_PASSWORD})
+    assert unaffected.status_code == 200

@@ -53,13 +53,17 @@ class LoginLimiter:
         self.window = window
         self._lock = RLock()
 
-    def check(self, address: str) -> bool:
+    def check(self, key: str) -> bool:
         with self._lock:
-            count = self.cache.get(address) or 0
+            count = self.cache.get(key) or 0
             if count >= self.attempts:
                 return False
             try:
-                self.cache.put(address, count + 1, self.window)
+                self.cache.put(key, count + 1, self.window)
             except CacheFull:
                 return False
             return True
+
+    def reset(self, key: str) -> None:
+        with self._lock:
+            self.cache.pop(key)
