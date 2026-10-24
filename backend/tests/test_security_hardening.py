@@ -11,7 +11,7 @@ from backend.tests.conftest import ROOT, TEST_LOGIN, TEST_PASSWORD, make_test_au
 
 
 def test_api_settings_do_not_require_bootstrap_credentials(monkeypatch):
-    for name in ("AEZA_JWT_SECRET", "AEZA_ALLOW_DEV_SECRET", "AEZA_ADMIN_PASSWORD"):
+    for name in ("AEZA_JWT_SECRET", "AEZA_ALLOW_DEV_SECRET", "AEZA_ADMIN_EMAIL", "AEZA_ADMIN_PASSWORD"):
         monkeypatch.delenv(name, raising=False)
     Settings()
 

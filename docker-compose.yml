@@ -21,29 +21,17 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       # Inside the Compose network the API talks to the bundled Postgres.
-<<<<<<< HEAD
-      AEZA_DATABASE_URL: postgresql+psycopg://aeza:aeza@db:5432/aeza
+      AEZA_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-aeza}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-aeza}
       AUTH_DATABASE: /app/db/auth.sqlite3
       AUTH_PRIVATE_KEY: /app/db/private_key.pem
-      AUTH_ISSUER: ${AUTH_ISSUER:?Set AUTH_ISSUER to the public application origin}
-      AUTH_FRONTEND_LOGIN_URL: ${AUTH_FRONTEND_LOGIN_URL:?Set AUTH_FRONTEND_LOGIN_URL}
-      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:?Set AUTH_COOKIE_SECURE explicitly}
-      AEZA_SEED_DEMO_DATA: "0"
-=======
-      AEZA_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-aeza}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-aeza}
-      # No defaults for secrets: Compose refuses to start unless these are set.
-      # Generate: python -c "import secrets; print(secrets.token_urlsafe(48))"
-      AEZA_JWT_SECRET: ${AEZA_JWT_SECRET:?set AEZA_JWT_SECRET in .env (see .env.example)}
-      AEZA_ADMIN_EMAIL: ${AEZA_ADMIN_EMAIL:?set AEZA_ADMIN_EMAIL in .env}
-      AEZA_ADMIN_PASSWORD: ${AEZA_ADMIN_PASSWORD:?set AEZA_ADMIN_PASSWORD in .env}
-      AEZA_ALLOW_DEV_SECRET: "0"
+      AUTH_ISSUER: ${AUTH_ISSUER:-http://localhost:8080}
+      AUTH_FRONTEND_LOGIN_URL: ${AUTH_FRONTEND_LOGIN_URL:-http://localhost:8080/login}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       # Seed the official organiser dataset through the app's own validated
       # importer. Do NOT pre-load db/analytics_seed.sql: it holds a different
       # 60/115/285 fixture, not the official 10/30/100 snapshot.
       AEZA_SEED_DEMO_DATA: "1"
       AEZA_SNAPSHOT_PATH: /app/dataset/data.json
-      AEZA_AUTH_DATABASE_URL: sqlite:////app/db/auth.sqlite3
->>>>>>> 8bee307f006ccfac1e70afb61de23a22375b331e
       AEZA_AS_OF: ${AEZA_AS_OF:-2026-10-19T15:00:00+00:00}
       AEZA_ANALYTICS_FACTORY: ${AEZA_ANALYTICS_FACTORY:-backend.app.domain.module:create}
       AEZA_RECALCULATE_SECONDS: ${AEZA_RECALCULATE_SECONDS:-60}
@@ -82,6 +70,9 @@ services:
       TELEGRAM_APP_BASE_URL: ${TELEGRAM_APP_BASE_URL:-http://localhost:8080}
       TELEGRAM_DIGEST_CHECK_SECONDS: ${TELEGRAM_DIGEST_CHECK_SECONDS:-300}
       TELEGRAM_DIGEST_HOUR_UTC: ${TELEGRAM_DIGEST_HOUR_UTC:-9}
+    depends_on:
+      db:
+        condition: service_healthy
     # On Linux, host.docker.internal is not resolved automatically; this maps it
     # to the host gateway so the container can reach a host-run Ollama.
     extra_hosts:

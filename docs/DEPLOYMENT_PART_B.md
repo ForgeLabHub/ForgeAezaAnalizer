@@ -12,8 +12,8 @@
 | `api` | `backend/Dockerfile` | 8000 | FastAPI: `/api/v1/*`, `/metrics`, `/health`, `/ready` |
 | `web` | `frontend/Dockerfile` | 80 | статика React + прокси `/api` и `/metrics` на `api` |
 
-Публикуются наружу только `web`. Наружу `api` нужен лишь для прямого доступа к
-API и метрикам.
+Compose публикует `web` на `8080`, API на `8000`; ограничьте доступ к API
+правилами reverse proxy и firewall.
 
 ## 2. Обязательные переменные окружения
 
@@ -21,27 +21,23 @@ API и метрикам.
 
 | Переменная | Обязательна | Комментарий |
 |---|---|---|
-| `AEZA_JWT_SECRET` | **да** | длинное случайное значение; без него вход небезопасен |
-| `AEZA_ADMIN_EMAIL` | да | логин аналитика при первом старте |
-| `AEZA_ADMIN_PASSWORD` | да | пароль аналитика при первом старте |
-| `AEZA_ALLOW_DEV_SECRET` | да | в общем окружении только `0` |
-| `AEZA_DATABASE_URL` | да | строка подключения к PostgreSQL |
-| `AEZA_AUTH_DATABASE_URL` | да | SQLite-файл сессий и пользователей |
-| `AEZA_CORS_ORIGINS` | да | список источников вместо `*` |
+| `POSTGRES_PASSWORD` | **да** | пароль PostgreSQL; Compose использует его для подключения API |
+| `AUTH_ISSUER` | production | публичный HTTPS origin приложения |
+| `AUTH_FRONTEND_LOGIN_URL` | production | HTTPS URL страницы входа |
+| `AUTH_COOKIE_SECURE` | production | задайте `true` при HTTPS |
+| `AEZA_CORS_ORIGINS` | да | origin интерфейса |
 
-Сгенерировать секрет:
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
+Пользователи и хеши паролей хранятся в SQLite `auth_data`; первого пользователя
+создайте вручную после запуска стека.
 
 ## 3. Запуск
 
 ```bash
 cp .env.example .env
-# отредактируйте .env: задайте секрет, пароль, источники CORS
+# отредактируйте .env: задайте пароль PostgreSQL и production auth origins
 docker compose up --build -d
-docker compose ps           # все три сервиса должны быть healthy
+docker compose ps           # db healthy; api и web запущены
+docker compose exec api python -m backend.users create analyst@example.com
 ```
 
 Проверка:
@@ -57,16 +53,17 @@ curl -fsS http://localhost:8000/ready
 
 Порядок загрузки:
 
-1. При **первом** создании каталога `db/postgres/` PostgreSQL выполняет
-   `db/analytics_seed.sql` (монтируется в `docker-entrypoint-initdb.d`).
-2. Если база аналитики пуста и задан `AEZA_SEED_DEMO_DATA=1`, приложение
-   дополнительно применяет JSON из `AEZA_SNAPSHOT_PATH`.
-3. Любой другой снимок загружается атомарно:
+1. При пустой базе приложение валидирует и загружает официальный снимок из
+   `AEZA_SNAPSHOT_PATH` атомарно.
+2. Любой другой снимок загружается через API:
 
 ```bash
+read -r -p "Login: " LOGIN
+read -r -s -p "Password: " LOGIN_PASSWORD
+printf '\n'
 TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"'"$AEZA_ADMIN_EMAIL"'","password":"'"$AEZA_ADMIN_PASSWORD"'"}' \
+  -d "{\"email\":\"$LOGIN\",\"password\":\"$LOGIN_PASSWORD\"}" \
   | python -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 
 curl -X PUT http://localhost:8000/api/v1/source/snapshot \
@@ -77,17 +74,11 @@ curl -X PUT http://localhost:8000/api/v1/source/snapshot \
 `PUT /source/snapshot` валидирует структуру и применяет снимок целиком или не
 применяет вовсе — частично обновлённого состояния не бывает.
 
-> **Внимание к содержимому seed.** `db/analytics_seed.sql` содержит 60
-> аккаунтов: 10 из официального комплекта организатора и 50 синтетических
-> (`demo-customer-*`). Подробности и рекомендации — в
-> `docs/PROVENANCE_AUDIT.md`, раздел 6.1. Перед демонстрацией убедитесь, что
-> состав данных совпадает с тем, что заявлено в README и в деках.
-
 ## 5. Миграции схемы
 
 Схема аналитики создаётся приложением при старте (`Database.initialize()`);
-отдельный шаг миграций не требуется. Файл `db/schema.sql` описывает схему
-SQLite для модуля авторизации части C.
+отдельный шаг миграций не требуется. `db/schema.sql` описывает таблицу
+пользователей auth SQLite.
 
 ## 6. Наблюдаемость
 
@@ -116,9 +107,10 @@ docker compose build
 docker compose up -d
 ```
 
-Данные лежат в `db/postgres/` и `db/auth.sqlite3` (тома), поэтому пересборка
-образов их не затрагивает. Откат — вернуться на предыдущий коммит и повторить
-сборку; при несовместимом изменении схемы восстановите том из резервной копии.
+Данные лежат в именованных Docker volumes `pg_data` и `auth_data`, поэтому
+пересборка образов их не затрагивает. Откат — вернуться на предыдущий коммит и
+повторить сборку; при несовместимом изменении схемы восстановите том из
+резервной копии.
 
 Резервная копия:
 
@@ -128,11 +120,11 @@ docker compose exec db pg_dump -U aeza aeza > backup-$(date +%F).sql
 
 ## 8. Безопасность перед публикацией
 
-- [ ] `AEZA_JWT_SECRET` — случайный, не из примера
-- [ ] `AEZA_ALLOW_DEV_SECRET=0`
-- [ ] `AEZA_ADMIN_PASSWORD` изменён с `demo123`
+- [ ] создан отдельный пользователь через `backend.users create`
+- [ ] `AUTH_ISSUER` и `AUTH_FRONTEND_LOGIN_URL` используют HTTPS origin
+- [ ] `AUTH_COOKIE_SECURE=true`
 - [ ] `AEZA_CORS_ORIGINS` сужен до реальных доменов
-- [ ] `api` не опубликован в интернет напрямую
+- [ ] доступ к API ограничен правилами reverse proxy и firewall
 - [ ] `AEZA_METRICS_TOKEN` задан, если `/metrics` доступен извне
 - [ ] настроены TLS и резервное копирование томов
 
@@ -141,6 +133,6 @@ docker compose exec db pg_dump -U aeza aeza > backup-$(date +%F).sql
 * Пересчёт выполняется на каждый запрос (`AnalyticsService.analyze_all()`);
   сортировка и фильтрация — в Python. Для 10–60 клиентов это незаметно, для
   реальной базы потребуется кеш или SQL-выборки (см. `AGENTS.md`).
-* `backend/auth/` (часть C) в образ **не** включается — это отдельное
-  приложение со своим OIDC-контуром; см. `docs/PROVENANCE_AUDIT.md`, 6.3.
+* Учётные записи хранятся отдельно от аналитических данных в SQLite volume
+  `auth_data`; пользователь создаётся вручную через CLI.
 * Секретов в репозитории нет; `.env` не коммитится.

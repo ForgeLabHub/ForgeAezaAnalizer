@@ -32,10 +32,10 @@ from backend.app.integrations.telegram.service import (
 from backend.app.main import create_app
 from backend.app.modules import load_module
 
-from backend.tests.conftest import ROOT
+from backend.tests.conftest import ROOT, TEST_LOGIN, TEST_PASSWORD, make_test_auth_settings
 
-EMAIL = "analyst@aeza.test"
-PASSWORD = "demo123"
+EMAIL = TEST_LOGIN
+PASSWORD = TEST_PASSWORD
 
 
 class StubClient:
@@ -55,9 +55,6 @@ class StubClient:
 def _settings(tmp_path, **overrides) -> Settings:
     base = dict(
         database_url=f"sqlite:///{(tmp_path / 'a.db').as_posix()}",
-        auth_database_url=f"sqlite:///{(tmp_path / 'auth.db').as_posix()}",
-        jwt_secret="test-secret",
-        bootstrap_admin_password=PASSWORD,
         seed_demo_data=True,
         snapshot_path=str(ROOT / "dataset/data.json"),
         telegram_enabled=True,
@@ -67,6 +64,10 @@ def _settings(tmp_path, **overrides) -> Settings:
     )
     base.update(overrides)
     return Settings(**base)
+
+
+def _app(settings, module, tmp_path):
+    return create_app(settings, module, make_test_auth_settings(tmp_path / "auth.db"))
 
 
 @pytest.fixture
@@ -88,7 +89,7 @@ def service(tmp_path):
 def test_app_starts_with_telegram_disabled(tmp_path):
     settings = _settings(tmp_path, telegram_enabled=False, telegram_bot_token="")
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module)) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         assert client.get("/health").status_code == 200
         login = client.post("/api/v1/auth/login", json={"email": EMAIL, "password": PASSWORD})
         headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
@@ -104,21 +105,19 @@ def test_app_starts_without_a_token_when_disabled(tmp_path, monkeypatch):
 
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     monkeypatch.delenv("TELEGRAM_ENABLED", raising=False)
-    settings = Settings(jwt_secret="x", bootstrap_admin_password="y")
+    settings = Settings()
     assert settings.telegram_enabled is False
     assert settings.telegram_bot_token == ""
 
 
 def test_enabling_telegram_without_a_token_is_rejected():
     with pytest.raises(ValueError):
-        Settings(jwt_secret="x", bootstrap_admin_password="y",
-                 telegram_enabled=True, telegram_bot_token="", telegram_webhook_secret="s")
+        Settings(telegram_enabled=True, telegram_bot_token="", telegram_webhook_secret="s")
 
 
 def test_enabling_telegram_without_a_webhook_secret_is_rejected():
     with pytest.raises(ValueError):
-        Settings(jwt_secret="x", bootstrap_admin_password="y",
-                 telegram_enabled=True, telegram_bot_token="t", telegram_webhook_secret="")
+        Settings(telegram_enabled=True, telegram_bot_token="t", telegram_webhook_secret="")
 
 
 # --------------------------------------------------------------------------- #
@@ -128,7 +127,7 @@ def test_enabling_telegram_without_a_webhook_secret_is_rejected():
 def test_link_code_requires_authentication(tmp_path):
     settings = _settings(tmp_path)
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module)) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         assert client.post("/api/v1/telegram/link-code").status_code == 401
         assert client.get("/api/v1/telegram/status").status_code == 401
         assert client.post("/api/v1/telegram/disconnect").status_code == 401
@@ -312,7 +311,7 @@ def test_customer_command_validates_its_argument(service):
 def test_webhook_rejects_a_wrong_secret(tmp_path):
     settings = _settings(tmp_path)
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module)) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         response = client.post(
             "/api/v1/telegram/webhook",
             json=_update("/help"),
@@ -324,7 +323,7 @@ def test_webhook_rejects_a_wrong_secret(tmp_path):
 def test_webhook_accepts_the_right_secret(tmp_path):
     settings = _settings(tmp_path)
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module)) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         response = client.post(
             "/api/v1/telegram/webhook",
             json=_update("/help"),
@@ -336,7 +335,7 @@ def test_webhook_accepts_the_right_secret(tmp_path):
 def test_webhook_tolerates_a_malformed_body(tmp_path):
     settings = _settings(tmp_path)
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module)) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         response = client.post(
             "/api/v1/telegram/webhook",
             content=b"not json at all",
@@ -350,7 +349,7 @@ def test_webhook_tolerates_a_malformed_body(tmp_path):
 def test_webhook_is_disabled_with_the_feature(tmp_path):
     settings = _settings(tmp_path, telegram_enabled=False, telegram_bot_token="")
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module)) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         response = client.post("/api/v1/telegram/webhook", json=_update("/help"),
                                headers={"X-Telegram-Bot-Api-Secret-Token": "webhook-secret"})
         assert response.status_code == 200
@@ -477,7 +476,7 @@ def test_subscription_rejects_unknown_kinds_and_thresholds(service):
 def test_api_link_flow(tmp_path):
     settings = _settings(tmp_path)
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module)) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         login = client.post("/api/v1/auth/login", json={"email": EMAIL, "password": PASSWORD})
         headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
@@ -507,7 +506,7 @@ def test_api_link_flow(tmp_path):
 def test_api_rejects_bad_subscription_values(tmp_path):
     settings = _settings(tmp_path)
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module)) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         login = client.post("/api/v1/auth/login", json={"email": EMAIL, "password": PASSWORD})
         headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
         code = client.post("/api/v1/telegram/link-code", headers=headers).json()["code"]
@@ -519,7 +518,7 @@ def test_api_rejects_bad_subscription_values(tmp_path):
 def test_telegram_status_never_leaks_the_token(tmp_path):
     settings = _settings(tmp_path)
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module)) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         login = client.post("/api/v1/auth/login", json={"email": EMAIL, "password": PASSWORD})
         headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
         body = client.get("/api/v1/telegram/status", headers=headers).text
@@ -532,7 +531,7 @@ def test_telegram_status_never_leaks_the_token(tmp_path):
 def test_existing_endpoints_still_work_with_telegram_on(tmp_path):
     settings = _settings(tmp_path)
     module = load_module("backend.app.domain.module:create")
-    with TestClient(create_app(settings, module)) as client:
+    with TestClient(_app(settings, module, tmp_path)) as client:
         login = client.post("/api/v1/auth/login", json={"email": EMAIL, "password": PASSWORD})
         headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
         for path in ("/api/v1/analytics/summary", "/api/v1/customers", "/api/v1/priority",
@@ -647,16 +646,17 @@ def test_scheduler_runs_with_a_pinned_as_of(tmp_path):
 
     module = load_module("backend.app.domain.module:create")
     from backend.app.api.deps import Runtime
-    from backend.app.auth.security import AuthService
+    from backend.auth.service import AuthService
     from backend.app.modules import CalculationAdapter
     from backend.app.storage import Storage
+    from backend.database import UserRepository
     from core import Core
 
     storage = Storage(database)
     calculation = CalculationAdapter(module)
-    auth_db = Database(settings.auth_database_url)
-    auth_db.initialize_auth()
-    runtime = Runtime(settings, database, storage, AuthService(auth_db, settings),
+    auth_settings = make_test_auth_settings(tmp_path / "auth.db")
+    auth = AuthService(auth_settings, UserRepository(auth_settings.database))
+    runtime = Runtime(settings, database, storage, auth,
                       calculation, Core(storage, calculation, settings.reference_now),
                       ai=None, telegram=svc)
     # Seed a published generation so there is something to digest.
@@ -709,14 +709,14 @@ def test_lifespan_starts_the_digest_scheduler_with_a_pinned_as_of(tmp_path):
         seen["digest"] = "digest_scheduler" in names
         seen["recalculate"] = "recalculate" in names
 
-    with _TestClient(create_app(settings, module)) as client:
+    with _TestClient(_app(settings, module, tmp_path)) as client:
         assert client.get("/health").status_code == 200
         client.portal.call(probe) if hasattr(client, "portal") else None
 
     # Fall back to an explicit loop when the test client exposes no portal.
     if "digest" not in seen:
         async def run():
-            app = create_app(settings, module)
+            app = _app(settings, module, tmp_path)
             async with app.router.lifespan_context(app):
                 names = {t.get_coro().__name__ for t in asyncio.all_tasks() if t is not asyncio.current_task()}
                 seen["digest"] = "digest_scheduler" in names

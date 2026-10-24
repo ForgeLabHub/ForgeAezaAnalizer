@@ -23,6 +23,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.config import Settings
 from backend.app.main import create_app
+from backend.tests.conftest import make_test_auth_settings
 
 ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT = ROOT / "dataset" / "data.json"
@@ -56,15 +57,13 @@ def client(tmp_path_factory):
     os.environ["AEZA_ANALYTICS_FACTORY"] = "backend.app.domain.module:create"
     settings = Settings(
         database_url=f"sqlite:///{(tmp / 'acc.db').as_posix()}",
-        auth_database_url=f"sqlite:///{(tmp / 'acc_auth.db').as_posix()}",
-        jwt_secret="independent-acceptance-secret",
-        bootstrap_admin_password="demo123",
         seed_demo_data=True,
         snapshot_path=str(SNAPSHOT),
         as_of=AS_OF,
     )
+    auth_settings = make_test_auth_settings(tmp / "acc_auth.db")
     try:
-        with TestClient(create_app(settings), raise_server_exceptions=False) as test_client:
+        with TestClient(create_app(settings, auth_settings=auth_settings), raise_server_exceptions=False) as test_client:
             yield test_client
     finally:
         if previous is None:
@@ -76,7 +75,7 @@ def client(tmp_path_factory):
 def _token(client: TestClient) -> dict:
     response = client.post(
         "/api/v1/auth/login",
-        json={"email": "analyst@aeza.test", "password": "demo123"},
+        json={"email": "analyst@aeza.test", "password": "analyst-test-password"},
     )
     assert response.status_code == 200, response.text
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
