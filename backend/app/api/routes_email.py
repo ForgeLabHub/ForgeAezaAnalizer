@@ -49,7 +49,7 @@ class TestEmailRequest(BaseModel):
         return value.strip()
 
 
-@router.get("/status", summary="Состояние интеграции с SMTP.BZ")
+@router.get("/status", summary="Состояние интеграции с почтовым провайдером")
 def status(runtime: RuntimeDep, user: UserDep):
     return email_integration.describe(runtime.settings)
 
@@ -59,9 +59,10 @@ def send_test(payload: TestEmailRequest, runtime: RuntimeDep, user: UserDep):
     if not payload.confirm:
         raise InvalidInput("Тестовая отправка требует confirm=true: письмо уйдёт реальному получателю из поля to")
     subject = (payload.subject or "").strip() or DEFAULT_TEST_SUBJECT
+    provider = runtime.settings.active_email_provider or "не настроен"
     html = (
         "<html><body>"
-        "<p>Это тестовое письмо Aéza Sentinel, отправленное через SMTP.BZ.</p>"
+        f"<p>Это тестовое письмо Aéza Sentinel, отправленное через {provider}.</p>"
         f"<p>Получатель: {payload.to}</p>"
         "<p>Если вы его получили, интеграция с провайдером настроена корректно.</p>"
         "</body></html>"

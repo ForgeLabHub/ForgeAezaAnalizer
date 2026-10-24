@@ -93,9 +93,10 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
         calculation = CalculationAdapter(module)
         users = UserRepository(auth_settings.database)
         auth = AuthService(auth_settings, users)
-        # The OTP adapter is wired only when SMTP.BZ is configured; otherwise the
-        # service keeps its unconfigured stub and OTP e-mail stays off rather
-        # than pretending to send.
+        # The OTP adapter is wired only when a provider is configured (Postbox
+        # or SMTP.BZ, per ``active_email_provider``); otherwise the service keeps
+        # its unconfigured stub and OTP e-mail stays off rather than pretending
+        # to send.
         otp_provider = email_provider
         if otp_provider is None and settings.email_configured:
             otp_provider = SmtpBzEmailProvider(settings)

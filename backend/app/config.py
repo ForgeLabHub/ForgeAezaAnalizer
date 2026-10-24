@@ -63,10 +63,28 @@ class Settings:
                                                                  or os.getenv("AEZA_LLM_TEMPERATURE", "0.2")))
     cors_origins: tuple[str, ...] = field(default_factory=lambda: tuple(
         origin.strip() for origin in os.getenv("AEZA_CORS_ORIGINS", "http://localhost:8080,http://localhost:5173").split(",") if origin.strip()))
-    # --- Outbound e-mail (SMTP.BZ HTTP API) -----------------------------------
-    # The key is read from the environment only; it is never written to a file,
-    # an image or a log line. An empty key means "not configured", which the
-    # e-mail surface reports honestly instead of pretending to have sent.
+    # --- Outbound e-mail ------------------------------------------------------
+    # Two transports share one client contract (``backend/app/integrations/email.py``):
+    # Yandex Cloud Postbox over SMTP (the managed default) and the SMTP.BZ HTTP
+    # API (kept as an explicit alternative). Every secret is read from the
+    # environment only and never written to a file, an image or a log line. An
+    # empty credential means "not configured", which the e-mail surface reports
+    # honestly instead of pretending to have sent.
+    #
+    #: Which transport sends mail. Empty means "auto": Postbox when configured,
+    #: otherwise SMTP.BZ. An explicit value is honoured even when that provider
+    #: is not configured (mail is then disabled), so the active provider is
+    #: never ambiguous and no silent failover can misreport a confirmation.
+    email_provider: str = field(default_factory=lambda: os.getenv("AEZA_EMAIL_PROVIDER", "").strip().lower())
+    # --- Yandex Cloud Postbox (SMTP) ---
+    postbox_username: str = field(default_factory=lambda: os.getenv("POSTBOX_SMTP_USERNAME", ""))
+    postbox_password: str = field(default_factory=lambda: os.getenv("POSTBOX_SMTP_PASSWORD", ""))
+    postbox_host: str = field(default_factory=lambda: os.getenv("POSTBOX_SMTP_HOST", "postbox.cloud.yandex.net"))
+    postbox_port: int = field(default_factory=lambda: int(os.getenv("POSTBOX_SMTP_PORT", "465")))
+    postbox_from_email: str = field(default_factory=lambda: os.getenv("POSTBOX_FROM_EMAIL", ""))
+    postbox_from_name: str = field(default_factory=lambda: os.getenv("POSTBOX_FROM_NAME", ""))
+    postbox_timeout_seconds: int = field(default_factory=lambda: int(os.getenv("POSTBOX_TIMEOUT_SECONDS", "15")))
+    # --- SMTP.BZ (HTTP API) ---
     smtp_bz_api_key: str = field(default_factory=lambda: os.getenv("SMTP_BZ_API_KEY", ""))
     smtp_bz_api_url: str = field(default_factory=lambda: os.getenv(
         "SMTP_BZ_API_URL", "https://api.smtp.bz/v1/smtp/send"))
@@ -77,10 +95,44 @@ class Settings:
     app_name: str = "Aéza Analyzer"
 
     @property
-    def email_configured(self) -> bool:
-        """True when every field needed for a send is present."""
+    def postbox_configured(self) -> bool:
+        """True when Postbox has an API key id/secret and a sender address."""
+
+        return bool(self.postbox_username and self.postbox_password and self.postbox_from_email)
+
+    @property
+    def smtp_bz_configured(self) -> bool:
+        """True when SMTP.BZ has an API key and a sender address."""
 
         return bool(self.smtp_bz_api_key and self.smtp_bz_from_email)
+
+    @property
+    def active_email_provider(self) -> str:
+        """The transport that will be used, or ``""`` when mail is disabled.
+
+        Deterministic by design: an explicit ``AEZA_EMAIL_PROVIDER`` wins (and
+        disables mail if that provider lacks credentials), otherwise Postbox is
+        preferred and SMTP.BZ is the fallback. There is no runtime failover, so
+        a confirmation can only ever come from the provider named here.
+        """
+
+        choice = self.email_provider
+        if choice == "postbox":
+            return "postbox" if self.postbox_configured else ""
+        if choice == "smtp.bz":
+            return "smtp.bz" if self.smtp_bz_configured else ""
+        if choice in ("", "auto"):
+            if self.postbox_configured:
+                return "postbox"
+            if self.smtp_bz_configured:
+                return "smtp.bz"
+        return ""
+
+    @property
+    def email_configured(self) -> bool:
+        """True when the active provider has everything needed for a send."""
+
+        return bool(self.active_email_provider)
 
     def __post_init__(self):
         if not 1 <= self.recalculate_seconds <= 3600:
@@ -97,13 +149,21 @@ class Settings:
                 raise ValueError(f"{name} must be between 1 and {maximum}")
         if self.telegram_bot_enabled and (not self.telegram_bot_token or not self.telegram_webhook_secret):
             raise ValueError("Telegram bot requires AEZA_TELEGRAM_BOT_TOKEN and AEZA_TELEGRAM_WEBHOOK_SECRET")
-        # --- Outbound e-mail (SMTP.BZ) ---------------------------------------
-        # Restored after the Telegram merge dropped it: an out-of-range timeout,
-        # a plain-HTTP provider URL or a malformed sender must fail fast at
-        # startup rather than at the first send.
+        # --- Outbound e-mail --------------------------------------------------
+        # An out-of-range timeout, a plain-HTTP provider URL, an unknown provider
+        # name or a malformed sender must fail fast at startup rather than at the
+        # first send.
+        if self.email_provider not in ("", "auto", "postbox", "smtp.bz"):
+            raise ValueError("AEZA_EMAIL_PROVIDER must be one of: postbox, smtp.bz (or empty for auto)")
         if not 1 <= self.smtp_bz_timeout_seconds <= 120:
             raise ValueError("SMTP_BZ_TIMEOUT_SECONDS must be between 1 and 120")
-        if self.email_configured:
+        if not 1 <= self.postbox_timeout_seconds <= 120:
+            raise ValueError("POSTBOX_TIMEOUT_SECONDS must be between 1 and 120")
+        if self.postbox_port not in (465, 587):
+            raise ValueError("POSTBOX_SMTP_PORT must be 465 (TLS) or 587 (STARTTLS)")
+        if self.postbox_configured and "@" not in self.postbox_from_email:
+            raise ValueError("POSTBOX_FROM_EMAIL must be a valid e-mail address")
+        if self.smtp_bz_configured:
             loopback = ("http://localhost", "http://127.0.0.1", "http://[::1]")
             if not self.smtp_bz_api_url.startswith("https://") and not self.smtp_bz_api_url.startswith(loopback):
                 raise ValueError("SMTP_BZ_API_URL must use HTTPS; HTTP is allowed only on loopback")

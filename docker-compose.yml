@@ -68,9 +68,17 @@ services:
       AEZA_OLLAMA_TIMEOUT_SECONDS: ${AEZA_OLLAMA_TIMEOUT_SECONDS:-90}
       AEZA_LLM_MAX_TOKENS: ${AEZA_LLM_MAX_TOKENS:-700}
       AEZA_LLM_TEMPERATURE: ${AEZA_LLM_TEMPERATURE:-0.2}
-      # --- Outbound e-mail (SMTP.BZ) ---
-      # Passed through from .env. SMTP_BZ_API_KEY stays empty when unset, which
-      # disables sending; the key is never baked into the image.
+      # --- Outbound e-mail ---
+      # Passed through from .env. Credentials stay empty when unset, which
+      # disables sending; no secret is ever baked into the image.
+      AEZA_EMAIL_PROVIDER: ${AEZA_EMAIL_PROVIDER:-}
+      POSTBOX_SMTP_USERNAME: ${POSTBOX_SMTP_USERNAME:-}
+      POSTBOX_SMTP_PASSWORD: ${POSTBOX_SMTP_PASSWORD:-}
+      POSTBOX_SMTP_HOST: ${POSTBOX_SMTP_HOST:-postbox.cloud.yandex.net}
+      POSTBOX_SMTP_PORT: ${POSTBOX_SMTP_PORT:-465}
+      POSTBOX_FROM_EMAIL: ${POSTBOX_FROM_EMAIL:-}
+      POSTBOX_FROM_NAME: ${POSTBOX_FROM_NAME:-}
+      POSTBOX_TIMEOUT_SECONDS: ${POSTBOX_TIMEOUT_SECONDS:-15}
       SMTP_BZ_API_KEY: ${SMTP_BZ_API_KEY:-}
       SMTP_BZ_FROM_EMAIL: ${SMTP_BZ_FROM_EMAIL:-}
       SMTP_BZ_FROM_NAME: ${SMTP_BZ_FROM_NAME:-}
