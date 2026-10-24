@@ -294,7 +294,7 @@ location = /ready { proxy_pass http://aeza_api/ready; }
 
 ## 8. Git
 
-- Ветка: `feat/deployment-readiness`, HEAD `0225f12`, не запушена.
+- Ветка: `feat/deployment-readiness`, **не запушена** (HEAD см. `git log -1`).
 - Изменено в этой итерации: `backend/app/api/routes_export.py`,
   `backend/app/storage.py`, `backend/tests/test_insights.py`.
 - Новое: `backend/scripts/generate_load_profile.py`, `backend/scripts/loadtest.py`,
@@ -302,6 +302,31 @@ location = /ready { proxy_pass http://aeza_api/ready; }
 - `db/auth.sqlite3` изменён запуском приложения (runtime-состояние) и **не
   коммитится**; `-wal`/`-shm` также не коммитятся.
 - `main` не изменялся. Push не выполнялся.
+
+### 8.1. Добавлено в итерации 2026-10-24
+
+| Изменение | Файлы | Доказательство |
+| --- | --- | --- |
+| `AEZA_ALLOW_DEV_SECRET` по умолчанию `0` | `backend/app/config.py` | `Settings()` без секрета → `ValueError` |
+| Ограничение попыток входа (429 + `Retry-After`) | `backend/app/auth/security.py`, `routes_auth.py`, `main.py` | 10×401 → 429 |
+| CORS по умолчанию не `*` | `docker-compose.yml`, `.env.example` | разбор YAML |
+| Runtime-БД убрана из Git, volume `aeza_auth` | `.gitignore`, `docker-compose.yml` | `git ls-files db/` без `auth.sqlite3` |
+| Проверка консистентности документации | `backend/scripts/check_docs.py` | проходит (кроме ещё не созданного итогового отчёта) |
+| CI: backend, frontend, docs | `.github/workflows/ci.yml` | YAML валиден, 3 job |
+
+Пункты 7.5 (HSTS, заголовки, `location = /ready`) остаются за владельцем: HSTS
+корректен только на HTTPS-хосте, а `/ready` уже проксируется в
+`frontend/nginx.conf` контейнера.
+
+### 8.2. Что не удалось сделать в этой среде
+
+- **`docker compose up --build` не перезапускался.** В песочнице остался
+  `dockerd` от предыдущей сессии (PID 3542), а новый `dockerd` не может
+  подняться, потому что управляемый `containerd` уже запущен и старт
+  упирается в таймаут. `docker compose config` валиден, но холодная сборка
+  образа здесь не воспроизводилась. Это ограничение среды, а не дефект
+  Compose-файла.
+- **Push в GitHub не выполнялся** — отдельное решение владельца (см. §9).
 
 ---
 
