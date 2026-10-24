@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, api } from '../lib/api'
 import { useAnalysis } from '../lib/realtime'
@@ -9,6 +9,7 @@ import type {
   Summary,
   ValidationIssue,
 } from '../types'
+import { Collapsible, SlidingTabs } from '../components/motion'
 import {
   ErrorBox,
   Loading,
@@ -39,6 +40,15 @@ const SIMPLE_FACTOR_DESCRIPTIONS: Record<string, string> = {
   renewal_failure_rate: 'Как часто попытки продлить услугу завершались ошибкой оплаты.',
 }
 
+type PresetKey = 'h7' | 'h90' | 'whole_snapshot' | 'strict_bands'
+
+const PRESET_TABS: ReadonlyArray<{ value: PresetKey; label: string }> = [
+  { value: 'h7', label: 'Горизонт 7 дн.' },
+  { value: 'h90', label: 'Горизонт 90 дн.' },
+  { value: 'whole_snapshot', label: 'Отказы за весь снимок' },
+  { value: 'strict_bands', label: 'Строгие пороги 25/50' },
+]
+
 export default function SettingsPage() {
   const { activeGeneration, pinnedGeneration, setPinnedGeneration, refreshKey, notifyMutation } =
     useAnalysis()
@@ -52,7 +62,12 @@ export default function SettingsPage() {
   const [windowDays, setWindowDays] = useState(90)
 
   const [scenarioName, setScenarioName] = useState('Проверка чувствительности')
+  const [activePreset, setActivePreset] = useState<PresetKey | null>(null)
   const [scenarioResult, setScenarioResult] = useState<ScenarioComparisonResponse | null>(null)
+  const lastScenarioRef = useRef<ScenarioComparisonResponse | null>(null)
+  if (scenarioResult) {
+    lastScenarioRef.current = scenarioResult
+  }
   const [simulating, setSimulating] = useState(false)
 
   const [error, setError] = useState<string | null>(null)
@@ -76,6 +91,7 @@ export default function SettingsPage() {
       setUseWindowLimit(true)
       setWindowDays(win)
     }
+    setActivePreset(null)
     setConflictDetected(false)
   }, [])
 
@@ -265,6 +281,7 @@ export default function SettingsPage() {
     setWindowDays(nextWin)
     setWeights(nextWeights)
     setScenarioName(label)
+    setActivePreset(preset)
 
     void runScenario({
       name: label,
@@ -296,8 +313,9 @@ export default function SettingsPage() {
     return sum + (w > 0 ? w : 0)
   }, 0)
 
-  const availabilityEntries = scenarioResult
-    ? Object.entries(scenarioResult.factorAvailability)
+  const shownScenario = scenarioResult ?? lastScenarioRef.current
+  const availabilityEntries = shownScenario
+    ? Object.entries(shownScenario.factorAvailability)
     : []
 
   return (
@@ -394,7 +412,7 @@ export default function SettingsPage() {
           <h2>Быстрая симуляция What-If</h2>
           <span className="hint">изолированный расчёт без изменения боевых настроек</span>
         </div>
-        <div className="card-body stack" style={{ gap: 14 }}>
+        <div className="card-body">
           <div className="row" style={{ gap: 10 }}>
             <input
               className="input"
@@ -406,38 +424,14 @@ export default function SettingsPage() {
               placeholder="Название сценария…"
               aria-label="Название сценария"
             />
-            <button
-              type="button"
-              className="btn sm"
-              disabled={simulating}
-              onClick={() => applyPreset('h7')}
-            >
-              Горизонт 7 дн.
-            </button>
-            <button
-              type="button"
-              className="btn sm"
-              disabled={simulating}
-              onClick={() => applyPreset('h90')}
-            >
-              Горизонт 90 дн.
-            </button>
-            <button
-              type="button"
-              className="btn sm"
-              disabled={simulating}
-              onClick={() => applyPreset('whole_snapshot')}
-            >
-              Отказы за весь снимок
-            </button>
-            <button
-              type="button"
-              className="btn sm"
-              disabled={simulating}
-              onClick={() => applyPreset('strict_bands')}
-            >
-              Строгие пороги 25/50
-            </button>
+            <SlidingTabs
+              ariaLabel="Быстрые пресеты сценария"
+              variant="subtle"
+              size="sm"
+              value={activePreset}
+              onChange={(preset) => applyPreset(preset)}
+              items={PRESET_TABS.map((item) => ({ ...item, disabled: simulating }))}
+            />
             <button
               type="button"
               className="btn primary sm"
@@ -448,249 +442,251 @@ export default function SettingsPage() {
             </button>
           </div>
 
-          {scenarioResult ? (
-            <div className="stack" style={{ gap: 16 }}>
-              <div className="row" style={{ justifyContent: 'space-between' }}>
-                <div>
-                  <strong>Результат сценария «{scenarioResult.name}»</strong>
-                  <span className="hint" style={{ marginLeft: 8 }}>
-                    база vs сценарий · клиентов с изменением оценки:{' '}
-                    {scenarioResult.customers.length}
-                  </span>
+          <Collapsible open={Boolean(scenarioResult)}>
+            {shownScenario ? (
+              <div className="stack" style={{ gap: 16, paddingTop: 16 }}>
+                <div className="row" style={{ justifyContent: 'space-between' }}>
+                  <div>
+                    <strong>Результат сценария «{shownScenario.name}»</strong>
+                    <span className="hint" style={{ marginLeft: 8 }}>
+                      база vs сценарий · клиентов с изменением оценки:{' '}
+                      {shownScenario.customers.length}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn sm"
+                    onClick={() => setScenarioResult(null)}
+                  >
+                    Скрыть сравнение
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  className="btn sm"
-                  onClick={() => setScenarioResult(null)}
-                >
-                  Скрыть сравнение
-                </button>
-              </div>
 
-              <div className="table-wrap">
-                <table className="data">
-                  <thead>
-                    <tr>
-                      <th>Показатель</th>
-                      <th className="num">Рабочая модель</th>
-                      <th className="num">Сценарий</th>
-                      <th className="num">Абс. изменение</th>
-                      <th className="num">Относит.</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>Горизонт прогноза, дн.</td>
-                      <td className="num">{scenarioResult.comparison.horizonDays.baseline ?? '—'}</td>
-                      <td className="num">{scenarioResult.comparison.horizonDays.scenario ?? '—'}</td>
-                      <td className="num">
-                        {formatSignedNumber(scenarioResult.comparison.horizonDays.absolute)}
-                      </td>
-                      <td className="num">
-                        {formatRelativePct(scenarioResult.comparison.horizonDays.relative)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>Выручка под риском</td>
-                      <td className="num">
-                        {formatCents(scenarioResult.comparison.revenueAtRiskCents.baseline)}
-                      </td>
-                      <td className="num">
-                        {formatCents(scenarioResult.comparison.revenueAtRiskCents.scenario)}
-                      </td>
-                      <td className="num">
-                        {formatSignedCents(scenarioResult.comparison.revenueAtRiskCents.absolute)}
-                      </td>
-                      <td className="num">
-                        {formatRelativePct(scenarioResult.comparison.revenueAtRiskCents.relative)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>Предстоящие продления</td>
-                      <td className="num">
-                        {formatCents(scenarioResult.comparison.upcomingRenewalsCents.baseline)}
-                      </td>
-                      <td className="num">
-                        {formatCents(scenarioResult.comparison.upcomingRenewalsCents.scenario)}
-                      </td>
-                      <td className="num">
-                        {formatSignedCents(scenarioResult.comparison.upcomingRenewalsCents.absolute)}
-                      </td>
-                      <td className="num">
-                        {formatRelativePct(scenarioResult.comparison.upcomingRenewalsCents.relative)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>Клиентов высокого риска</td>
-                      <td className="num">
-                        {scenarioResult.comparison.highRiskCustomers.baseline ?? '—'}
-                      </td>
-                      <td className="num">
-                        {scenarioResult.comparison.highRiskCustomers.scenario ?? '—'}
-                      </td>
-                      <td className="num">
-                        {formatSignedNumber(scenarioResult.comparison.highRiskCustomers.absolute)}
-                      </td>
-                      <td className="num">
-                        {formatRelativePct(scenarioResult.comparison.highRiskCustomers.relative)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>Клиентов среднего риска</td>
-                      <td className="num">
-                        {scenarioResult.comparison.mediumRiskCustomers.baseline ?? '—'}
-                      </td>
-                      <td className="num">
-                        {scenarioResult.comparison.mediumRiskCustomers.scenario ?? '—'}
-                      </td>
-                      <td className="num">
-                        {formatSignedNumber(scenarioResult.comparison.mediumRiskCustomers.absolute)}
-                      </td>
-                      <td className="num">
-                        {formatRelativePct(scenarioResult.comparison.mediumRiskCustomers.relative)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>Услуг высокого риска</td>
-                      <td className="num">
-                        {scenarioResult.comparison.highRiskServices.baseline ?? '—'}
-                      </td>
-                      <td className="num">
-                        {scenarioResult.comparison.highRiskServices.scenario ?? '—'}
-                      </td>
-                      <td className="num">
-                        {formatSignedNumber(scenarioResult.comparison.highRiskServices.absolute)}
-                      </td>
-                      <td className="num">
-                        {formatRelativePct(scenarioResult.comparison.highRiskServices.relative)}
-                      </td>
-                    </tr>
-                    {Object.entries(scenarioResult.comparison.categories).map(([cat, delta]) => (
-                      <tr key={cat}>
-                        <td className="cell-sub">
-                          Категория: {CATEGORY_TITLES[cat] ?? cat}
-                        </td>
-                        <td className="num">{delta.baseline ?? 0}</td>
-                        <td className="num">{delta.scenario ?? 0}</td>
-                        <td className="num">{formatSignedNumber(delta.absolute)}</td>
-                        <td className="num">{formatRelativePct(delta.relative)}</td>
+                <div className="table-wrap">
+                  <table className="data">
+                    <thead>
+                      <tr>
+                        <th>Показатель</th>
+                        <th className="num">Рабочая модель</th>
+                        <th className="num">Сценарий</th>
+                        <th className="num">Абс. изменение</th>
+                        <th className="num">Относит.</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {scenarioResult.customers.length > 0 ? (
-                <div>
-                  <div className="section-title">
-                    Клиенты с изменившейся оценкой ({scenarioResult.customers.length})
-                  </div>
-                  <div className="table-wrap">
-                    <table className="data">
-                      <thead>
-                        <tr>
-                          <th>Клиент</th>
-                          <th className="num">Балл (база → сценарий)</th>
-                          <th>Категория</th>
-                          <th className="num">Под риском (база → сценарий)</th>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Горизонт прогноза, дн.</td>
+                        <td className="num">{shownScenario.comparison.horizonDays.baseline ?? '—'}</td>
+                        <td className="num">{shownScenario.comparison.horizonDays.scenario ?? '—'}</td>
+                        <td className="num">
+                          {formatSignedNumber(shownScenario.comparison.horizonDays.absolute)}
+                        </td>
+                        <td className="num">
+                          {formatRelativePct(shownScenario.comparison.horizonDays.relative)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>Выручка под риском</td>
+                        <td className="num">
+                          {formatCents(shownScenario.comparison.revenueAtRiskCents.baseline)}
+                        </td>
+                        <td className="num">
+                          {formatCents(shownScenario.comparison.revenueAtRiskCents.scenario)}
+                        </td>
+                        <td className="num">
+                          {formatSignedCents(shownScenario.comparison.revenueAtRiskCents.absolute)}
+                        </td>
+                        <td className="num">
+                          {formatRelativePct(shownScenario.comparison.revenueAtRiskCents.relative)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>Предстоящие продления</td>
+                        <td className="num">
+                          {formatCents(shownScenario.comparison.upcomingRenewalsCents.baseline)}
+                        </td>
+                        <td className="num">
+                          {formatCents(shownScenario.comparison.upcomingRenewalsCents.scenario)}
+                        </td>
+                        <td className="num">
+                          {formatSignedCents(shownScenario.comparison.upcomingRenewalsCents.absolute)}
+                        </td>
+                        <td className="num">
+                          {formatRelativePct(shownScenario.comparison.upcomingRenewalsCents.relative)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>Клиентов высокого риска</td>
+                        <td className="num">
+                          {shownScenario.comparison.highRiskCustomers.baseline ?? '—'}
+                        </td>
+                        <td className="num">
+                          {shownScenario.comparison.highRiskCustomers.scenario ?? '—'}
+                        </td>
+                        <td className="num">
+                          {formatSignedNumber(shownScenario.comparison.highRiskCustomers.absolute)}
+                        </td>
+                        <td className="num">
+                          {formatRelativePct(shownScenario.comparison.highRiskCustomers.relative)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>Клиентов среднего риска</td>
+                        <td className="num">
+                          {shownScenario.comparison.mediumRiskCustomers.baseline ?? '—'}
+                        </td>
+                        <td className="num">
+                          {shownScenario.comparison.mediumRiskCustomers.scenario ?? '—'}
+                        </td>
+                        <td className="num">
+                          {formatSignedNumber(shownScenario.comparison.mediumRiskCustomers.absolute)}
+                        </td>
+                        <td className="num">
+                          {formatRelativePct(shownScenario.comparison.mediumRiskCustomers.relative)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>Услуг высокого риска</td>
+                        <td className="num">
+                          {shownScenario.comparison.highRiskServices.baseline ?? '—'}
+                        </td>
+                        <td className="num">
+                          {shownScenario.comparison.highRiskServices.scenario ?? '—'}
+                        </td>
+                        <td className="num">
+                          {formatSignedNumber(shownScenario.comparison.highRiskServices.absolute)}
+                        </td>
+                        <td className="num">
+                          {formatRelativePct(shownScenario.comparison.highRiskServices.relative)}
+                        </td>
+                      </tr>
+                      {Object.entries(shownScenario.comparison.categories).map(([cat, delta]) => (
+                        <tr key={cat}>
+                          <td className="cell-sub">
+                            Категория: {CATEGORY_TITLES[cat] ?? cat}
+                          </td>
+                          <td className="num">{delta.baseline ?? 0}</td>
+                          <td className="num">{delta.scenario ?? 0}</td>
+                          <td className="num">{formatSignedNumber(delta.absolute)}</td>
+                          <td className="num">{formatRelativePct(delta.relative)}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {scenarioResult.customers.map((c) => {
-                          const scoreDiff =
-                            c.scoreBefore !== null && c.scoreAfter !== null
-                              ? c.scoreAfter - c.scoreBefore
-                              : null
-                          return (
-                            <tr key={c.id}>
-                              <td>
-                                <Link to={`/customers/${c.id}`} className="cell-primary">
-                                  #{c.id}
-                                </Link>{' '}
-                                <span className="cell-sub">{c.email ?? ''}</span>
-                              </td>
-                              <td className="num">
-                                {c.scoreBefore === null ? '—' : c.scoreBefore.toFixed(1)} →{' '}
-                                <strong>
-                                  {c.scoreAfter === null ? '—' : c.scoreAfter.toFixed(1)}
-                                </strong>
-                                {scoreDiff !== null ? (
-                                  <span className="cell-sub">
-                                    {' '}
-                                    ({formatSignedNumber(scoreDiff, 1)})
-                                  </span>
-                                ) : null}
-                              </td>
-                              <td>
-                                <div className="row" style={{ gap: 6 }}>
-                                  <RiskBadge category={c.categoryBefore as RiskCategory} />
-                                  <span className="cell-sub">→</span>
-                                  <RiskBadge category={c.categoryAfter as RiskCategory} />
-                                </div>
-                              </td>
-                              <td className="num">
-                                {formatCents(c.revenueAtRiskBefore)} →{' '}
-                                <strong>{formatCents(c.revenueAtRiskAfter)}</strong>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ) : (
-                <div className="notice">
-                  Ни у одного клиента не изменились итоговый балл или категория риска при этих
-                  параметрах.
-                </div>
-              )}
 
-              {availabilityEntries.length > 0 ? (
-                <div>
-                  <div className="section-title">Изменение доступности факторов по услугам</div>
-                  <div className="table-wrap">
-                    <table className="data">
-                      <thead>
-                        <tr>
-                          <th>Фактор</th>
-                          <th className="num">Доступен (база → сцен.)</th>
-                          <th className="num">Неизвестен (база → сцен.)</th>
-                          <th className="num">Стал неизвестен</th>
-                          <th className="num">Стал доступен</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {availabilityEntries.map(([key, shift]) => (
-                          <tr key={key}>
-                            <td>
-                              {factorLabelsByKey[key] ?? key}{' '}
-                              <span className="hint">
-                                (<code>{key}</code>)
-                              </span>
-                            </td>
-                            <td className="num">
-                              {shift.availableBefore} → {shift.availableAfter}
-                            </td>
-                            <td className="num">
-                              {shift.unknownBefore} → {shift.unknownAfter}
-                            </td>
-                            <td className="num">{shift.becameUnknown}</td>
-                            <td className="num">{shift.becameAvailable}</td>
+                {shownScenario.customers.length > 0 ? (
+                  <div>
+                    <div className="section-title">
+                      Клиенты с изменившейся оценкой ({shownScenario.customers.length})
+                    </div>
+                    <div className="table-wrap">
+                      <table className="data">
+                        <thead>
+                          <tr>
+                            <th>Клиент</th>
+                            <th className="num">Балл (база → сценарий)</th>
+                            <th>Категория</th>
+                            <th className="num">Под риском (база → сценарий)</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {shownScenario.customers.map((c) => {
+                            const scoreDiff =
+                              c.scoreBefore !== null && c.scoreAfter !== null
+                                ? c.scoreAfter - c.scoreBefore
+                                : null
+                            return (
+                              <tr key={c.id}>
+                                <td>
+                                  <Link to={`/customers/${c.id}`} className="cell-primary">
+                                    #{c.id}
+                                  </Link>{' '}
+                                  <span className="cell-sub">{c.email ?? ''}</span>
+                                </td>
+                                <td className="num">
+                                  {c.scoreBefore === null ? '—' : c.scoreBefore.toFixed(1)} →{' '}
+                                  <strong>
+                                    {c.scoreAfter === null ? '—' : c.scoreAfter.toFixed(1)}
+                                  </strong>
+                                  {scoreDiff !== null ? (
+                                    <span className="cell-sub">
+                                      {' '}
+                                      ({formatSignedNumber(scoreDiff, 1)})
+                                    </span>
+                                  ) : null}
+                                </td>
+                                <td>
+                                  <div className="row" style={{ gap: 6 }}>
+                                    <RiskBadge category={c.categoryBefore as RiskCategory} />
+                                    <span className="cell-sub">→</span>
+                                    <RiskBadge category={c.categoryAfter as RiskCategory} />
+                                  </div>
+                                </td>
+                                <td className="num">
+                                  {formatCents(c.revenueAtRiskBefore)} →{' '}
+                                  <strong>{formatCents(c.revenueAtRiskAfter)}</strong>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
-              ) : null}
+                ) : (
+                  <div className="notice">
+                    Ни у одного клиента не изменились итоговый балл или категория риска при этих
+                    параметрах.
+                  </div>
+                )}
 
-              <div className="notice info">
-                <div>{scenarioResult.comparison.note}</div>
-                <div style={{ marginTop: 4 }}>{scenarioResult.note}</div>
+                {availabilityEntries.length > 0 ? (
+                  <div>
+                    <div className="section-title">Изменение доступности факторов по услугам</div>
+                    <div className="table-wrap">
+                      <table className="data">
+                        <thead>
+                          <tr>
+                            <th>Фактор</th>
+                            <th className="num">Доступен (база → сцен.)</th>
+                            <th className="num">Неизвестен (база → сцен.)</th>
+                            <th className="num">Стал неизвестен</th>
+                            <th className="num">Стал доступен</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {availabilityEntries.map(([key, shift]) => (
+                            <tr key={key}>
+                              <td>
+                                {factorLabelsByKey[key] ?? key}{' '}
+                                <span className="hint">
+                                  (<code>{key}</code>)
+                                </span>
+                              </td>
+                              <td className="num">
+                                {shift.availableBefore} → {shift.availableAfter}
+                              </td>
+                              <td className="num">
+                                {shift.unknownBefore} → {shift.unknownAfter}
+                              </td>
+                              <td className="num">{shift.becameUnknown}</td>
+                              <td className="num">{shift.becameAvailable}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="notice info">
+                  <div>{shownScenario.comparison.note}</div>
+                  <div style={{ marginTop: 4 }}>{shownScenario.note}</div>
+                </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
+          </Collapsible>
         </div>
       </section>
 
@@ -745,6 +741,7 @@ export default function SettingsPage() {
                       value={value}
                       disabled={isDeprecated}
                       onChange={(e) => {
+                        setActivePreset(null)
                         const parsed = Number(e.target.value)
                         setWeights((prev) => ({
                           ...prev,
@@ -760,7 +757,8 @@ export default function SettingsPage() {
                         type="button"
                         className="num-step-btn"
                         disabled={isDeprecated || value >= 1000}
-                        onClick={() =>
+                        onClick={() => {
+                          setActivePreset(null)
                           setWeights((prev) => ({
                             ...prev,
                             [factor.key]: Math.min(
@@ -768,7 +766,7 @@ export default function SettingsPage() {
                               Math.round(((prev[factor.key] ?? 0) + 0.5) * 10) / 10,
                             ),
                           }))
-                        }
+                        }}
                         aria-label={`Увеличить вес фактора ${factor.label}`}
                         title="Увеличить (+0.5)"
                       >
@@ -787,7 +785,8 @@ export default function SettingsPage() {
                         type="button"
                         className="num-step-btn"
                         disabled={isDeprecated || value <= 0}
-                        onClick={() =>
+                        onClick={() => {
+                          setActivePreset(null)
                           setWeights((prev) => ({
                             ...prev,
                             [factor.key]: Math.max(
@@ -795,7 +794,7 @@ export default function SettingsPage() {
                               Math.round(((prev[factor.key] ?? 0) - 0.5) * 10) / 10,
                             ),
                           }))
-                        }
+                        }}
                         aria-label={`Уменьшить вес фактора ${factor.label}`}
                         title="Уменьшить (−0.5)"
                       >
@@ -834,9 +833,10 @@ export default function SettingsPage() {
                 max={365}
                 step={1}
                 value={horizon}
-                onChange={(e) =>
+                onChange={(e) => {
+                  setActivePreset(null)
                   setHorizon(Math.max(1, Math.min(365, Math.round(Number(e.target.value) || 1))))
-                }
+                }}
               />
               <span className="hint">
                 Продления вне горизонта не учитываются в выручке под риском.
@@ -848,7 +848,10 @@ export default function SettingsPage() {
                 <input
                   type="checkbox"
                   checked={useWindowLimit}
-                  onChange={(e) => setUseWindowLimit(e.target.checked)}
+                  onChange={(e) => {
+                    setActivePreset(null)
+                    setUseWindowLimit(e.target.checked)
+                  }}
                 />
                 <span>Ограничить окно анализа неуспешных продлений</span>
               </label>
@@ -862,11 +865,12 @@ export default function SettingsPage() {
                   max={3650}
                   step={1}
                   value={windowDays}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setActivePreset(null)
                     setWindowDays(
                       Math.max(1, Math.min(3650, Math.round(Number(e.target.value) || 1))),
                     )
-                  }
+                  }}
                   aria-label="Окно анализа неуспешных продлений, дней"
                 />
               ) : (
@@ -892,7 +896,10 @@ export default function SettingsPage() {
                 max={99}
                 step={1}
                 value={lowMax}
-                onChange={(e) => setLowMax(Math.round(Number(e.target.value) || 0))}
+                onChange={(e) => {
+                  setActivePreset(null)
+                  setLowMax(Math.round(Number(e.target.value) || 0))
+                }}
               />
             </div>
 
@@ -907,7 +914,10 @@ export default function SettingsPage() {
                 max={100}
                 step={1}
                 value={mediumMax}
-                onChange={(e) => setMediumMax(Math.round(Number(e.target.value) || 1))}
+                onChange={(e) => {
+                  setActivePreset(null)
+                  setMediumMax(Math.round(Number(e.target.value) || 1))
+                }}
               />
               <span className="hint">
                 Требуется lowMax &lt; mediumMax, иначе сервер отклонит изменение.

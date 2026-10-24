@@ -149,14 +149,15 @@ html.theme-transition,
 html.theme-transition *,
 html.theme-transition *::before,
 html.theme-transition *::after {
-  transition:
-    background-color 0.25s ease,
-    border-color 0.25s ease,
-    color 0.25s ease,
-    box-shadow 0.25s ease !important;
+  transition-property: background-color, border-color, color, box-shadow, fill, stroke, transform,
+    opacity !important;
+  transition-duration: 0.34s !important;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
 }
 
 .theme-toggle {
+  position: relative;
+  overflow: hidden;
   width: 38px;
   height: 38px;
   padding: 0;
@@ -168,17 +169,52 @@ html.theme-transition *::after {
   place-items: center;
   cursor: pointer;
   flex: none;
-  transition: border-color 0.15s, color 0.15s, background 0.15s, transform 0.3s ease;
+  transition:
+    border-color 0.2s ease,
+    color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.25s ease,
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .theme-toggle:hover {
   color: var(--brand-500);
   border-color: var(--brand-300);
   background: var(--brand-50);
+  box-shadow: 0 4px 14px -4px rgba(255, 107, 0, 0.32);
 }
 
 .theme-toggle:active {
-  transform: rotate(-20deg) scale(0.94);
+  transform: rotate(-16deg) scale(0.92);
+}
+
+.theme-toggle .theme-icon {
+  grid-area: 1 / 1;
+  display: inline-grid;
+  place-items: center;
+  transition:
+    transform 0.44s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.3s ease;
+}
+
+.theme-toggle.is-light .theme-icon-moon {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+
+.theme-toggle.is-light .theme-icon-sun {
+  opacity: 0;
+  transform: rotate(80deg) scale(0.45);
+}
+
+.theme-toggle.is-dark .theme-icon-sun {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+
+.theme-toggle.is-dark .theme-icon-moon {
+  opacity: 0;
+  transform: rotate(-80deg) scale(0.45);
 }
 
 .theme-toggle svg {
@@ -234,29 +270,39 @@ body {
   min-height: 100vh;
 }
 
-body::before {
-  content: '';
+.presswall-bg {
   position: fixed;
-  inset: 0;
+  top: var(--header-offset, var(--header-h));
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 0;
   pointer-events: none;
   opacity: 0.07;
-  background: url('/aeza-presswall.svg') 0 0 / 280px 280px repeat;
-  animation: aeza-presswall-drift 48s linear infinite;
+  background: url('/aeza-presswall.svg') 0 0 / 210px 210px repeat;
+  animation: aeza-presswall-drift 36s linear infinite;
+  transition: filter 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.presswall-bg.is-full {
+  top: 0;
 }
 
 @keyframes aeza-presswall-drift {
+  from {
+    background-position: 0 0;
+  }
   to {
-    background-position: 280px 280px;
+    background-position: 210px -210px;
   }
 }
 
-:root[data-theme='dark'] body::before {
+:root[data-theme='dark'] .presswall-bg {
   filter: invert(1) hue-rotate(180deg);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  body::before {
+  .presswall-bg {
     animation: none;
   }
 }
@@ -491,9 +537,12 @@ code {
 }
 
 .app-nav {
+  position: relative;
   display: flex;
+  align-items: center;
   gap: 4px;
-  margin-left: 8px;
+  padding: 8px 10px;
+  margin: -8px 0 -8px -2px;
   flex: 1;
   /* The links are nowrap, so without min-width:0 the flex item cannot shrink
      below their total width and the header pushes the page into horizontal
@@ -501,28 +550,39 @@ code {
      keeps the layout intact at every width. */
   min-width: 0;
   overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.app-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .app-nav a {
-  padding: 8px 14px;
+  position: relative;
+  z-index: 2;
+  padding: 8px 15px;
   border-radius: var(--radius-pill);
   color: var(--n-600);
   font-weight: 600;
   font-size: 14px;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
+  background: transparent;
+  transition:
+    color 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .app-nav a:hover {
-  background: var(--n-100);
   color: var(--n-900);
   text-decoration: none;
 }
 
+.app-nav a:active {
+  transform: scale(0.97);
+}
+
 .app-nav a.active {
-  background: var(--brand-50);
   color: var(--brand-600);
-  box-shadow: inset 0 0 0 1px var(--brand-100);
 }
 
 .header-user {
@@ -533,7 +593,17 @@ code {
   color: var(--n-600);
 }
 
+.app-body {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .page {
+  position: relative;
+  z-index: 1;
   flex: 1;
   padding: 32px 28px 64px;
   max-width: 1560px;
@@ -1585,17 +1655,31 @@ th.sortable:hover {
 
 .tabs {
   /* aeza.ru-style segmented pill switcher */
+  position: relative;
   display: inline-flex;
+  align-items: center;
   gap: 4px;
   padding: 4px;
   background: var(--n-100);
+  border: 1px solid var(--n-200);
   border-radius: var(--radius-pill);
   margin-bottom: 16px;
   max-width: 100%;
   overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.row > .tabs {
+  margin-bottom: 0;
 }
 
 .tabs button {
+  position: relative;
+  z-index: 2;
   padding: 7px 16px;
   border: none;
   background: none;
@@ -1605,17 +1689,48 @@ th.sortable:hover {
   border-radius: var(--radius-pill);
   font-size: 13.5px;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  transition:
+    color 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.16s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.15s ease;
 }
 
-.tabs button:hover {
+.tabs button:hover:not(:disabled) {
   color: var(--n-900);
 }
 
-.tabs button.active {
+.tabs button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.tabs button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tabs:not(.tabs-sliding) button.active {
   color: #fff;
   background: var(--brand-gradient);
   box-shadow: var(--brand-glow);
+}
+
+.tabs.tabs-sliding.tabs-brand button.active {
+  color: #fff;
+}
+
+.tabs.tabs-sliding.tabs-surface button.active,
+.tabs.tabs-sliding.tabs-subtle button.active {
+  color: var(--brand-600);
+}
+
+.tabs.tabs-sm {
+  padding: 3px;
+  gap: 3px;
+}
+
+.tabs.tabs-sm button {
+  padding: 5px 12px;
+  font-size: 12.5px;
 }
 
 .section-title {
@@ -1772,7 +1887,11 @@ th.sortable:hover {
 }
 
 .archive-bar {
+  position: relative;
+  z-index: 2;
   background: var(--risk-med-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--risk-med-border);
   color: var(--risk-med-fg);
   padding: 8px 28px;
@@ -1906,7 +2025,8 @@ th.sortable:hover {
   .app-nav {
     order: 3;
     flex: 1 1 100%;
-    margin-left: 0;
+    margin: -4px -6px;
+    padding: 6px;
     overflow-x: auto;
   }
   .app-nav a {
@@ -2155,16 +2275,22 @@ th.sortable:hover {
   height: 17px;
 }
 
-.ai-widget-scope {
+.ai-widget-scope,
+.tabs.ai-widget-scope {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
   padding: 3px;
+  margin-bottom: 0;
+  width: 100%;
   background: var(--n-100);
+  border: 1px solid var(--n-200);
   border-radius: var(--radius-pill);
 }
 
-.ai-widget-scope button {
+.ai-widget-scope button,
+.tabs.ai-widget-scope button {
   padding: 5px 10px;
   border: none;
   border-radius: var(--radius-pill);
@@ -2173,10 +2299,9 @@ th.sortable:hover {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 }
 
-.ai-widget-scope button.active {
+.ai-widget-scope:not(.tabs-sliding) button.active {
   background: var(--surface);
   color: var(--brand-600);
   box-shadow: var(--shadow-sm);
@@ -2591,4 +2716,517 @@ th.sortable:hover {
 .ai-link:hover {
   background: var(--n-50);
   border-color: var(--n-300);
+}
+
+
+/* ------------------------------------------- sliding pills & page motion */
+
+:root {
+  --ease-out-fluid: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sliding-pill-active,
+.sliding-pill-hover {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: var(--radius-pill);
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform, width, height;
+}
+
+.sliding-pill-hover {
+  z-index: 0;
+  transition: opacity 0.18s ease;
+}
+
+.sliding-pill-hover.is-visible {
+  opacity: 1;
+}
+
+.sliding-pill-hover.is-sliding {
+  transition:
+    transform 0.28s var(--ease-out-fluid),
+    width 0.28s var(--ease-out-fluid),
+    height 0.28s var(--ease-out-fluid),
+    opacity 0.18s ease;
+}
+
+.nav-pill-hover {
+  background: var(--n-100);
+}
+
+.tabs-pill-hover {
+  background: rgba(18, 18, 22, 0.055);
+}
+
+:root[data-theme='dark'] .tabs-pill-hover {
+  background: rgba(255, 255, 255, 0.065);
+}
+
+.sliding-pill-active {
+  z-index: 1;
+  transition: opacity 0.22s ease;
+}
+
+.sliding-pill-active.is-visible {
+  opacity: 1;
+}
+
+.sliding-pill-active.is-sliding {
+  transition:
+    transform 0.4s var(--ease-out-fluid),
+    width 0.4s var(--ease-out-fluid),
+    height 0.4s var(--ease-out-fluid),
+    opacity 0.22s ease;
+}
+
+.sliding-pill-surface {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  transition:
+    background-color 0.28s ease,
+    box-shadow 0.28s ease;
+}
+
+.nav-pill-active .sliding-pill-surface {
+  background: var(--brand-50);
+  box-shadow:
+    inset 0 0 0 1px var(--brand-100),
+    0 6px 16px -6px rgba(255, 107, 0, 0.34);
+}
+
+.tabs-brand .tabs-pill-active .sliding-pill-surface {
+  background: var(--brand-gradient);
+  box-shadow: var(--brand-glow);
+}
+
+.tabs-surface .tabs-pill-active .sliding-pill-surface {
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.tabs-subtle .tabs-pill-active .sliding-pill-surface {
+  background: var(--brand-50);
+  box-shadow:
+    inset 0 0 0 1px var(--brand-300),
+    var(--shadow-sm);
+}
+
+@keyframes aeza-pill-glide {
+  0% {
+    transform: scaleX(1) scaleY(1);
+  }
+  38% {
+    transform: scaleX(1.045) scaleY(0.94);
+  }
+  100% {
+    transform: scaleX(1) scaleY(1);
+  }
+}
+
+.sliding-pill-surface.is-pulsing {
+  animation: aeza-pill-glide 0.4s var(--ease-out-fluid);
+}
+
+/* Smooth collapsible disclosure */
+.collapsible {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.36s var(--ease-out-fluid),
+    opacity 0.26s ease;
+}
+
+.collapsible.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.collapsible-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Page stage & theme-switch-inspired ambient wash */
+.page-stage {
+  position: relative;
+}
+
+@keyframes aeza-page-wash {
+  0% {
+    opacity: 0.18;
+    transform: scaleY(0.86);
+  }
+  42% {
+    opacity: 1;
+    transform: scaleY(1.04);
+  }
+  100% {
+    opacity: 0.88;
+    transform: scaleY(1);
+  }
+}
+
+.page-wash {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 220px;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.88;
+  background: radial-gradient(68% 100% at 50% 0%, var(--glow-a), transparent 78%);
+  transform-origin: top center;
+  animation: aeza-page-wash 0.7s var(--ease-out-fluid) backwards;
+}
+
+/* Core entrance keyframes (backwards fill preserves hover & fixed positioning) */
+@keyframes aeza-header-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes aeza-enter-block {
+  from {
+    opacity: 0;
+    transform: translate3d(calc(var(--enter-dir, 0) * 18px), 12px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes aeza-enter-card {
+  from {
+    opacity: 0;
+    transform: translate3d(calc(var(--enter-dir, 0) * 14px), 16px, 0) scale(0.988);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes aeza-enter-tab {
+  from {
+    opacity: 0;
+    transform: translate3d(calc(var(--enter-dir, 0) * 20px), 8px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes aeza-enter-subtle {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes aeza-enter-row {
+  from {
+    opacity: 0;
+    transform: translate3d(calc(var(--enter-dir, 0) * 8px), 8px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes aeza-accent-draw {
+  from {
+    opacity: 0;
+    transform: scaleX(0.15);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes aeza-bar-grow {
+  from {
+    opacity: 0.4;
+    transform: scaleX(0);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes aeza-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes aeza-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes aeza-orb-float {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(-18px, 16px, 0) scale(1.06);
+  }
+}
+
+/* Shell & login choreography */
+.app-header {
+  animation: aeza-header-enter 0.4s var(--ease-out-fluid) backwards;
+}
+
+.archive-bar {
+  animation: aeza-header-enter 0.32s var(--ease-out-fluid) backwards;
+}
+
+.login-wrap::before {
+  animation: aeza-orb-float 12s ease-in-out infinite alternate;
+}
+
+.login-wrap::after {
+  animation: aeza-orb-float 15s ease-in-out infinite alternate-reverse;
+}
+
+.login-card {
+  animation: aeza-enter-card 0.5s var(--ease-out-fluid) backwards;
+}
+
+.login-card > * {
+  animation: aeza-enter-subtle 0.44s var(--ease-out-fluid) backwards;
+}
+.login-card > :nth-child(1) { animation-delay: 0.04s; }
+.login-card > :nth-child(2) { animation-delay: 0.08s; }
+.login-card > :nth-child(3) { animation-delay: 0.12s; }
+.login-card > :nth-child(4) { animation-delay: 0.16s; }
+.login-card > :nth-child(5) { animation-delay: 0.2s; }
+.login-card > :nth-child(6) { animation-delay: 0.24s; }
+.login-card > :nth-child(7) { animation-delay: 0.28s; }
+
+/* Page heading & accent bar */
+.page-head > :first-child {
+  animation: aeza-enter-block 0.42s var(--ease-out-fluid) backwards;
+}
+
+.page-head > :nth-child(2) {
+  animation: aeza-enter-block 0.44s var(--ease-out-fluid) 0.05s backwards;
+}
+
+.page-head h1::after,
+.page-head .page-title-row::after {
+  transform-origin: left center;
+  animation: aeza-accent-draw 0.52s var(--ease-out-fluid) 0.09s backwards;
+}
+
+.page-head p {
+  animation: aeza-enter-subtle 0.42s var(--ease-out-fluid) 0.08s backwards;
+}
+
+/* KPI metric cards cascade */
+.metric-grid > .metric {
+  animation: aeza-enter-card 0.46s var(--ease-out-fluid) backwards;
+}
+.metric-grid > .metric:nth-child(1) { animation-delay: 0.04s; }
+.metric-grid > .metric:nth-child(2) { animation-delay: 0.085s; }
+.metric-grid > .metric:nth-child(3) { animation-delay: 0.13s; }
+.metric-grid > .metric:nth-child(4) { animation-delay: 0.175s; }
+.metric-grid > .metric:nth-child(5) { animation-delay: 0.22s; }
+.metric-grid > .metric:nth-child(6) { animation-delay: 0.265s; }
+
+.metric .metric-value {
+  animation: aeza-enter-subtle 0.44s var(--ease-out-fluid) 0.1s backwards;
+}
+
+/* Cards, grids & section blocks cascade */
+.page-stage .stack > .card,
+.page-stage .stack > .notice,
+.page-stage .stack > .row:not(.page-head) {
+  animation: aeza-enter-card 0.46s var(--ease-out-fluid) 0.09s backwards;
+}
+
+.page-stage .stack > .card.tab-panel {
+  animation: aeza-enter-tab 0.4s var(--ease-out-fluid) backwards;
+}
+
+.page-stage .grid-2 > .card {
+  animation: aeza-enter-card 0.48s var(--ease-out-fluid) backwards;
+}
+.page-stage .grid-2 > .card:nth-child(1) { animation-delay: 0.13s; }
+.page-stage .grid-2 > .card:nth-child(2) { animation-delay: 0.18s; }
+
+.page-stage .grid-main > .card {
+  animation: aeza-enter-card 0.48s var(--ease-out-fluid) backwards;
+}
+.page-stage .grid-main > .card:nth-child(1) { animation-delay: 0.17s; }
+.page-stage .grid-main > .card:nth-child(2) { animation-delay: 0.22s; }
+
+.page-stage .grid-main > .stack > .card {
+  animation: aeza-enter-card 0.46s var(--ease-out-fluid) backwards;
+}
+.page-stage .grid-main > .stack > .card:nth-child(1) { animation-delay: 0.14s; }
+.page-stage .grid-main > .stack > .card:nth-child(2) { animation-delay: 0.19s; }
+.page-stage .grid-main > .stack > .card:nth-child(3) { animation-delay: 0.24s; }
+.page-stage .grid-main > .stack > .card:nth-child(4) { animation-delay: 0.29s; }
+.page-stage .grid-main > .stack > .card:nth-child(n + 5) { animation-delay: 0.33s; }
+
+/* Charts & progress bars */
+.chart-row {
+  animation: aeza-enter-subtle 0.38s var(--ease-out-fluid) backwards;
+}
+.chart-row:nth-child(1) { animation-delay: 0.08s; }
+.chart-row:nth-child(2) { animation-delay: 0.12s; }
+.chart-row:nth-child(3) { animation-delay: 0.16s; }
+.chart-row:nth-child(4) { animation-delay: 0.2s; }
+.chart-row:nth-child(n + 5) { animation-delay: 0.24s; }
+
+.chart-row .track span,
+.score-bar span,
+.bar-track span {
+  transform-origin: left center;
+  animation: aeza-bar-grow 0.58s var(--ease-out-fluid) 0.12s backwards;
+}
+
+/* Table rows staggered cascade (capped so large tables stay snappy) */
+table.data tbody tr {
+  animation: aeza-enter-row 0.34s var(--ease-out-fluid) backwards;
+}
+table.data tbody tr:nth-child(1) { animation-delay: 0.02s; }
+table.data tbody tr:nth-child(2) { animation-delay: 0.042s; }
+table.data tbody tr:nth-child(3) { animation-delay: 0.064s; }
+table.data tbody tr:nth-child(4) { animation-delay: 0.086s; }
+table.data tbody tr:nth-child(5) { animation-delay: 0.108s; }
+table.data tbody tr:nth-child(6) { animation-delay: 0.13s; }
+table.data tbody tr:nth-child(7) { animation-delay: 0.152s; }
+table.data tbody tr:nth-child(8) { animation-delay: 0.174s; }
+table.data tbody tr:nth-child(9) { animation-delay: 0.196s; }
+table.data tbody tr:nth-child(10) { animation-delay: 0.218s; }
+table.data tbody tr:nth-child(11) { animation-delay: 0.24s; }
+table.data tbody tr:nth-child(12) { animation-delay: 0.262s; }
+table.data tbody tr:nth-child(n + 13) { animation-delay: 0.28s; }
+
+/* Inner text, recommendations, actions & weight rows */
+.rec-list > .rec,
+.action-list > .action-item,
+.weight-row,
+.reasons > li {
+  animation: aeza-enter-subtle 0.36s var(--ease-out-fluid) backwards;
+}
+.rec-list > .rec:nth-child(1),
+.action-list > .action-item:nth-child(1),
+.weight-row:nth-child(1),
+.reasons > li:nth-child(1) { animation-delay: 0.05s; }
+.rec-list > .rec:nth-child(2),
+.action-list > .action-item:nth-child(2),
+.weight-row:nth-child(2),
+.reasons > li:nth-child(2) { animation-delay: 0.09s; }
+.rec-list > .rec:nth-child(3),
+.action-list > .action-item:nth-child(3),
+.weight-row:nth-child(3),
+.reasons > li:nth-child(3) { animation-delay: 0.13s; }
+.rec-list > .rec:nth-child(n + 4),
+.action-list > .action-item:nth-child(n + 4),
+.weight-row:nth-child(n + 4),
+.reasons > li:nth-child(n + 4) { animation-delay: 0.17s; }
+
+/* Popovers, toasts, loading & chat turns */
+.gen-popover {
+  transform-origin: top right;
+  animation: aeza-popover-in 0.22s var(--ease-out-fluid) backwards;
+}
+
+.toast {
+  animation: aeza-toast-in 0.28s var(--ease-out-fluid) backwards;
+}
+
+.ai-chat-turn {
+  animation: aeza-enter-subtle 0.28s var(--ease-out-fluid) backwards;
+}
+
+.loading,
+.empty,
+.error-box {
+  animation: aeza-enter-subtle 0.26s var(--ease-out-fluid) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sliding-pill-active.is-sliding,
+  .sliding-pill-hover.is-sliding,
+  .collapsible,
+  .theme-toggle .theme-icon {
+    transition: none !important;
+  }
+
+  .sliding-pill-surface.is-pulsing,
+  .presswall-bg,
+  .page-wash,
+  .app-header,
+  .archive-bar,
+  .login-wrap::before,
+  .login-wrap::after,
+  .login-card,
+  .login-card > *,
+  .page-head > :first-child,
+  .page-head > :nth-child(2),
+  .page-head h1::after,
+  .page-head .page-title-row::after,
+  .page-head p,
+  .metric-grid > .metric,
+  .metric .metric-value,
+  .page-stage .stack > .card,
+  .page-stage .stack > .notice,
+  .page-stage .stack > .row:not(.page-head),
+  .page-stage .stack > .card.tab-panel,
+  .page-stage .grid-2 > .card,
+  .page-stage .grid-main > .card,
+  .page-stage .grid-main > .stack > .card,
+  .chart-row,
+  .chart-row .track span,
+  .score-bar span,
+  .bar-track span,
+  table.data tbody tr,
+  .rec-list > .rec,
+  .action-list > .action-item,
+  .weight-row,
+  .reasons > li,
+  .gen-popover,
+  .toast,
+  .ai-chat-turn,
+  .loading,
+  .empty,
+  .error-box {
+    animation: none !important;
+  }
 }
