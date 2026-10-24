@@ -222,12 +222,26 @@ managed `containerd`), and PostgreSQL as the live store (SQLite was used).
 
 ## 10. Release-candidate commit
 
-| Branch | Commit | Tree |
-| --- | --- | --- |
-| `feat/deployment-readiness` (active) | `3340dc6` | `7fd7a7a` |
-| `feat/deployment-readiness-clean` (trailer-free) | `7f8c4e2` | `7fd7a7a` |
+Active branch: `feat/deployment-readiness`, HEAD `d2427b5`. Its tree is the
+release candidate; everything in this report describes that tree.
 
-Both trees are byte-identical.
+A trailer-free copy is kept on the branch `feat/deployment-readiness-clean`.
+Because the clean branch's commit hash depends on the commit messages (including
+this report), it is reproduced on demand rather than pinned to a hash that would
+go stale the moment this file changes:
+
+```bash
+git clone --bare --no-local . /tmp/aeza-clean.git
+cd /tmp/aeza-clean.git
+FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch -f \
+  --msg-filter 'grep -v -i "^Co-authored-by: openhands <openhands@all-hands.dev>$"' -- --all
+cd - && git fetch /tmp/aeza-clean.git \
+  "+refs/heads/feat/deployment-readiness:refs/heads/feat/deployment-readiness-clean"
+git diff --stat feat/deployment-readiness feat/deployment-readiness-clean   # expect: no changes
+```
+
+The last command must print nothing: the two branches must share one tree, with
+only the trailers removed from 14 local-only commit messages.
 
 ## 11. Push and deploy
 
