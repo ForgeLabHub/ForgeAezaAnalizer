@@ -236,6 +236,23 @@ def test_send_treats_a_2xx_with_an_errors_body_as_a_refusal():
             transport=_transport(handler))
 
 
+def test_send_surfaces_field_level_validation_errors():
+    # SMTP.BZ answers a malformed request with per-field messages, e.g.
+    # {"result": false, "errors": {"to": "Invalid or missing to address"}}.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={
+            "result": False,
+            "errors": {"from": "Invalid or missing from address",
+                       "to": "Invalid or missing to address"}})
+
+    with pytest.raises(email_integration.EmailRejected) as error:
+        email_integration.send_email(
+            _settings(), to="recipient@example.test", subject="s", html="<b>x</b>",
+            transport=_transport(handler))
+    assert "Invalid or missing to address" in str(error.value)
+    assert "Invalid or missing from address" in str(error.value)
+
+
 def test_send_never_calls_the_provider_after_a_timeout():
     calls = {"n": 0}
 
@@ -383,13 +400,22 @@ def test_otp_adapter_maps_a_provider_failure_to_delivery_error_without_the_code(
     assert API_KEY not in str(error.value)
 
 
-def test_otp_stays_disabled_unless_an_email_provider_is_wired_in():
-    # ``create_app`` defaults ``email_provider`` to ``None``, so the Telegram
-    # service keeps its unconfigured stub: OTP must not turn itself on just
-    # because SMTP.BZ settings exist in the environment.
-    from backend.app.telegram.providers import UnconfiguredEmailProvider
+def test_otp_transport_is_wired_only_when_smtp_bz_is_configured():
+    # With SMTP.BZ configured, ``create_app`` wires the adapter behind the
+    # existing ``EmailProvider`` contract, so OTP can actually be sent.
+    from backend.app.integrations.email import SmtpBzEmailProvider
 
     app = create_app(_settings(), FixtureAnalytics())
+    with TestClient(app, raise_server_exceptions=False):
+        assert isinstance(app.state.runtime.telegram.email_provider, SmtpBzEmailProvider)
+
+
+def test_otp_stays_disabled_when_smtp_bz_is_not_configured():
+    # Without a key the service keeps its unconfigured stub: OTP must not turn
+    # itself on and must never pretend to have sent.
+    from backend.app.telegram.providers import UnconfiguredEmailProvider
+
+    app = create_app(_settings(smtp_bz_api_key="", smtp_bz_from_email=""), FixtureAnalytics())
     with TestClient(app, raise_server_exceptions=False):
         assert isinstance(app.state.runtime.telegram.email_provider, UnconfiguredEmailProvider)
 

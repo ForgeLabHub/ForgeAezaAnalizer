@@ -586,7 +586,16 @@ class TelegramService:
         for service in state.source.get("services", []):
             if service.get("status") != "active" or service.get("autoProlong") is not True:
                 continue
-            expires_at = datetime.fromisoformat(service["expiresAt"].replace("Z", "+00:00")).astimezone(timezone.utc)
+            # An unknown renewal time is not a renewal time: a service without a
+            # parseable ``expiresAt`` cannot be scheduled, so it is skipped
+            # rather than crashing the whole sync (unknown != zero).
+            raw_expiry = service.get("expiresAt")
+            if not raw_expiry:
+                continue
+            try:
+                expires_at = datetime.fromisoformat(str(raw_expiry).replace("Z", "+00:00")).astimezone(timezone.utc)
+            except ValueError:
+                continue
             for interval in (7, 3):
                 key = (service["ownerId"], service["id"], expires_at, interval)
                 desired[key] = expires_at - timedelta(days=interval)
@@ -660,7 +669,7 @@ class TelegramService:
                         session.add(delivery)
                         session.flush()
                     deliveries.append((delivery, link))
-                text = self._notification_text(service, row.interval_days)
+                text = self._notification_text(service, row.interval_days, row.expires_at)
                 for delivery, link in deliveries:
                     if delivery.status == "sent" or delivery.next_attempt_at > now or delivery.attempts >= 8:
                         continue
@@ -692,9 +701,11 @@ class TelegramService:
         return {"sent": sent, "failed": failed, "stubbed": stubbed, "skipped": skipped}
 
     @staticmethod
-    def _notification_text(service: dict, interval_days: int) -> str:
-        expires = datetime.fromisoformat(service["expiresAt"].replace("Z", "+00:00")).astimezone(MOSCOW_TZ)
-        date_text = expires.strftime("%d.%m.%Y %H:%M")
+    def _notification_text(service: dict, interval_days: int, expires_at: datetime) -> str:
+        # The expiry comes from the queued row, which is the value the reminder
+        # was scheduled against; the source is only consulted for the display
+        # name and price.
+        date_text = expires_at.astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
         price = service.get("price")
         amount = f"{price // 100}.{price % 100:02d} €" if price is not None else "сумма неизвестна"
         return (

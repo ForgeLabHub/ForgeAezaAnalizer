@@ -126,8 +126,9 @@ def _failure_reason(payload: Any) -> str | None:
     """Return the provider's own error text, when the body carries one.
 
     SMTP.BZ reports refusals as ``{"result": false, "errors": {"message": "..."}}``
-    (e.g. "Domain ... not verified"), so ``errors.message`` is the shape that
-    actually carries the operator-actionable reason.
+    (e.g. "Domain ... not verified") or, for validation failures, as per-field
+    messages ``{"errors": {"to": "Invalid or missing to address"}}``. Both shapes
+    are surfaced so the reason an operator sees is the provider's own wording.
     """
 
     if not isinstance(payload, dict):
@@ -140,6 +141,10 @@ def _failure_reason(payload: Any) -> str | None:
             nested = value.get("message") or value.get("detail")
             if isinstance(nested, str) and nested.strip():
                 return nested.strip()
+            # Field-level validation errors: keep them, they name the bad field.
+            fields = [text.strip() for text in value.values() if isinstance(text, str) and text.strip()]
+            if fields:
+                return "; ".join(fields)
     return None
 
 

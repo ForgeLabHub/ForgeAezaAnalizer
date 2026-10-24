@@ -645,3 +645,61 @@ def test_diagnostics_never_leaks_the_token_or_secret(bot):
     body = bot["client"].get("/api/v1/telegram/diagnostics", headers=bot["analyst"]).text
     assert TOKEN not in body
     assert SECRET not in body
+
+
+# --------------------------------------------------------------------------- #
+# 19. A service with no renewal time must not break the notification sync
+# --------------------------------------------------------------------------- #
+
+def test_a_service_without_expiry_does_not_break_the_notification_sync(tmp_path):
+    """``expiresAt`` is optional in the ingest schema; an active auto-prolong
+    service without one cannot be scheduled and must be skipped, not crash the
+    whole sync (unknown != zero).
+
+    The published analytics module rejects such a snapshot, but the module is
+    pluggable (``AEZA_ANALYTICS_FACTORY``), so the service must not assume it.
+    """
+
+    from backend.tests.conftest import FixtureAnalytics
+
+    source = json.loads((ROOT / "dataset/data.json").read_text())
+    source["services"].append({"id": 99999, "name": "no-expiry", "ownerId": 1, "status": "active",
+                               "autoProlong": True, "expiresAt": None, "price": 100})
+    snapshot = tmp_path / "snapshot.json"
+    snapshot.write_text(json.dumps(source))
+    settings = _settings(tmp_path, snapshot_path=str(snapshot))
+    app = create_app(settings, FixtureAnalytics(),
+                     auth_settings=make_test_auth_settings(tmp_path / "auth.db"),
+                     telegram_provider=RecordingTelegram(), email_provider=RecordingEmail())
+    with TestClient(app, raise_server_exceptions=False) as client:
+        login = client.post("/api/v1/auth/login",
+                            json={"email": "analyst@aeza.test", "password": "analyst-test-password"})
+        headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        assert client.post("/api/v1/telegram/notifications/sync", headers=headers).status_code == 200
+        assert client.post("/api/v1/telegram/notifications/run", headers=headers).status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# 20. The SMTP.BZ OTP transport is wired only when it is configured
+# --------------------------------------------------------------------------- #
+
+def test_otp_transport_is_wired_when_smtp_bz_is_configured(tmp_path):
+    from backend.app.integrations.email import SmtpBzEmailProvider
+    from backend.app.modules import load_module
+
+    settings = _settings(tmp_path, smtp_bz_api_key="test-key", smtp_bz_from_email="sentinel@pixel-minds.ru")
+    app = create_app(settings, load_module("backend.app.domain.module:create"),
+                     auth_settings=make_test_auth_settings(tmp_path / "auth.db"))
+    with TestClient(app, raise_server_exceptions=False):
+        assert isinstance(app.state.runtime.telegram.email_provider, SmtpBzEmailProvider)
+
+
+def test_otp_transport_stays_off_when_smtp_bz_is_not_configured(tmp_path):
+    from backend.app.modules import load_module
+    from backend.app.telegram.providers import UnconfiguredEmailProvider
+
+    settings = _settings(tmp_path, smtp_bz_api_key="", smtp_bz_from_email="")
+    app = create_app(settings, load_module("backend.app.domain.module:create"),
+                     auth_settings=make_test_auth_settings(tmp_path / "auth.db"))
+    with TestClient(app, raise_server_exceptions=False):
+        assert isinstance(app.state.runtime.telegram.email_provider, UnconfiguredEmailProvider)
