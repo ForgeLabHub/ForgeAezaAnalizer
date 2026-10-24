@@ -9,6 +9,7 @@
 | Компонент | Путь | Назначение |
 | --- | --- | --- |
 | Клиент провайдера | `backend/app/integrations/email.py` | Один вызов `POST …/v1/smtp/send`, разбор ответа и ошибок |
+| Адаптер OTP | `backend/app/integrations/email.py` (`SmtpBzEmailProvider`) | Реализует `EmailProvider.send_otp` из Telegram-модуля |
 | Настройки | `backend/app/config.py` | Переменные `SMTP_BZ_*` и признак `email_configured` |
 | HTTP-роуты | `backend/app/api/routes_email.py` | `GET /api/v1/email/status`, `POST /api/v1/email/test` |
 
@@ -74,10 +75,39 @@ curl -sS -X POST http://localhost:8000/api/v1/email/test \
 | Ситуация | Класс | HTTP |
 | --- | --- | --- |
 | Ключ или отправитель не заданы | `EmailDisabled` | 503 |
-| Провайдер отклонил ключ или письмо (4xx, отказ в теле) | `EmailRejected` | 502 |
-| Тайм-аут, сеть, 5xx провайдера | `EmailUnavailable` | 503 |
+| Провайдер отклонил ключ (401/403) или письмо (4xx, отказ в теле) | `EmailRejected` | 502 |
+| Тайм-аут, сеть, 429 и 5xx провайдера | `EmailUnavailable` | 503 |
 
-Сообщение об успехе возвращается только при подтверждении провайдера.
+Сообщение об успехе возвращается только при подтверждении провайдера. Ответ `2xx`,
+в теле которого провайдер явно отрицает отправку (`result: false` или `error`),
+считается отказом, а не успехом. При тайм-ауте клиент делает **ровно одну** попытку:
+исход неизвестен, поэтому слепой повтор не выполняется (риск дубля письма).
+
+## OTP для Telegram-бота
+
+Telegram-сценарий вызывает `email_provider.send_otp(email, code, expires_in_seconds)`
+и перехватывает два исключения: `IntegrationNotConfigured` и `DeliveryError`.
+Класс `SmtpBzEmailProvider` в `backend/app/integrations/email.py` реализует этот
+контракт поверх SMTP.BZ, поэтому OTP можно отправлять без обхода существующей
+логики `TelegramService`.
+
+Адаптер **не включается автоматически**. Пока интегратор не передал его в
+`create_app(email_provider=...)`, `TelegramService` использует заглушку
+`UnconfiguredEmailProvider`, и OTP не отправляется (как и требует текущее
+соглашение: OTP выключен до согласования контракта партнёрского API).
+
+Подключение выполняет интегратор Telegram-модуля — в `backend/app/main.py`:
+
+```python
+from backend.app.integrations.email import SmtpBzEmailProvider
+
+# внутри create_app(...), перед созданием TelegramService:
+if email_provider is None and settings.email_configured:
+    email_provider = SmtpBzEmailProvider(settings)
+```
+
+Это единственное изменение общей сборки, которое требуется для OTP. Оно не
+включает OTP само по себе — включается лишь транспорт, когда заданы `SMTP_BZ_*`.
 
 ## Что остаётся сделать в панели SMTP.BZ
 

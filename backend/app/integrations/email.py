@@ -36,6 +36,12 @@ import httpx
 
 from backend.app.config import Settings
 
+# The Telegram OTP flow already defines the interface it calls
+# (``EmailProvider.send_otp``) and the two exceptions it catches. The adapter
+# below implements that exact contract so OTP can be sent through SMTP.BZ
+# without changing or bypassing the existing Telegram service.
+from backend.app.telegram.providers import DeliveryError, IntegrationNotConfigured
+
 #: A deliberately small e-mail shape check. The provider performs the real
 #: validation; this only rejects input that could never be an address.
 _ADDRESS_RE = re.compile(r"^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$")
@@ -83,6 +89,17 @@ def _check_header_value(value: str, field: str) -> str:
     return value
 
 
+def is_valid_address(value: str) -> bool:
+    """Shape check shared by the client and the HTTP routes.
+
+    The provider performs the authoritative validation; this only rejects input
+    that could never be an address, so a bad recipient is refused with ``422``
+    at the route instead of becoming a ``502`` provider refusal.
+    """
+
+    return bool(_ADDRESS_RE.match((value or "").strip()))
+
+
 def _check_address(value: str, field: str) -> str:
     candidate = (value or "").strip()
     if not _ADDRESS_RE.match(candidate):
@@ -106,11 +123,16 @@ def _extract_message_id(payload: Any) -> str | None:
 
 
 def _failure_reason(payload: Any) -> str | None:
-    """Return the provider's own error text, when the body carries one."""
+    """Return the provider's own error text, when the body carries one.
+
+    SMTP.BZ reports refusals as ``{"result": false, "errors": {"message": "..."}}``
+    (e.g. "Domain ... not verified"), so ``errors.message`` is the shape that
+    actually carries the operator-actionable reason.
+    """
 
     if not isinstance(payload, dict):
         return None
-    for key in ("message", "error", "detail", "msg"):
+    for key in ("message", "error", "detail", "msg", "errors"):
         value = payload.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
@@ -133,6 +155,10 @@ def _interpret(response: httpx.Response) -> EmailResult:
 
     if status in (401, 403):
         raise EmailRejected("SMTP.BZ отклонил ключ API (проверьте SMTP_BZ_API_KEY)")
+    if status == 429:
+        # Rate limiting is transient: the letter was not accepted, but the
+        # provider is reachable, so this is "try again later", not "refused".
+        raise EmailUnavailable("SMTP.BZ ограничил частоту запросов (HTTP 429)")
     if status >= 500:
         raise EmailUnavailable(f"SMTP.BZ вернул ошибку сервера (HTTP {status})")
     if status >= 400:
@@ -144,7 +170,7 @@ def _interpret(response: httpx.Response) -> EmailResult:
     # send, trust the body over the status code and fail loudly.
     if isinstance(payload, dict):
         result = payload.get("result")
-        if result is False or (result is None and payload.get("error")):
+        if result is False or (result is None and (payload.get("error") or payload.get("errors"))):
             reason = _failure_reason(payload) or "провайдер не подтвердил отправку"
             raise EmailRejected(reason)
 
@@ -229,3 +255,50 @@ def describe(settings: Settings) -> dict[str, Any]:
             "SMTP.BZ. Иначе провайдер отклонит отправку."
         ),
     }
+
+
+class SmtpBzEmailProvider:
+    """SMTP.BZ behind the Telegram flow's ``EmailProvider`` interface.
+
+    ``TelegramService`` already calls ``email_provider.send_otp(...)`` and catches
+    :class:`IntegrationNotConfigured` / :class:`DeliveryError`. This adapter
+    satisfies that contract so OTP can travel through SMTP.BZ, while keeping the
+    two responsibilities separate: this class owns the OTP *message*, the client
+    above owns the *transport*.
+
+    It is never wired in automatically. OTP e-mail stays disabled until the
+    partner contract is agreed and the integrator passes an instance into
+    ``create_app(email_provider=...)``.
+    """
+
+    def __init__(self, settings: Settings, *, transport: httpx.BaseTransport | None = None):
+        self._settings = settings
+        self._transport = transport
+
+    def send_otp(self, email: str, code: str, expires_in_seconds: int) -> None:
+        if not self._settings.email_configured:
+            # Maps to ``NotReadyError`` (503) in TelegramService, exactly as the
+            # unconfigured stub does — no silent success.
+            raise IntegrationNotConfigured("SMTP.BZ не настроен для отправки OTP")
+
+        minutes = max(1, int(expires_in_seconds) // 60)
+        subject = "Aéza Sentinel — код подтверждения"
+        text = (
+            f"Ваш код подтверждения: {code}\n"
+            f"Код действует {minutes} мин. Никому его не сообщайте."
+        )
+        html = (
+            "<html><body>"
+            "<p>Ваш код подтверждения для входа в Aéza Sentinel:</p>"
+            f"<p style=\"font-size:24px;font-weight:bold;letter-spacing:2px\">{code}</p>"
+            f"<p>Код действует {minutes} мин. Никому его не сообщайте.</p>"
+            "</body></html>"
+        )
+        try:
+            send_email(self._settings, to=email, subject=subject, html=html, text=text,
+                       transport=self._transport)
+        except EmailDisabled as exc:
+            raise IntegrationNotConfigured("SMTP.BZ не настроен для отправки OTP") from exc
+        except EmailError as exc:
+            # The code itself is never placed in the exception text or a log line.
+            raise DeliveryError("Не удалось отправить код подтверждения через SMTP.BZ") from exc
