@@ -40,6 +40,15 @@ class Settings:
     as_of: str = field(default_factory=lambda: os.getenv("AEZA_AS_OF", DEFAULT_AS_OF))
     recalculate_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_RECALCULATE_SECONDS", "60")))
     metrics_token: str = field(default_factory=lambda: os.getenv("AEZA_METRICS_TOKEN", ""))
+    # --- Local LLM (Ollama) ---------------------------------------------------
+    # Disabled by default: an unavailable model must never be presented as if it
+    # had answered. The provider URL is configuration, never a hardcoded host.
+    llm_enabled: bool = field(default_factory=lambda: flag("AEZA_LLM_ENABLED", False))
+    llm_base_url: str = field(default_factory=lambda: os.getenv("AEZA_LLM_BASE_URL", "http://127.0.0.1:11434"))
+    llm_model: str = field(default_factory=lambda: os.getenv("AEZA_LLM_MODEL", "qwen2.5:7b"))
+    llm_timeout_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_LLM_TIMEOUT_SECONDS", "60")))
+    llm_max_tokens: int = field(default_factory=lambda: int(os.getenv("AEZA_LLM_MAX_TOKENS", "700")))
+    llm_temperature: float = field(default_factory=lambda: float(os.getenv("AEZA_LLM_TEMPERATURE", "0.2")))
     cors_origins: tuple[str, ...] = field(default_factory=lambda: tuple(
         origin.strip() for origin in os.getenv("AEZA_CORS_ORIGINS", "http://localhost:8080,http://localhost:5173").split(",") if origin.strip()))
     api_prefix: str = "/api/v1"
@@ -60,6 +69,17 @@ class Settings:
             raise ValueError("AEZA_LOGIN_MAX_ATTEMPTS must be at least 1")
         if self.login_window_seconds < 1:
             raise ValueError("AEZA_LOGIN_WINDOW_SECONDS must be at least 1")
+        if self.llm_enabled:
+            if not self.llm_base_url.startswith(("http://", "https://")):
+                raise ValueError("AEZA_LLM_BASE_URL must be an http(s) URL")
+            if not self.llm_model.strip():
+                raise ValueError("AEZA_LLM_MODEL must not be empty when AEZA_LLM_ENABLED=1")
+            if not 1 <= self.llm_timeout_seconds <= 600:
+                raise ValueError("AEZA_LLM_TIMEOUT_SECONDS must be between 1 and 600")
+            if not 16 <= self.llm_max_tokens <= 8192:
+                raise ValueError("AEZA_LLM_MAX_TOKENS must be between 16 and 8192")
+            if not 0.0 <= self.llm_temperature <= 2.0:
+                raise ValueError("AEZA_LLM_TEMPERATURE must be between 0 and 2")
         self.reference_now()
 
     def reference_now(self) -> datetime:
