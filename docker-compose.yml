@@ -56,6 +56,14 @@ services:
       AEZA_OLLAMA_TIMEOUT_SECONDS: ${AEZA_OLLAMA_TIMEOUT_SECONDS:-90}
       AEZA_LLM_MAX_TOKENS: ${AEZA_LLM_MAX_TOKENS:-700}
       AEZA_LLM_TEMPERATURE: ${AEZA_LLM_TEMPERATURE:-0.2}
+      # --- Outbound e-mail (SMTP.BZ) ---
+      # Passed through from .env. SMTP_BZ_API_KEY stays empty when unset, which
+      # disables sending; the key is never baked into the image.
+      SMTP_BZ_API_KEY: ${SMTP_BZ_API_KEY:-}
+      SMTP_BZ_FROM_EMAIL: ${SMTP_BZ_FROM_EMAIL:-}
+      SMTP_BZ_FROM_NAME: ${SMTP_BZ_FROM_NAME:-}
+      SMTP_BZ_API_URL: ${SMTP_BZ_API_URL:-https://api.smtp.bz/v1/smtp/send}
+      SMTP_BZ_TIMEOUT_SECONDS: ${SMTP_BZ_TIMEOUT_SECONDS:-15}
     depends_on:
       db:
         condition: service_healthy

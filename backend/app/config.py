@@ -49,12 +49,36 @@ class Settings:
                                                                  or os.getenv("AEZA_LLM_TEMPERATURE", "0.2")))
     cors_origins: tuple[str, ...] = field(default_factory=lambda: tuple(
         origin.strip() for origin in os.getenv("AEZA_CORS_ORIGINS", "http://localhost:8080,http://localhost:5173").split(",") if origin.strip()))
+    # --- Outbound e-mail (SMTP.BZ HTTP API) -----------------------------------
+    # The key is read from the environment only; it is never written to a file,
+    # an image or a log line. An empty key means "not configured", which the
+    # e-mail surface reports honestly instead of pretending to have sent.
+    smtp_bz_api_key: str = field(default_factory=lambda: os.getenv("SMTP_BZ_API_KEY", ""))
+    smtp_bz_api_url: str = field(default_factory=lambda: os.getenv(
+        "SMTP_BZ_API_URL", "https://api.smtp.bz/v1/smtp/send"))
+    smtp_bz_from_email: str = field(default_factory=lambda: os.getenv("SMTP_BZ_FROM_EMAIL", ""))
+    smtp_bz_from_name: str = field(default_factory=lambda: os.getenv("SMTP_BZ_FROM_NAME", ""))
+    smtp_bz_timeout_seconds: int = field(default_factory=lambda: int(os.getenv("SMTP_BZ_TIMEOUT_SECONDS", "15")))
     api_prefix: str = "/api/v1"
     app_name: str = "Aéza Analyzer"
+
+    @property
+    def email_configured(self) -> bool:
+        """True when every field needed for a send is present."""
+
+        return bool(self.smtp_bz_api_key and self.smtp_bz_from_email)
 
     def __post_init__(self):
         if not 1 <= self.recalculate_seconds <= 3600:
             raise ValueError("AEZA_RECALCULATE_SECONDS must be between 1 and 3600")
+        if not 1 <= self.smtp_bz_timeout_seconds <= 120:
+            raise ValueError("SMTP_BZ_TIMEOUT_SECONDS must be between 1 and 120")
+        if self.email_configured:
+            loopback = ("http://localhost", "http://127.0.0.1", "http://[::1]")
+            if not self.smtp_bz_api_url.startswith("https://") and not self.smtp_bz_api_url.startswith(loopback):
+                raise ValueError("SMTP_BZ_API_URL must use HTTPS; HTTP is allowed only on loopback")
+            if "@" not in self.smtp_bz_from_email:
+                raise ValueError("SMTP_BZ_FROM_EMAIL must be a valid e-mail address")
         if self.llm_enabled:
             if not self.llm_base_url.startswith(("http://", "https://")):
                 raise ValueError("AEZA_LLM_BASE_URL must be an http(s) URL")
