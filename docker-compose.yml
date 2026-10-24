@@ -36,9 +36,22 @@ services:
       # The SPA is served through the same nginx origin, so the demo needs no
       # wildcard. Widen this only if you host the UI elsewhere.
       AEZA_CORS_ORIGINS: ${AEZA_CORS_ORIGINS:-http://localhost:8080}
+      # Local LLM. Off by default. host.docker.internal reaches an Ollama running
+      # on the host machine, which is where the owner started qwen2.5:7b; inside
+      # a plain Linux container 127.0.0.1 would be the container itself.
+      AEZA_LLM_ENABLED: ${AEZA_LLM_ENABLED:-0}
+      AEZA_LLM_BASE_URL: ${AEZA_LLM_BASE_URL:-http://host.docker.internal:11434}
+      AEZA_LLM_MODEL: ${AEZA_LLM_MODEL:-qwen2.5:7b}
+      AEZA_LLM_TIMEOUT_SECONDS: ${AEZA_LLM_TIMEOUT_SECONDS:-60}
+      AEZA_LLM_MAX_TOKENS: ${AEZA_LLM_MAX_TOKENS:-700}
+      AEZA_LLM_TEMPERATURE: ${AEZA_LLM_TEMPERATURE:-0.2}
     depends_on:
       db:
         condition: service_healthy
+    # On Linux, host.docker.internal is not resolved automatically; this maps it
+    # to the host gateway so the container can reach a host-run Ollama.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     # A named volume, not a bind mount: the SQLite store holds password hashes
