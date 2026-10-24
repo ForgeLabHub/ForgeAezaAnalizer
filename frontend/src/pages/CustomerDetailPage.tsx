@@ -4,6 +4,7 @@ import { ApiError, api } from '../lib/api'
 import { useAnalysis } from '../lib/realtime'
 import type { CustomerDetail, OverdueDetailItem, ServiceItem } from '../types'
 import { RetentionActions } from '../components/RetentionActions'
+import { Collapsible } from '../components/motion'
 import {
   EmptyState,
   ErrorBox,
@@ -106,51 +107,55 @@ function ServiceCard({ service }: { service: ServiceItem }) {
 
         {service.factors.length > 0 ? (
           <div>
-            <button type="button" className="btn sm" onClick={() => setOpen((v) => !v)}>
+            <button
+              type="button"
+              className="btn sm"
+              aria-expanded={open}
+              onClick={() => setOpen((v) => !v)}
+            >
               {open ? 'Скрыть факторы' : `Показать все факторы (${service.factors.length})`}
             </button>
-          </div>
-        ) : null}
-
-        {open ? (
-          <div>
-            {service.factors.map((factor) => {
-              const isDeprecated = Boolean(factor.deprecated)
-              return (
-                <div
-                  className={`factor${factor.available && !isDeprecated ? '' : ' muted'}`}
-                  key={factor.key}
-                >
-                  <span className="factor-name">
-                    {factor.label}{' '}
-                    {isDeprecated ? (
-                      <span className="badge neutral" style={{ marginLeft: 4 }}>
-                        диагностика · вне рейтинга
+            <Collapsible open={open}>
+              <div style={{ paddingTop: 12 }}>
+                {service.factors.map((factor) => {
+                  const isDeprecated = Boolean(factor.deprecated)
+                  return (
+                    <div
+                      className={`factor${factor.available && !isDeprecated ? '' : ' muted'}`}
+                      key={factor.key}
+                    >
+                      <span className="factor-name">
+                        {factor.label}{' '}
+                        {isDeprecated ? (
+                          <span className="badge neutral" style={{ marginLeft: 4 }}>
+                            диагностика · вне рейтинга
+                          </span>
+                        ) : null}
                       </span>
-                    ) : null}
-                  </span>
-                  <span className="factor-meta">
-                    {factor.value === null
-                      ? 'нет данных'
-                      : isDeprecated
-                        ? `кол-во ${factor.value.toFixed(0)}`
-                        : `знач. ${factor.value.toFixed(2)}`}{' '}
-                    · вес {factor.weight} · вклад {factor.contribution.toFixed(2)}
-                  </span>
-                  {!isDeprecated ? (
-                    <div className="bar-track">
-                      <span
-                        style={{
-                          width: `${Math.min(100, Math.max(0, (factor.value ?? 0) * 100))}%`,
-                          background: factor.available ? 'var(--brand-500)' : 'var(--n-300)',
-                        }}
-                      />
+                      <span className="factor-meta">
+                        {factor.value === null
+                          ? 'нет данных'
+                          : isDeprecated
+                            ? `кол-во ${factor.value.toFixed(0)}`
+                            : `знач. ${factor.value.toFixed(2)}`}{' '}
+                        · вес {factor.weight} · вклад {factor.contribution.toFixed(2)}
+                      </span>
+                      {!isDeprecated ? (
+                        <div className="bar-track">
+                          <span
+                            style={{
+                              width: `${Math.min(100, Math.max(0, (factor.value ?? 0) * 100))}%`,
+                              background: factor.available ? 'var(--brand-500)' : 'var(--n-300)',
+                            }}
+                          />
+                        </div>
+                      ) : null}
+                      <span className="factor-reason">{factor.reason}</span>
                     </div>
-                  ) : null}
-                  <span className="factor-reason">{factor.reason}</span>
-                </div>
-              )
-            })}
+                  )
+                })}
+              </div>
+            </Collapsible>
           </div>
         ) : null}
       </div>
