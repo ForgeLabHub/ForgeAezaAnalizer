@@ -53,6 +53,13 @@ class StubClient:
 
 
 def _settings(tmp_path, **overrides) -> Settings:
+    """App settings only.
+
+    Authentication moved to the standalone module (``backend.config.Settings`` +
+    ``backend.auth``), so the app Settings no longer carries JWT fields. The auth
+    side is supplied separately via ``_auth_settings``.
+    """
+
     base = dict(
         database_url=f"sqlite:///{(tmp_path / 'a.db').as_posix()}",
         seed_demo_data=True,
@@ -91,7 +98,7 @@ def test_app_starts_with_telegram_disabled(tmp_path):
     module = load_module("backend.app.domain.module:create")
     with TestClient(_app(settings, module, tmp_path)) as client:
         assert client.get("/health").status_code == 200
-        login = client.post("/api/v1/auth/login", json={"email": EMAIL, "password": PASSWORD})
+        login = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
         headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
         # Analytics still works; the Telegram surface reports itself as off.
         assert client.get("/api/v1/analytics/summary", headers=headers).status_code == 200
@@ -100,11 +107,12 @@ def test_app_starts_with_telegram_disabled(tmp_path):
         assert client.post("/api/v1/telegram/link-code", headers=headers).status_code == 503
 
 
-def test_app_starts_without_a_token_when_disabled(tmp_path, monkeypatch):
+def test_app_starts_without_a_token_when_disabled(monkeypatch):
     """A missing token must not be fatal while the feature is off."""
 
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     monkeypatch.delenv("TELEGRAM_ENABLED", raising=False)
+    settings = Settings()
     settings = Settings()
     assert settings.telegram_enabled is False
     assert settings.telegram_bot_token == ""
@@ -117,6 +125,7 @@ def test_enabling_telegram_without_a_token_is_rejected():
 
 def test_enabling_telegram_without_a_webhook_secret_is_rejected():
     with pytest.raises(ValueError):
+        Settings(telegram_enabled=True, telegram_bot_token="t", telegram_webhook_secret="")
         Settings(telegram_enabled=True, telegram_bot_token="t", telegram_webhook_secret="")
 
 
@@ -652,6 +661,7 @@ def test_scheduler_runs_with_a_pinned_as_of(tmp_path):
     from backend.database import UserRepository
     from core import Core
 
+    auth_settings = _auth_settings(tmp_path)
     storage = Storage(database)
     calculation = CalculationAdapter(module)
     auth_settings = make_test_auth_settings(tmp_path / "auth.db")

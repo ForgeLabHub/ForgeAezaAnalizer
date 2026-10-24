@@ -59,9 +59,39 @@ TELEGRAM_WEBHOOK_SECRET=<long random string>
 TELEGRAM_WEBHOOK_URL=https://<your-host>/api/v1/telegram/webhook
 ```
 
-`TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` are required **only** when
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` are needed **only** when
 `TELEGRAM_ENABLED=true`; otherwise the feature stays dormant and the rest of the
 app is unaffected.
+
+**A missing token never stops the product.** If `TELEGRAM_ENABLED=true` but
+`TELEGRAM_BOT_TOKEN` is empty, the app still starts: the Telegram service is not
+built, `/api/v1/telegram/status` returns `enabled: false` with the reason, and
+the log records `TELEGRAM_ENABLED=1 but TELEGRAM_BOT_TOKEN is empty`. This is a
+regression guard — an earlier revision raised from the settings object, so a
+missing token took the whole analytics API down.
+
+## Network requirements
+
+Telegram must be reachable **from the API container**, not only from the host
+shell. The endpoint is `https://api.telegram.org` (currently `149.154.166.110`,
+port 443). Verify from inside the running container:
+
+```bash
+docker compose exec api python - <<'PY'
+import urllib.request
+try:
+    urllib.request.urlopen("https://api.telegram.org/", timeout=10)
+except urllib.error.HTTPError as e:
+    print("reachable (HTTP", e.code, "is a normal response for /)")
+else:
+    print("reachable")
+PY
+```
+
+A `302` on `/` and a `401 Unauthorized` on
+`/bot<TOKEN>/getMe` both mean the network path is fine — the `401` is Telegram
+rejecting the token, not a connectivity problem. Do not conclude "the token is
+wrong" until connectivity itself is confirmed.
 
 ## Setting up the bot
 
@@ -117,6 +147,8 @@ The test suite does this against a stub client, so no network is required:
 | Symptom | Cause / fix |
 | --- | --- |
 | UI shows «Интеграция отключена» | `TELEGRAM_ENABLED` is not `true` |
+| UI says `TELEGRAM_ENABLED=1, но TELEGRAM_BOT_TOKEN не задан` | The flag is on but the token is empty; set it and restart the API |
+| `getMe` returns 401 | The token is rejected — but confirm connectivity first (see above), a 401 proves the network is fine |
 | `503` from `/telegram/link-code` | Same — the feature is off, or the service failed to build (check logs) |
 | Webhook returns `403` | `TELEGRAM_WEBHOOK_SECRET` on the server does not match the `secret_token` used in `setWebhook` |
 | Webhook returns `200` but nothing happens | The update is malformed, oversized, or the feature is off; a `200` is returned deliberately so Telegram does not retry forever |

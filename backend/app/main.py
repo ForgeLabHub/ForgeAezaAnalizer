@@ -140,6 +140,14 @@ def build_telegram(settings: Settings, database: Database):
 
     if not settings.telegram_enabled:
         return None
+    if not settings.telegram_bot_token.strip():
+        # Enabling the feature without a token is a configuration mistake that
+        # must not stop the product. Say so once, loudly, and carry on.
+        logger.error(
+            "TELEGRAM_ENABLED=1 but TELEGRAM_BOT_TOKEN is empty; "
+            "the Telegram integration is disabled. Set the token on the server."
+        )
+        return None
     try:
         from backend.app.integrations.telegram.service import TelegramService
 
