@@ -1,11 +1,13 @@
 # Aéza · Churn Risk Analyzer
 
-**Backend v2:** ядро находится в `core.py`, запуск из корня —
-`python -m uvicorn main:app --port 8000` после установки `backend/requirements.txt`.
-Аналитика и risk-engine разрабатываются отдельно; по умолчанию подключена заглушка
-с ответом 503. План, текущие команды и контракт подключения:
-[docs/backend-rewrite.md](docs/backend-rewrite.md). Описание части B ниже относится
-к предыдущей реализации.
+**Backend v2:** ядро (оркестрация версий, атомарная публикация расчётов) находится
+в `core.py`, запуск из корня — `python -m uvicorn main:app --port 8000` после
+установки `backend/requirements.txt`. Реальный аналитический модуль и Risk Engine
+подключаются через `AEZA_ANALYTICS_FACTORY=backend.app.domain.module:create` —
+это значение задано в `.env.example` и `docker-compose.yml`. Если переменная пуста,
+приложение стартует с заглушкой, отвечающей `503`, и не выдаёт фиктивных расчётов.
+Контракт подключения внешнего модуля: [docs/backend-rewrite.md](docs/backend-rewrite.md).
+Канонический продукт — **часть B** (`backend/app/` + `frontend/`), описанная ниже.
 
 Аналитика клиентских данных Aéza для хакатона **UMIRHack 2026, кейс №2**:
 выявление риска оттока, объяснение причин оценки и выручки под риском на
@@ -69,6 +71,8 @@ curl -s localhost:8000/api/dashboard | python -m json.tool
 
 ```bash
 python -m pytest tests/ -v
+```
+
 ## 2. Что реализовано
 
 | Слой | Компонент | Назначение |
@@ -198,7 +202,7 @@ revenue_at_risk = eligible_renewal_amount × risk_score / 100
 - `favicon.ico` не отдаётся (безвредный 404 в консоли).
 
 Полный отчёт аудита данных и найденные дефекты исходных данных —
-[`docs/DATA_AUDIT.md`](docs/DATA_AUDIT.md).
+[`docs/IMPORT_AND_DATA_AUDIT.md`](docs/IMPORT_AND_DATA_AUDIT.md).
 
 
 ---
@@ -257,18 +261,29 @@ React + TypeScript SPA под nginx. Полностью независима о�
 cd backend
 python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+cd ..                                                # запуск из корня репозитория
 
 # 2. Демо-доступ и секрет подписи токенов
 export AEZA_JWT_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
 export AEZA_ADMIN_EMAIL="analyst@aeza.test"
 export AEZA_ADMIN_PASSWORD="demo123"
 
-# 3. Запуск API (при старте база создаётся и заполняется из снимка)
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+# 3. Подключить реальный аналитический модуль и заполнить БД снимком
+export AEZA_ANALYTICS_FACTORY=backend.app.domain.module:create
+export AEZA_SEED_DEMO_DATA=1
+export AEZA_SNAPSHOT_PATH=backend/data/snapshot.json
+
+# 4. Запуск API из корня репозитория (при старте база создаётся и заполняется из снимка)
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
+> Запускать `uvicorn app.main:app` из каталога `backend/` нельзя: модуль импортирует
+> `core.py` из корня и упадёт с `ModuleNotFoundError: No module named 'core'`.
+> Рабочая точка входа — корневой `main.py` (`uvicorn main:app`), он же используется
+> в `backend/Dockerfile`.
+
 ```bash
-# 4. Frontend (в другом терминале)
+# 5. Frontend (в другом терминале)
 cd frontend
 npm install
 npm run dev          # http://127.0.0.1:5173
@@ -359,25 +374,34 @@ curl -X PUT http://127.0.0.1:8000/api/v1/source/snapshot \
 ## Структура репозитория
 
 ```
+main.py           точка входа: `app = create_app()` (Docker и локальный запуск)
+core.py           ядро: версии, атомарная публикация расчётов, ConflictError
 backend/
   app/
     api/          HTTP-слой: маршруты, схемы, сериализация
+    ai/           локальный AI Analyst: провайдеры, RAG, инструменты, safety
     auth/         JWT и хеширование паролей
-    domain/       бизнес-логика: money, schema, risk, revenue, analytics, importer
+    domain/       бизнес-логика: money, schema, risk, revenue, analytics, importer, actions
     config.py     конфигурация из переменных окружения
     db.py         движок SQLAlchemy, модели строк, UTC-тип даты
+    modules.py    контракт внешнего аналитического модуля, CalculationAdapter
+    source.py     нормализация снимка
+    storage.py    версионированное хранилище расчётов
     metrics.py    метрики Prometheus
+    main.py       фабрика `create_app`
   migrations/     SQL-схема и сид для PostgreSQL
   scripts/        загрузчик снимка
   tests/          unit, API и интеграционные тесты
+  data/           snapshot.json (демо-снимок) и локальный RAG-индекс
 frontend/
   src/
-    lib/          API-клиент и контекст авторизации
-    components/   переиспользуемые UI-элементы и графики
-    pages/        дашборд, клиенты, карточка клиента, настройки, вход
+    lib/          API-клиент, контекст авторизации, live-обновления, тема
+    components/   UI-элементы, AI-панель, действия по удержанию
+    pages/        дашборд, приоритеты, клиенты, карточка клиента, AI-аналитик,
+                  настройки, данные и качество, вход
 dataset/          исходный комплект кейса (data.json, SQL, README, generate.py)
-db/               PostgreSQL seed, файлы PostgreSQL и SQLite-база авторизации
-docs/             документация по данным, модели, импорту и демонстрации
+db/               PostgreSQL seed и SQLite-база авторизации
+```
 
 
 | Документ | Содержание |
@@ -404,6 +428,10 @@ docs/             документация по данным, модели, им
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Разработка части A |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Развёртывание |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Безопасность |
+| [`docs/AI_ANALYST.md`](docs/AI_ANALYST.md) | AI Analyst: локальная LLM, RAG, инструменты, безопасность |
+| [`docs/METHODOLOGY_SPEC.md`](docs/METHODOLOGY_SPEC.md) | Спецификация методики и её проверки |
+| [`docs/SENSITIVITY_ANALYSIS.md`](docs/SENSITIVITY_ANALYSIS.md) | Анализ чувствительности весов и устойчивости рейтинга |
+| [`docs/ANALYTICS_FORENSIC_AUDIT.md`](docs/ANALYTICS_FORENSIC_AUDIT.md) | Независимый аудит формул и денежных расчётов |
 
 ---
 
@@ -420,13 +448,23 @@ docs/             документация по данным, модели, им
 | `GET` | `/api/v1/customers` | Список клиентов: поиск, фильтры, сортировка, пагинация |
 | `GET` | `/api/v1/customers/{id}` | Карточка клиента с услугами и рекомендациями |
 | `GET` | `/api/v1/analytics/summary` | Сводные показатели дашборда |
+| `GET` | `/api/v1/analytics/events` | Лента событий/изменений для live-обновления |
+| `GET` | `/api/v1/priority` | Очередь работы с клиентами (операционный приоритет) |
+| `GET` | `/api/v1/quality` | Отчёт о качестве данных |
+| `POST` | `/api/v1/scenarios/compare` | What-if: сравнение конфигураций модели |
+| `GET` | `/api/v1/actions` | Список действий по удержанию |
+| `POST` | `/api/v1/actions` | Подтвердить действие по удержанию (только человек) |
+| `PATCH` | `/api/v1/actions/{id}` | Обновить статус действия |
 | `GET` | `/api/v1/model/settings` | Текущие веса, горизонт, пороги |
 | `PATCH` | `/api/v1/model/settings` | Изменить веса, горизонт, пороги |
 | `POST` | `/api/v1/model/settings/reset` | Вернуть значения по умолчанию |
 | `GET` | `/api/v1/source/snapshot` | Текущие объём и отчёт последнего импорта |
 | `PUT` | `/api/v1/source/snapshot` | Импортировать снимок (атомарно) |
+| `GET` | `/api/v1/source/observations` | Наблюдения по исходным данным |
+| `GET` | `/api/v1/export/customers.csv` | Экспорт клиентов в CSV |
 | `GET` | `/metrics` | Метрики Prometheus |
 | `GET` | `/health` | Проверка живости |
+| `GET` | `/ready` | Готовность (включая подключённый аналитический модуль) |
 | `GET` | `/api/v1/docs` | Swagger UI |
 | `GET` | `/api/v1/ai/status` | Состояние AI Analyst: `disabled` / `ready` / `unavailable` |
 | `POST` | `/api/v1/ai/chat` | Вопрос по портфелю |
@@ -456,12 +494,25 @@ docs/             документация по данным, модели, им
 | `AEZA_SNAPSHOT_PATH` | `dataset/data.json` | Необязательный источник для локальной загрузки при пустой БД |
 | `AEZA_SEED_DEMO_DATA` | `0` | Загружать JSON-снимок при пустой БД; Compose использует SQL seed |
 | `AEZA_AS_OF` | `2026-10-19T15:00:00+00:00` | Опорный момент расчёта; `now` — по стенным часам |
+| `AEZA_ANALYTICS_FACTORY` | `backend.app.domain.module:create` (в `.env.example`/Compose) | Модуль аналитики и Risk Engine; пусто → маршруты возвращают `503` |
+| `AEZA_RECALCULATE_SECONDS` | `60` | Период фонового пересчёта (1–3600) |
+| `AEZA_METRICS_TOKEN` | — | Отдельный Bearer-токен для `/metrics`; иначе нужна сессия аналитика |
 | `AEZA_CORS_ORIGINS` | `*` | Разрешённые источники через запятую |
 | `AEZA_AI_ENABLED` | `0` | Включить локальный AI Analyst |
-| `AEZA_AI_PROVIDER` | `mock` | `ollama` (локальный runtime) или `mock` |
+| `AEZA_AI_PROVIDER` | `mock` | `ollama` (локальный runtime) или `mock` (офлайн, тесты) |
 | `AEZA_AI_MODEL` | `qwen2.5:3b-instruct` | Имя локальной модели |
 | `AEZA_AI_BASE_URL` | `http://127.0.0.1:11434` | Адрес Ollama; внешние URL отклоняются |
+| `AEZA_AI_TIMEOUT_SECONDS` | `180` | Таймаут генерации (1–900) |
+| `AEZA_AI_MAX_CONCURRENCY` | `1` | Одновременных генераций; CPU-инференс не должен голодать event loop |
+| `AEZA_AI_NUM_CTX` | `4096` | Размер контекста модели |
+| `AEZA_AI_MAX_TOKENS` | `1200` | Лимит длины ответа |
+| `AEZA_AI_TEMPERATURE` | `0.1` | Температура сэмплинга |
+| `AEZA_AI_MAX_QUESTION_CHARS` | `2000` | Максимальная длина вопроса пользователя |
+| `AEZA_AI_MAX_CONTEXT_CHARS` | `1600` | Бюджет символов для блока документации из RAG |
+| `AEZA_AI_RAG_TOP_K` | `2` | Сколько фрагментов документации подмешивать |
+| `AEZA_AI_MAX_RETRIES` | `1` | Повторы при невалидном ответе модели |
 | `AEZA_AI_RAG_INDEX_PATH` | `backend/data/rag_index.json` | Локальный индекс документации |
+| `AEZA_AI_DOCS_PATH` | `docs` | Каталог документов для индексации RAG |
 
 **Опорный момент.** Снимок Aéza — это состояние на фиксированный момент, и статусы
 услуг в нём не меняются со временем. Поэтому `AEZA_AS_OF` по умолчанию равен

@@ -5,14 +5,18 @@
 
 ## Тестовые наборы
 
+Числа получены фактическим запуском на текущем коде (проверено 2026-10-24):
+
 | Компонент | Команда | Результат |
 |---|---|---|
-| B: основной продукт | `cd backend && python -m pytest tests/ -q` | **108 passed** |
-| C: auth-модуль | `python -m pytest tests/test_auth.py -q` | **17 passed** |
-| A: анализатор | `python -m pytest tests/ -q --ignore=tests/test_auth.py` | **52 passed** |
-| Всё вместе | `python -m pytest tests/ -q` | **69 passed** |
+| B: основной продукт | `cd backend && python -m pytest tests/ -q` | **246 passed** |
+| C: auth-модуль | `python -m pytest tests/test_auth.py -q` (из корня) | **17 passed** |
+| A: анализатор | `python -m pytest tests/ -q --ignore=tests/test_auth.py` (из корня) | **52 passed** |
+| Всё вместе (корень: A + C) | `python -m pytest tests/ -q` | **69 passed** |
 
-**Итого 177 тестов**, все проходят.
+Итого: **246** тестов части B и **69** тестов корневого набора (52 части A + 17
+части C), все проходят. Предыдущая редакция этого документа указывала 108/177 —
+это устаревшие значения; они заменены на фактические.
 
 ## Сборка фронтенда
 
@@ -23,10 +27,10 @@ cd frontend && npm ci && npm run build
 Результат: `tsc -b && vite build` — успешно, без ошибок типизации.
 
 ```
-dist/index.html                   0.58 kB
-dist/assets/index-*.css          14.03 kB
-dist/assets/index-*.js          200.69 kB
-✓ built in 1.00s
+dist/index.html                   0.97 kB │ gzip:  0.59 kB
+dist/assets/index-*.css          30.43 kB │ gzip:  6.92 kB
+dist/assets/index-*.js          264.74 kB │ gzip: 83.28 kB
+✓ 50 modules transformed, built in 1.03s
 ```
 
 ## Проверка основного продукта (B) на живом сервере
@@ -34,10 +38,12 @@ dist/assets/index-*.js          200.69 kB
 Запуск:
 
 ```bash
-cd backend
+# из корня репозитория
 export AEZA_JWT_SECRET=... AEZA_ADMIN_EMAIL=analyst@aeza.test \
-       AEZA_ADMIN_PASSWORD=... AEZA_SEED_DEMO_DATA=1
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8210
+       AEZA_ADMIN_PASSWORD=... AEZA_SEED_DEMO_DATA=1 \
+       AEZA_SNAPSHOT_PATH=backend/data/snapshot.json \
+       AEZA_ANALYTICS_FACTORY=backend.app.domain.module:create
+python -m uvicorn main:app --host 127.0.0.1 --port 8210
 ```
 
 ### Критерии приёмки ТЗ

@@ -24,12 +24,14 @@
 Подготовка:
 
 ```bash
-# Терминал 1
-cd backend
+# Терминал 1 (из корня репозитория)
 export AEZA_JWT_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
 export AEZA_ADMIN_EMAIL="analyst@aeza.test"
 export AEZA_ADMIN_PASSWORD="demo123"
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+export AEZA_ANALYTICS_FACTORY=backend.app.domain.module:create
+export AEZA_SEED_DEMO_DATA=1
+export AEZA_SNAPSHOT_PATH=backend/data/snapshot.json
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
 
 # Терминал 2
 cd frontend && npm run dev
