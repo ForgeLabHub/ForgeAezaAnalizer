@@ -21,7 +21,7 @@ from core import ConflictError, Core, InvalidInput, NotReadyError, ResourceNotFo
 from backend.app.api import routes_analytics, routes_auth, routes_customers, routes_export, routes_insights, routes_model, routes_source
 from backend.app.api.deps import Runtime, RuntimeDep
 from backend.app.api.schemas import ErrorResponse
-from backend.app.auth.security import AuthService, Unauthorized
+from backend.app.auth.security import AuthService, RateLimited, Unauthorized
 from backend.app.config import Settings, get_settings
 from backend.app.db import Database
 from backend.app.metrics import Metrics
@@ -115,6 +115,11 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
     @app.exception_handler(Unauthorized)
     async def unauthorized(request: Request, error: Unauthorized):
         return JSONResponse({"detail": str(error)}, status_code=401, headers={"WWW-Authenticate": "Bearer"})
+
+    @app.exception_handler(RateLimited)
+    async def rate_limited(request: Request, error: RateLimited):
+        return JSONResponse({"detail": str(error)}, status_code=429,
+            headers={"Retry-After": str(error.retry_after)})
 
     @app.exception_handler(InvalidInput)
     async def invalid_input(request: Request, error: InvalidInput):
