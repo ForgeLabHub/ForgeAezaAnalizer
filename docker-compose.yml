@@ -40,6 +40,16 @@ services:
       AEZA_METRICS_TOKEN: ${AEZA_METRICS_TOKEN:-}
       # Restrict to the SPA origin; never "*" in a shared environment.
       AEZA_CORS_ORIGINS: ${AEZA_CORS_ORIGINS:-http://localhost:8080}
+      # --- AI Analyst (off by default) ---
+      # Enable with AEZA_AI_ENABLED=1 in .env and a local Ollama on the host.
+      AEZA_AI_ENABLED: ${AEZA_AI_ENABLED:-0}
+      AEZA_AI_PROVIDER: ${AEZA_AI_PROVIDER:-ollama}
+      AEZA_AI_MODEL: ${AEZA_AI_MODEL:-qwen2.5:3b-instruct}
+      # host.docker.internal resolves to the host via extra_hosts below.
+      AEZA_AI_BASE_URL: ${AEZA_AI_BASE_URL:-http://host.docker.internal:11434}
+    # Lets the container reach a local Ollama running on the host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy

@@ -251,3 +251,27 @@ These were real defects that only appear on a clean checkout or a shared host.
 `.github/workflows/ci.yml` runs backend tests, root tests, frontend
 typecheck+build, and Compose config validation (including the fail-closed check).
 There was no CI before; this is new.
+
+## Local AI Analyst — verified on live inference
+
+The AI Analyst is not a mock. It was run end-to-end against a real local model:
+
+- Ollama 0.40.10, `qwen2.5:3b-instruct` (1.9 GB, Q4), CPU only, 4 vCPU.
+- API runs in Compose; the model runs on the host. `docker-compose.yml` sets
+  `extra_hosts: host.docker.internal:host-gateway` on the `api` service, and
+  `AEZA_AI_BASE_URL` defaults to `http://host.docker.internal:11434`.
+- **Ollama must not bind loopback-only** if the API is containerised:
+  `OLLAMA_HOST=0.0.0.0:11434 ollama serve`. Loopback bind is the #1 cause of a
+  misleading `unavailable` status.
+- The RAG index is built **at image build time** (`backend/Dockerfile` copies
+  `docs/` and runs `python -m backend.app.ai.rag`). 324 chunks. It is gitignored
+  (`backend/data/rag_index.json`), so it must be produced in the image, not
+  committed.
+- Verified: money question answers "5.80 EUR" grounded with citations;
+  `customerId=5` yields `riskScore=71.4` (exactly the engine value); methodology
+  questions cite `docs/model.md`; prompt injection is refused; `/ai/*` returns
+  401 without a token; `AEZA_AI_ENABLED=0` returns 503 while analytics keeps
+  working.
+- Latency on this CPU: **37–91 s** per answer (`num_ctx=4096`,
+  `max_tokens=1200`). `AEZA_AI_MAX_CONCURRENCY=1`, so requests queue. Fine for a
+  demo, not for concurrent analysts — that needs a separate inference host.
