@@ -25,6 +25,13 @@
     </script>
     <meta name="description" content="Aéza Sentinel — анализ риска оттока клиентов и оценка выручки под риском" />
     <title>Aéza · Sentinel</title>
+    <!--
+      Telegram Mini App SDK. Loaded on every page (it is inert outside Telegram)
+      so `window.Telegram.WebApp.initData` exists when the Mini App screen opens
+      inside Telegram. Without it the client cannot obtain the signed initData and
+      the Mini App can never authenticate.
+    -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
   <body>
     <div id="root"></div>

@@ -3510,3 +3510,96 @@ table.data tbody tr:nth-child(n + 13) { animation-delay: 0.28s; }
     animation: none !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Telegram Mini App (`/mini-app`)
+
+   Mobile-first: Telegram opens the app in a WebView on a phone. `--tg-viewport-height`
+   is set by the WebApp SDK so the layout tracks Telegram's real visible height
+   (which shrinks when its header/keyboard appears) instead of `100vh`, which
+   overflows and clips the bottom of the page inside the WebView.
+   --------------------------------------------------------------------------- */
+.mini-app {
+  --mini-app-pad: 16px;
+  padding: var(--mini-app-pad);
+  padding-bottom: calc(var(--mini-app-pad) + env(safe-area-inset-bottom, 0px));
+  max-width: 720px;
+  margin: 0 auto;
+  min-height: var(--tg-viewport-height, 100vh);
+  box-sizing: border-box;
+}
+
+.mini-app .page-head {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.mini-app h2 {
+  font-size: 1.05rem;
+  margin: 20px 0 10px;
+}
+
+.mini-app .metric {
+  width: 100%;
+}
+
+.mini-app .table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mini-app .table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.mini-app .table th,
+.mini-app .table td {
+  padding: 8px 10px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+}
+
+.mini-app .support-bubble {
+  padding: 10px 12px;
+  border-radius: 12px;
+  margin-bottom: 8px;
+  max-width: 85%;
+}
+
+.mini-app .support-bubble.is-client {
+  background: var(--accent-soft, rgba(255, 107, 0, 0.12));
+  margin-left: auto;
+}
+
+.mini-app .support-bubble.is-analyst {
+  background: var(--surface-2, rgba(0, 0, 0, 0.05));
+}
+
+.mini-app .support-bubble-meta {
+  font-size: 0.75rem;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+
+.mini-app form.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.mini-app form.row .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+@media (max-width: 420px) {
+  .mini-app {
+    --mini-app-pad: 12px;
+  }
+  .mini-app h1 {
+    font-size: 1.25rem;
+  }
+}
