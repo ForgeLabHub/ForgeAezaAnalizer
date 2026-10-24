@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import sqlite3
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -197,6 +199,17 @@ def test_openapi_covers_every_frontend_call(client):
     paths = client.get("/api/v1/openapi.json").json()["paths"]
     missing = [f"{m.upper()} {p}" for m, p in FRONTEND_CALLS if p not in paths or m not in paths[p]]
     assert missing == []
+
+
+def test_committed_openapi_matches_the_app(client):
+    # `backend/openapi.json` is published to integrators, so a route added without
+    # regenerating it ships a schema that silently omits that route. Regenerate with
+    # `python backend/scripts/export_openapi.py`.
+    committed = json.loads((Path(__file__).resolve().parents[1] / "openapi.json").read_text(encoding="utf-8"))
+    live = client.get("/api/v1/openapi.json").json()
+    assert set(committed["paths"]) == set(live["paths"])
+    for path, methods in live["paths"].items():
+        assert set(committed["paths"][path]) == set(methods), path
 
 
 def test_openapi_documents_priority_query_parameters(client):
