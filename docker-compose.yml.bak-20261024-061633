@@ -1,0 +1,121 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aeza}
+      POSTGRES_USER: ${POSTGRES_USER:-aeza}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}
+    volumes:
+      # Named volume so a clean checkout never depends on host-owned ./db/postgres.
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aeza} -d ${POSTGRES_DB:-aeza}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      # Inside the Compose network the API talks to the bundled Postgres.
+      AEZA_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-aeza}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-aeza}
+      # No defaults for secrets: Compose refuses to start unless these are set.
+      # Generate: python -c "import secrets; print(secrets.token_urlsafe(48))"
+      AEZA_JWT_SECRET: ${AEZA_JWT_SECRET:?set AEZA_JWT_SECRET in .env (see .env.example)}
+      AEZA_ADMIN_EMAIL: ${AEZA_ADMIN_EMAIL:?set AEZA_ADMIN_EMAIL in .env}
+      AEZA_ADMIN_PASSWORD: ${AEZA_ADMIN_PASSWORD:?set AEZA_ADMIN_PASSWORD in .env}
+      AEZA_ALLOW_DEV_SECRET: "0"
+      # Seed the official organiser dataset through the app's own validated
+      # importer. Do NOT pre-load db/analytics_seed.sql: it holds a different
+      # 60/115/285 fixture, not the official 10/30/100 snapshot.
+      AEZA_SEED_DEMO_DATA: "1"
+      AEZA_SNAPSHOT_PATH: /app/dataset/data.json
+      AEZA_AUTH_DATABASE_URL: sqlite:////app/db/auth.sqlite3
+      AEZA_AS_OF: ${AEZA_AS_OF:-2026-10-19T15:00:00+00:00}
+      AEZA_ANALYTICS_FACTORY: ${AEZA_ANALYTICS_FACTORY:-backend.app.domain.module:create}
+      AEZA_RECALCULATE_SECONDS: ${AEZA_RECALCULATE_SECONDS:-60}
+      AEZA_METRICS_TOKEN: ${AEZA_METRICS_TOKEN:-}
+      # The SPA is served through the same nginx origin, so the demo needs no
+      # wildcard. Widen this only if you host the UI elsewhere.
+      AEZA_CORS_ORIGINS: ${AEZA_CORS_ORIGINS:-http://localhost:8080}
+<<<<<<< Updated upstream
+      # --- Local AI, two conventions in one repo (both off by default) ---
+      # (a) AI Analyst (backend/app/ai): grounded explanations + RAG.
+      AEZA_AI_ENABLED: ${AEZA_AI_ENABLED:-0}
+      AEZA_AI_PROVIDER: ${AEZA_AI_PROVIDER:-ollama}
+      AEZA_AI_MODEL: ${AEZA_AI_MODEL:-qwen2.5:3b-instruct}
+      AEZA_AI_BASE_URL: ${AEZA_AI_BASE_URL:-http://host.docker.internal:11434}
+      # (b) Insights narration (backend/app/domain/llm.py). AEZA_OLLAMA_URL is
+      # the canonical name and wins over the older AEZA_LLM_BASE_URL alias; both
+      # are honoured so an existing .env keeps working.
+      AEZA_LLM_ENABLED: ${AEZA_LLM_ENABLED:-0}
+      AEZA_OLLAMA_URL: ${AEZA_OLLAMA_URL:-http://host.docker.internal:11434}
+      AEZA_OLLAMA_MODEL: ${AEZA_OLLAMA_MODEL:-qwen2.5:3b-instruct}
+=======
+      # Local LLM (Ollama). Off by default.
+      #
+      # AEZA_OLLAMA_URL is the canonical name and wins over the older
+      # AEZA_LLM_BASE_URL alias; both are honoured so an existing .env keeps
+      # working. The default is the Docker bridge gateway, which is where an
+      # Ollama running on the host is reachable from inside the container
+      # (172.18.0.1 on the default compose bridge; host.docker.internal also
+      # resolves via the extra_hosts entry below).
+      AEZA_AI_ENABLED: ${AEZA_AI_ENABLED:-0}
+      AEZA_LLM_ENABLED: ${AEZA_LLM_ENABLED:-1}
+      AEZA_OLLAMA_URL: ${AEZA_OLLAMA_URL:-http://172.18.0.1:11434}
+      AEZA_OLLAMA_MODEL: ${AEZA_OLLAMA_MODEL:-qwen2.5:7b}
+>>>>>>> Stashed changes
+      AEZA_OLLAMA_TIMEOUT_SECONDS: ${AEZA_OLLAMA_TIMEOUT_SECONDS:-90}
+      AEZA_LLM_MAX_TOKENS: ${AEZA_LLM_MAX_TOKENS:-700}
+      AEZA_LLM_TEMPERATURE: ${AEZA_LLM_TEMPERATURE:-0.2}
+      # Telegram integration. Off by default; the stack runs normally without a
+      # bot token. Set TELEGRAM_* in the host environment (or an .env file) and
+      # never bake a real token into the image.
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL:-}
+      TELEGRAM_API_BASE: ${TELEGRAM_API_BASE:-https://api.telegram.org}
+      TELEGRAM_TIMEOUT_SECONDS: ${TELEGRAM_TIMEOUT_SECONDS:-10}
+      TELEGRAM_LINK_CODE_TTL_SECONDS: ${TELEGRAM_LINK_CODE_TTL_SECONDS:-600}
+      TELEGRAM_LINK_MAX_ATTEMPTS: ${TELEGRAM_LINK_MAX_ATTEMPTS:-5}
+      TELEGRAM_MIN_SEND_INTERVAL_SECONDS: ${TELEGRAM_MIN_SEND_INTERVAL_SECONDS:-3}
+      TELEGRAM_MAX_RETRIES: ${TELEGRAM_MAX_RETRIES:-2}
+      TELEGRAM_APP_BASE_URL: ${TELEGRAM_APP_BASE_URL:-http://localhost:8080}
+      TELEGRAM_DIGEST_CHECK_SECONDS: ${TELEGRAM_DIGEST_CHECK_SECONDS:-300}
+      TELEGRAM_DIGEST_HOUR_UTC: ${TELEGRAM_DIGEST_HOUR_UTC:-9}
+    # On Linux, host.docker.internal is not resolved automatically; this maps it
+    # to the host gateway so the container can reach a host-run Ollama.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    # A named volume, not a bind mount: the SQLite store holds password hashes
+    # and live sessions, so it must not live in the working tree or in Git. It
+    # persists across `docker compose down` and is recreated empty on first boot.
+    volumes:
+      # Named volume, not a bind mount. A bind mount of ./db/auth.sqlite3 would
+      # create a *directory* in place of the file on a clean checkout (the file
+      # is gitignored), and a bind mount of ./db would impose the host uid on
+      # /app/db. Docker seeds this volume from the image's /app/db, which is
+      # owned by the unprivileged app user, so the SQLite store is created on
+      # first run with the right permissions.
+      - auth_data:/app/db
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+volumes:
+  auth_data:
+  pg_data:
