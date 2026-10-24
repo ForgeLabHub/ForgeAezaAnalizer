@@ -187,15 +187,20 @@ Status: **DONE**.
 - A trailer-free copy was prepared on the separate branch
   **`feat/deployment-readiness-clean`**, verified to have an **identical tree**
   to the active branch and zero trailers.
+- **The clean branch is a snapshot, not a mirror.** It was built from the commit
+  that was HEAD at the time (`d830744`) and now trails the active branch by two
+  documentation commits. It was **not** rebuilt afterwards, because the follow-up
+  instructions for this session forbid `git filter-branch`. Its exact state is:
+  tree of `d830744`, 0 `openhands` trailers, 71 commits.
 - The active branch was **deliberately left intact** (reflog preserved), because
   the concurrent session may still depend on its SHAs. Promoting the clean copy
   is a one-command decision for the owner (§12).
 - During preparation, `git filter-branch` was first run against the live
   repository, which rewrote all local and remote-tracking refs. **Every ref was
   restored from `refs/original` and re-verified against `git ls-remote`.** Final
-  state: `main` = `d0abced`, `feat/deployment-readiness` = `3340dc6`,
-  `origin/main` = `81e28c4` — all correct. This near-miss is recorded rather than
-  hidden.
+  state: `main` = `d0abced`, `origin/main` = `81e28c4`,
+  `origin/feat/priority-whatif-integration` = `0225f12` — all correct. This
+  near-miss is recorded rather than hidden.
 - No force-push, no `reset --hard`, no remote change. Author identities were not
   altered; other contributors' authorship is preserved.
 
@@ -210,11 +215,14 @@ is left to the owner because of the concurrent session.
 | Root (part A + auth) | `python -m pytest tests/ -q` | **69 passed**, 0 failed |
 | Frontend typecheck | `cd frontend && npx tsc -b` | exit **0** |
 | Frontend build | `cd frontend && npm run build` | exit **0** |
-| Docs consistency | `python backend/scripts/check_docs.py` | 3/4 checks ok; 1 known (this file) |
+| Docs consistency | `python backend/scripts/check_docs.py` | 4/4 checks ok |
 | Compose config | `docker compose config` | valid, 3 services |
 
 **279 tests pass.** Note: the suite fails spuriously if `AEZA_*` variables are
 exported in the shell; this gotcha is now documented in `AGENTS.md`.
+
+Re-verified on 2026-10-24 after the follow-up documentation fixes (same results:
+210 + 69 passed, `tsc -b` and `npm run build` exit 0, docs checker 4/4 ok).
 
 Not run, and stated as such: a cold `docker compose up --build` (the sandbox's
 Docker daemon cannot be restarted — a stale `dockerd` plus an already-running
@@ -226,9 +234,14 @@ The release candidate is the tip of `feat/deployment-readiness`. Read it with
 `git rev-parse HEAD` rather than from this file: a report that pins its own
 commit hash would change that hash the moment it is edited.
 
-A trailer-free copy is kept on the branch `feat/deployment-readiness-clean`.
-Because the clean branch's hash depends on the commit messages (including this
-report), it is reproduced on demand rather than pinned:
+A trailer-free copy is kept on the branch `feat/deployment-readiness-clean`. It
+is a **snapshot** taken from an earlier HEAD and therefore trails the active
+branch by the documentation commits added since; it is not rebuilt automatically.
+
+> **Only ever regenerate it inside a throwaway bare clone.** `filter-branch`
+> rewrites every ref it can see, so running it in the working repository would
+> move `main`, `feat/deployment-readiness` and the remote-tracking refs. The
+> commands below clone into `/tmp` first for that reason.
 
 ```bash
 git clone --bare --no-local . /tmp/aeza-clean.git
@@ -241,7 +254,7 @@ git diff --stat feat/deployment-readiness feat/deployment-readiness-clean   # ex
 ```
 
 The last command must print nothing: the two branches must share one tree, with
-only the trailers removed from 14 local-only commit messages.
+only the trailers removed from the 14 local-only commit messages.
 
 ## 11. Push and deploy
 
@@ -276,3 +289,24 @@ is clean, and 279 tests pass. What remains is either **outside this environment*
 (SSH to the VM, a Docker daemon that can restart, the organiser's research
 materials) or **an owner decision** (push, deploy, promote the cleaned history).
 None of those is claimed as done.
+
+## 14. Follow-up session (2026-10-24, later)
+
+A second pass re-established the state and fixed documentation defects that the
+first pass had left or introduced. Nothing was deployed or pushed.
+
+| Item | Finding | Action |
+| --- | --- | --- |
+| README API table | claimed to be complete but omitted the playbook, priority, quality, scenario, export and `/ready` routes | added, each verified against `backend/openapi.json` |
+| README index | labelled `docs/API.md` as part B's source of truth; it documents part A (`/api/*`) | relabelled |
+| `aeza_demo_runbook.md` | launch command `cd /workspace/aeza/backend && uvicorn app.main:app` fails on `ModuleNotFoundError: core` | replaced with the verified `main:app` invocation; executed to confirm (`/health` 200, 10 customers, 5.80 EUR) |
+| Deck-companion notes (`aeza_demo_runbook.md`, `aeza_placeholder_checklist.md`, `aeza_speaker_notes.md`) | carried the old 73,3 / 5,74 EUR figures and a dead `*.prod-runtime.all-hands.dev` URL | annotated as historical with the current values; not silently rewritten |
+| `docs/demo.md`, `docs/DEMO_SCRIPT.md` | called the dataset "реальные данные" | corrected to synthetic organiser data |
+| Release gate | did not exist | created as `docs/audits/release-gate.md` |
+| `/api/health`, `/api/meta` | suspected stale in the brief; they are **real, tested part A routes** (`aeza_analyzer/api/app.py`, `tests/test_api.py`) | no change; scope clarified in README |
+| Historical credential exposure | `db/auth.sqlite3` remains in history (`1be3e20`, `25dfe0e`) with one `analyzer_users` row | inspected: the only hash matches the **documented demo password** `demo123` for `analyst@aeza.test` — no real secret. Left in history (rewriting it is a prohibited, destructive operation here); owner decision in `release-gate.md` |
+| Clean history branch | trails the active branch by the follow-up commits | not rebuilt (`filter-branch` is forbidden in this session); state recorded in §8 and §10 |
+
+Status of the follow-up: **DONE** for the documentation fixes and the release
+gate; **PARTIAL** for the clean branch (snapshot, needs an owner rebuild);
+**BLOCKED** for everything requiring host access or permission.
