@@ -76,10 +76,18 @@ class OllamaProvider:
         temperature: float,
         timeout: float,
     ) -> Generation:
+        MAX_USER_CHARS = 2500
+        if len(user) > MAX_USER_CHARS:
+            import logging
+            logging.getLogger("ai.prompt").warning(
+                "PROMPT_TRUNCATED user %d -> %d chars", len(user), MAX_USER_CHARS
+            )
+            user = user[:MAX_USER_CHARS] + "\n[…контекст сокращён…]"
         payload: dict = {
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "stream": False,
+            "think": False,
             "options": {"temperature": temperature, "num_ctx": num_ctx, "num_predict": max_tokens},
         }
         if json_schema is not None:

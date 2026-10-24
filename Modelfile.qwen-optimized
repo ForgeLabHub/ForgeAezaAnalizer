@@ -1,0 +1,14 @@
+FROM qwen2.5:7b
+
+# ── CPU-оптимизация ──
+PARAMETER num_thread 6        # ← замените на (nproc - 2)
+PARAMETER num_batch 128       # CPU: 128 работает лучше, чем 512
+PARAMETER num_ctx 2048        # не раздувать KV-кэш без нужды
+PARAMETER num_gpu 0           # явно CPU-only
+
+# ── Ограничение выхода ──
+PARAMETER num_predict 120     # ~2–3 предложения вместо 248 токенов
+
+# ── Стабильность ──
+PARAMETER temperature 0.2
+PARAMETER top_p 0.9

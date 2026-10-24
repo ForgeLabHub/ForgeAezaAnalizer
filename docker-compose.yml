@@ -47,6 +47,8 @@ services:
       AEZA_AI_PROVIDER: ${AEZA_AI_PROVIDER:-ollama}
       AEZA_AI_MODEL: ${AEZA_AI_MODEL:-qwen2.5:3b-instruct}
       AEZA_AI_BASE_URL: ${AEZA_AI_BASE_URL:-http://host.docker.internal:11434}
+      AEZA_AI_MAX_TOKENS: ${AEZA_AI_MAX_TOKENS:-128}
+      AEZA_AI_TIMEOUT_SECONDS: ${AEZA_AI_TIMEOUT_SECONDS:-10}
       # (b) Insights narration (backend/app/domain/llm.py). AEZA_OLLAMA_URL is
       # the canonical name and wins over the older AEZA_LLM_BASE_URL alias; both
       # are honoured so an existing .env keeps working.
