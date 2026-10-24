@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError, api } from '../lib/api'
 import type { CustomerDetail, ServiceItem } from '../types'
+import { AIAnalystPanel } from '../components/AIAnalystPanel'
+import { RetentionActions } from '../components/RetentionActions'
 import {
   EmptyState,
   ErrorBox,
@@ -290,30 +292,6 @@ export default function CustomerDetailPage() {
 
           <section className="card">
             <div className="card-head">
-              <h2>Рекомендации по удержанию</h2>
-            </div>
-            <div className="card-body">
-              {customer.recommendations.length ? (
-                <div className="rec-list">
-                  {customer.recommendations.map((rec) => (
-                    <div className={`rec prio-${rec.priority}`} key={rec.code}>
-                      <div className="rec-title">{rec.title}</div>
-                      <div className="rec-detail">{rec.detail}</div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="hint">Действия не требуются: значимых сигналов риска нет.</p>
-              )}
-              <div className="notice" style={{ marginTop: 12 }}>
-                Рекомендации основаны на наблюдаемых сигналах и не гарантируют предотвращение
-                оттока. Система не отправляет сообщения клиентам и не изменяет их аккаунты.
-              </div>
-            </div>
-          </section>
-
-          <section className="card">
-            <div className="card-head">
               <h2>Продления в горизонте</h2>
             </div>
             <div className="card-body">
@@ -346,12 +324,16 @@ export default function CustomerDetailPage() {
             </div>
           </section>
 
+          <RetentionActions customer={customer} />
+
           {forecastServices.length === 0 ? (
             <div className="notice warn">
               Ни одна услуга клиента не пригодна для прогноза оттока: все они удалены или
               заблокированы.
             </div>
           ) : null}
+
+          <AIAnalystPanel customerId={customer.id} />
         </div>
       </div>
     </div>
