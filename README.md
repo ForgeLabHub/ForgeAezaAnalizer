@@ -426,7 +426,9 @@ docs/             документация по данным, модели, им
 | [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md) | Словарь полей |
 | [`docs/SCHEMA_MAPPING.md`](docs/SCHEMA_MAPPING.md) | Источник → модель приложения |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Разработка части A |
-| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Развёртывание |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Развёртывание части A (SQLite, Render) |
+| [`docs/DEPLOYMENT_PART_B.md`](docs/DEPLOYMENT_PART_B.md) | Развёртывание канонического продукта B (Docker, PostgreSQL) |
+| [`docs/PROVENANCE_AUDIT.md`](docs/PROVENANCE_AUDIT.md) | Аудит происхождения, дублирования и состояния проекта |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Безопасность |
 
 ---
