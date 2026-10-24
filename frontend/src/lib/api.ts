@@ -2,6 +2,12 @@ import type {
   AIResponse,
   AIStatus,
   ActionStatus,
+  ClientAccount,
+  ClientMe,
+  ClientServices,
+  ClientSession,
+  ClientSupport,
+  ClientSupportSend,
   CsvExportResult,
   CustomerDetail,
   CustomerPage,
@@ -125,6 +131,40 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw parseErrorPayload(response.status, payload)
   }
 
+  return payload as T
+}
+
+/**
+ * A request authenticated with a Telegram *client* token.
+ *
+ * Kept apart from ``request`` on purpose: a Mini App client token must never be
+ * swapped for, or refreshed with, the analyst session token. The token is passed
+ * explicitly per call and never stored in the module-level analyst slot.
+ */
+async function clientRequest<T>(path: string, init: RequestInit, token: string): Promise<T> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    ...((init.headers as Record<string, string>) ?? {}),
+    Authorization: `Bearer ${token}`,
+  }
+  if (init.body !== undefined) headers['Content-Type'] = 'application/json'
+  let response: Response
+  try {
+    response = await fetch(path, { ...init, headers, credentials: 'same-origin' })
+  } catch {
+    throw new ApiError(0, 'Не удалось связаться с сервером.')
+  }
+  if (response.status === 204) return undefined as T
+  const text = await response.text()
+  let payload: unknown = null
+  if (text) {
+    try {
+      payload = JSON.parse(text)
+    } catch {
+      payload = null
+    }
+  }
+  if (!response.ok) throw parseErrorPayload(response.status, payload)
   return payload as T
 }
 
@@ -298,6 +338,36 @@ export const api = {
     }),
 
   aiStatus: () => request<AIStatus>('/api/v1/ai/status'),
+
+  // ---- Telegram client (Mini App) — separate from the analyst session --------
+  // These carry a client token obtained by exchanging signed initData; the
+  // server derives the account from that token, never from a client-supplied id.
+  clientSession: (initData: string) =>
+    request<ClientSession>('/api/v1/client/session', {
+      method: 'POST',
+      body: JSON.stringify({ initData }),
+    }),
+
+  clientMe: (token: string) => clientRequest<ClientMe>('/api/v1/client/me', {}, token),
+
+  clientAccount: (token: string) => clientRequest<ClientAccount>('/api/v1/client/account', {}, token),
+
+  clientServices: (token: string) => clientRequest<ClientServices>('/api/v1/client/services', {}, token),
+
+  clientConsent: (token: string, enabled: boolean) =>
+    clientRequest<{ notificationsEnabled: boolean; consentAt: string | null }>(
+      '/api/v1/client/notifications-consent',
+      { method: 'POST', body: JSON.stringify({ enabled }) },
+      token,
+    ),
+
+  clientSupport: (token: string) => clientRequest<ClientSupport>('/api/v1/client/support', {}, token),
+
+  clientSendSupport: (token: string, text: string) =>
+    clientRequest<ClientSupportSend>('/api/v1/client/support/messages', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    }, token),
 
   supportConversations: (status?: SupportConversationStatus) =>
     request<{ items: SupportConversation[] }>(
