@@ -24,6 +24,7 @@ from backend.app.api.schemas import ErrorResponse
 from backend.app.ai.service import AIDisabled, AIService, AIUnavailable
 from backend.app.config import Settings, get_settings
 from backend.app.db import Database
+from backend.app.integrations.email import EmailDisabled, EmailRejected, EmailUnavailable
 from backend.app.metrics import Metrics
 from backend.app.modules import AnalyticsModule, CalculationAdapter, ModuleContractError, UnavailableAnalytics, load_module
 from backend.app.storage import Storage
@@ -173,6 +174,18 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
     @app.exception_handler(AIUnavailable)
     async def ai_unavailable(request: Request, error: AIUnavailable):
         return JSONResponse({"detail": str(error)}, status_code=503, headers={"Retry-After": "5"})
+
+    @app.exception_handler(EmailDisabled)
+    async def email_disabled(request: Request, error: EmailDisabled):
+        return JSONResponse({"detail": str(error)}, status_code=503, headers={"Retry-After": "30"})
+
+    @app.exception_handler(EmailRejected)
+    async def email_rejected(request: Request, error: EmailRejected):
+        return JSONResponse({"detail": str(error)}, status_code=502)
+
+    @app.exception_handler(EmailUnavailable)
+    async def email_unavailable(request: Request, error: EmailUnavailable):
+        return JSONResponse({"detail": str(error)}, status_code=503, headers={"Retry-After": "10"})
 
     @app.exception_handler(ResourceNotFoundError)
     async def not_found(request: Request, error: ResourceNotFoundError):
