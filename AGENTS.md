@@ -87,6 +87,13 @@ Never commit a token, and never leave one in the remote URL.
 
 ## Gotchas that already bit us
 
+**Leaked `AEZA_*` shell variables break the test suite.** The test fixtures call
+`Settings(...)` with explicit values, but `create_app` reads
+`os.getenv("AEZA_ANALYTICS_FACTORY")` and the demo routes read other env vars, so
+exporting `AEZA_SEED_DEMO_DATA=1` / `AEZA_DATABASE_URL=...` in the shell makes
+`/ready` return 200 and settings tests fail with "unknown factor keys". If tests
+fail in a way that makes no sense, run `env | grep ^AEZA_` and unset them first.
+
 `from .config import settings` binds the `settings` object; `Settings` reads
 env vars lazily (properties) precisely so tests can repoint `AEZA_DATA_DIR`
 without reloading modules. Keep it lazy.
