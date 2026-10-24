@@ -21,15 +21,6 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       # Inside the Compose network the API talks to the bundled Postgres.
-<<<<<<< HEAD
-      AEZA_DATABASE_URL: postgresql+psycopg://aeza:aeza@db:5432/aeza
-      AUTH_DATABASE: /app/db/auth.sqlite3
-      AUTH_PRIVATE_KEY: /app/db/private_key.pem
-      AUTH_ISSUER: ${AUTH_ISSUER:?Set AUTH_ISSUER to the public application origin}
-      AUTH_FRONTEND_LOGIN_URL: ${AUTH_FRONTEND_LOGIN_URL:?Set AUTH_FRONTEND_LOGIN_URL}
-      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:?Set AUTH_COOKIE_SECURE explicitly}
-      AEZA_SEED_DEMO_DATA: "0"
-=======
       AEZA_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-aeza}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-aeza}
       # No defaults for secrets: Compose refuses to start unless these are set.
       # Generate: python -c "import secrets; print(secrets.token_urlsafe(48))"
@@ -43,7 +34,13 @@ services:
       AEZA_SEED_DEMO_DATA: "1"
       AEZA_SNAPSHOT_PATH: /app/dataset/data.json
       AEZA_AUTH_DATABASE_URL: sqlite:////app/db/auth.sqlite3
->>>>>>> 8bee307f006ccfac1e70afb61de23a22375b331e
+      # Standalone auth module (backend/auth/ + backend/main.py). It keeps its
+      # own SQLite store and RSA signing key inside the mounted /app/db volume.
+      AUTH_DATABASE: /app/db/auth.sqlite3
+      AUTH_PRIVATE_KEY: /app/db/private_key.pem
+      AUTH_ISSUER: ${AUTH_ISSUER:-https://aeza-sentinel.pixel-minds.ru}
+      AUTH_FRONTEND_LOGIN_URL: ${AUTH_FRONTEND_LOGIN_URL:-https://aeza-sentinel.pixel-minds.ru/login}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
       AEZA_AS_OF: ${AEZA_AS_OF:-2026-10-19T15:00:00+00:00}
       AEZA_ANALYTICS_FACTORY: ${AEZA_ANALYTICS_FACTORY:-backend.app.domain.module:create}
       AEZA_RECALCULATE_SECONDS: ${AEZA_RECALCULATE_SECONDS:-60}

@@ -31,17 +31,10 @@ aeza_analyzer/
     service.py     customer risk, revenue at risk, dashboard
   api/app.py       FastAPI endpoints
   static/          vanilla-JS SPA (index.html, app.js, styles.css)
-<<<<<<< HEAD
-tests/             pytest suite (48 tests)
+tests/             pytest suite (69 tests)
 docs/              PROJECT_GUIDE.md, AI_ANALYST.md, AI_ASSISTANT.md, AUTH_MODULE.md,
-                   audits/, research/, deck/
-=======
-tests/             pytest suite (52 tests)
-docs/              REQUIREMENTS_TRACEABILITY.md, ARCHITECTURE.md, DATA_DICTIONARY.md,
-                   ANALYTICS_METHODOLOGY.md, REVENUE_METHODOLOGY.md, IMPORT_AND_DATA_AUDIT.md,
-                   API_PART_A_LEGACY.md, DEVELOPMENT.md, TESTING.md, DEPLOYMENT.md, SECURITY.md,
-                   SCHEMA_MAPPING.md   (docs/API.md documents the canonical part-B API)
->>>>>>> 8bee307f006ccfac1e70afb61de23a22375b331e
+                   TELEGRAM.md, DATA_ARCHITECTURE.md, DEPLOYMENT_PART_B.md,
+                   PROVENANCE_AUDIT.md, API_PART_A_LEGACY.md, audits/, deck/
 ```
 
 ## Commands
