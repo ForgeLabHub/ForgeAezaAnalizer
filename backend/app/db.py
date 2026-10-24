@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -8,6 +9,8 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
+
+logger = logging.getLogger("aeza.db")
 
 
 class UTCDateTime(TypeDecorator):
@@ -320,6 +323,15 @@ class Database:
 
     def initialize(self):
         Base.metadata.create_all(self.engine, tables=ANALYTICS_TABLES)
+        # `create_all` never alters an existing table, so a release that adds a
+        # column would start against a database whose shape no longer matches the
+        # ORM. Reconcile first: additive column adds, then recorded migrations.
+        # Imported here to avoid a circular import (schema imports ANALYTICS_TABLES).
+        from backend.app.schema import ensure_schema
+
+        result = ensure_schema(self.engine)
+        if result["columnsAdded"] or result["migrationsApplied"]:
+            logger.warning("schema.ensure: %s", result)
         try:
             with self.transaction() as session:
                 if session.get(CurrentRow, 1) is None:
