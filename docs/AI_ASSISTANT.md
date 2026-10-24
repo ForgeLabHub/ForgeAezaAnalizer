@@ -53,14 +53,14 @@
 | Переменная | По умолчанию | Смысл |
 | --- | --- | --- |
 | `AEZA_LLM_ENABLED` | `0` | Выключатель ИИ. При `0` эндпоинт отвечает 503 |
-| `AEZA_OLLAMA_URL` | `http://172.18.0.1:11434` | Адрес HTTP API Ollama (каноническое имя) |
+| `AEZA_OLLAMA_URL` | `http://172.18.0.1:11434` | Адрес HTTP API Ollama |
 | `AEZA_OLLAMA_MODEL` | `qwen2.5:7b` | Имя модели |
 | `AEZA_OLLAMA_TIMEOUT_SECONDS` | `90` | Таймаут запроса, 1–600 |
 | `AEZA_LLM_MAX_TOKENS` | `700` | Ограничение длины генерации |
 | `AEZA_LLM_TEMPERATURE` | `0.2` | Температура |
 
-Старые имена `AEZA_LLM_BASE_URL`, `AEZA_LLM_MODEL`, `AEZA_LLM_TIMEOUT_SECONDS`
-поддерживаются как алиасы и применяются, только если каноническое имя не задано.
+Имена `AEZA_LLM_BASE_URL`, `AEZA_LLM_MODEL`, `AEZA_LLM_TIMEOUT_SECONDS`
+поддерживаются как алиасы и применяются, только если основные имена не заданы.
 
 ---
 

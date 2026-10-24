@@ -1,4 +1,4 @@
-"""Derive the deck's canonical figures from the domain modules.
+"""Derive the deck's figures from the domain modules.
 
 The deck README claims every number comes from the product. This script is the
 check that makes that claim true: it runs the same scoring and exposure code the
