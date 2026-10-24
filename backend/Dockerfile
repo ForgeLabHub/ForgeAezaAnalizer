@@ -13,6 +13,8 @@ COPY core.py main.py ./
 COPY backend/__init__.py ./backend/__init__.py
 COPY backend/app ./backend/app
 COPY backend/scripts ./backend/scripts
+# Official organiser dataset: seeded at startup through the app's importer.
+COPY dataset/data.json ./dataset/data.json
 
 # Run as an unprivileged user; the auth database is mounted under /app/db.
 RUN useradd --create-home --uid 10001 aeza \

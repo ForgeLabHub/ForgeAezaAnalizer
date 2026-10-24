@@ -221,3 +221,33 @@ generated RSA keypair and OIDC-style discovery/JWKS routes.
 No frontend test runner is configured (`frontend/package.json` has no `test`
 script and no vitest/jest/playwright dependency). The UI is verified only by the
 manual browser walkthrough in `docs/demo.md`.
+
+## Compose / clean-checkout fixes (verified by running the stack)
+
+These were real defects that only appear on a clean checkout or a shared host.
+
+- **Stale, wrong seed.** `db/analytics_seed.sql` held a **different** dataset
+  (60 accounts / 115 services / 285 transactions) than the official snapshot.
+  Compose used to pre-load it via an initdb bind-mount. It is no longer mounted;
+  the API now seeds `dataset/data.json` (10/30/100) through its own validated
+  importer (`AEZA_SEED_DEMO_DATA=1`, `AEZA_SNAPSHOT_PATH=/app/dataset/data.json`).
+  The image copies `dataset/data.json`. Counts are asserted in the README
+  acceptance table and in `/api/v1/source/snapshot`.
+- **Auth DB as a bind mount was wrong.** `db/auth.sqlite3` is gitignored, so a
+  file bind-mount would create a *directory* on a clean checkout, and a `./db`
+  bind-mount would impose the host uid on `/app/db` (the container runs as uid
+  10001). Both are replaced by a **named volume** `auth_data:/app/db`, seeded
+  from the image so permissions are correct. Postgres likewise uses `pg_data`.
+- **No default secrets.** Compose fails closed: `POSTGRES_PASSWORD`,
+  `AEZA_JWT_SECRET`, `AEZA_ADMIN_EMAIL`, `AEZA_ADMIN_PASSWORD` use `${VAR:?…}`.
+  `docker compose config` exits 1 without them. CORS defaults to
+  `http://localhost:8080`, never `*`.
+- **Login field is `access_token`** (snake_case), not `accessToken`.
+- **Invalid `sortBy` returns an empty page, not 422.** `GET /customers?sortBy=risk`
+  (wrong key) silently yields `items: []`. Use `riskScore`. Worth tightening.
+
+## CI
+
+`.github/workflows/ci.yml` runs backend tests, root tests, frontend
+typecheck+build, and Compose config validation (including the fail-closed check).
+There was no CI before; this is new.
