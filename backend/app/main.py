@@ -188,14 +188,16 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
     @app.get("/metrics", tags=["ops"], response_class=Response)
     def metrics(request: Request, runtime: RuntimeDep):
         header = request.headers.get("authorization", "")
-        if settings.metrics_token:
-            if not hmac.compare_digest(header.encode(), f"Bearer {settings.metrics_token}".encode()):
-                raise AuthError(401, "invalid_token", "Требуется токен метрик", {"WWW-Authenticate": "Bearer"})
-        else:
-            scheme, _, token = header.partition(" ")
-            if scheme.lower() != "bearer" or not token:
-                raise AuthError(401, "invalid_token", "Требуется авторизация", {"WWW-Authenticate": "Bearer"})
+        metrics_token = f"Bearer {settings.metrics_token}"
+        if settings.metrics_token and hmac.compare_digest(header.encode(), metrics_token.encode()):
+            pass
+        elif header:
             runtime.auth.bearer(header)
+        else:
+            session = runtime.auth.session_from_cookie(request.cookies.get(routes_auth.METRICS_COOKIE))
+            if session is None:
+                raise AuthError(401, "invalid_token", "Требуется авторизация", {"WWW-Authenticate": "Bearer"})
+            runtime.auth.user_for_session(session)
         return Response(request.app.state.metrics.render(), headers={"Content-Type": CONTENT_TYPE_LATEST})
 
     for router in (routes_auth.router, routes_customers.router, routes_analytics.router,

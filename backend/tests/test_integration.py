@@ -125,6 +125,9 @@ def test_metrics_support_dedicated_collector_token(settings, analytics, auth_set
     with TestClient(create_app(configured, analytics, auth_settings)) as client:
         assert client.get("/metrics").status_code == 401
         assert client.get("/metrics", headers={"Authorization": "Bearer collector-token"}).status_code == 200
+        login = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
+        assert login.status_code == 200
+        assert client.get("/metrics").status_code == 200
 
 
 def test_write_failure_rolls_back_entire_publication(client, auth_headers, snapshot_payload):

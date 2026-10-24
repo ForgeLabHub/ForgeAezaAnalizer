@@ -1,12 +1,4 @@
-# ---------------------------------------------------------------------------
-# Combined ignore rules. This file merges the rules from both implementations
-# that live in this repository:
-#   - `aeza_analyzer/` (the Python package on `main`)
-#   - `backend/` + `frontend/` (the FastAPI + React app)
-# Keep both sets so neither workflow commits build output or runtime state.
-# ---------------------------------------------------------------------------
-
-# Runtime data store and derived artefacts (aeza_analyzer)
+# Local runtime stores and extracted working copies.
 /data/
 /datasets/extracted/
 *.sqlite

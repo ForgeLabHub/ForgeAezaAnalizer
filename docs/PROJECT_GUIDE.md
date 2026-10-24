@@ -14,7 +14,7 @@
 | `backend/app/ai/` | Необязательные локальные AI-интерфейсы |
 | `frontend/src/` | React + TypeScript SPA |
 | `backend/migrations/`, `db/` | Схема и seed PostgreSQL |
-| `dataset/data.json` | Синтетический пример входного снимка |
+| `dataset/data.json` | Официальный снимок 10 аккаунтов / 30 услуг / 100 транзакций |
 
 Compose запускает PostgreSQL 16, API и nginx для интерфейса. Аналитические данные и расчёты хранятся в PostgreSQL. Пользователей и серверные сессии создаёт и хранит модуль `backend/auth` в отдельной SQLite. Первый пользователь добавляется вручную командой `docker compose exec api python -m backend.users create <login>`. Auth SQLite и RSA-ключ сохраняются в именованном Docker volume.
 
@@ -22,7 +22,7 @@ Compose запускает PostgreSQL 16, API и nginx для интерфейс
 
 Снимок с массивами `accounts`, `services` и `transactions` целиком валидируется до записи. `services.ownerId` ссылается на `accounts.id`, `transactions.serviceId` — на `services.id`. После расчёта `Core` публикует новую generation, связанную с версиями источника и настроек модели. При ошибке обновления предыдущая опубликованная версия остаётся доступной.
 
-Compose загружает `db/analytics_seed.sql` только при создании пустого хранилища. Изменение seed-файла не обновляет уже созданную базу. Полный снимок можно загрузить через API `PUT /api/v1/source/snapshot` или скрипт `backend/scripts/load_snapshot.py`.
+При первом старте на пустой базе Compose загружает `dataset/data.json` через валидируемый импортёр API. Загрузка другого снимка выполняется через `PUT /api/v1/source/snapshot` или `backend/scripts/load_snapshot.py`; seed SQL не является путём импорта приложения.
 
 ## Риск и выручка
 
@@ -51,7 +51,7 @@ Score — прозрачная взвешенная оценка от 0 до 100
 | Сценарии и экспорт | `POST /scenarios/compare`, `GET /export/customers.csv` |
 | AI | `/ai/*` и `POST /insights/ai`; выключены по умолчанию |
 
-К приватным маршрутам передаётся `Authorization: Bearer <token>`. `/health`, `/ready` и документация OpenAPI открыты. `/metrics` возвращает метрики Prometheus: готовность и generation анализа, число клиентов и услуг, выручку под риском, запросы API и длительность ответов. Endpoint требует `AEZA_METRICS_TOKEN` либо access token аналитика; без авторизации ответ — `401`. Инструкция с командами находится в [руководстве по развёртыванию](DEPLOYMENT_PART_B.md#6-наблюдаемость). CSV экспорт постраничный, сообщает отфильтрованное число строк и закрепляется за одной generation.
+К приватным API-маршрутам передаётся `Authorization: Bearer <token>`. `/health`, `/ready` и документация OpenAPI открыты. `/metrics` возвращает метрики Prometheus: готовность и generation анализа, число клиентов и услуг, выручку под риском и предстоящие продления, запросы API и длительность ответов. После входа в интерфейс `/metrics` доступен напрямую в браузере через отдельную HttpOnly-cookie, ограниченную этим путём. Также принимается Bearer access token или `AEZA_METRICS_TOKEN` для сборщика. Инструкция находится в [руководстве по развёртыванию](DEPLOYMENT_PART_B.md#6-наблюдаемость). CSV экспорт постраничный, сообщает отфильтрованное число строк и закрепляется за одной generation.
 
 ## Настройки и безопасность
 
