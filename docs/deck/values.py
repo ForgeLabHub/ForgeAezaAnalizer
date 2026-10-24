@@ -131,6 +131,12 @@ def facts() -> dict:
             "upcoming_eur": summary["revenue"]["upcomingRenewalsEur"].replace(".", ","),
             "historical_eur": _eur(summary["revenue"]["historicalReplenishedCents"]),
             "after_eur": after_summary["revenue"]["revenueAtRiskEur"].replace(".", ","),
+            # Per-renewal risk-weighted amounts, in the order the table lists them.
+            "renewal_terms": " + ".join(
+                item["revenueAtRiskEur"].replace(".", ",")
+                for item in summary["upcomingRenewals"]
+            ),
+            "renewal_count": len(summary["upcomingRenewals"]),
         },
         "categories": summary["customers"]["byCategory"],
         "after": {
