@@ -110,3 +110,32 @@ read-only (403).
 
 Проверка, какая версия развёрнута (404 = ещё старая):
 `curl -s -o /dev/null -w '%{http_code}' https://aeza-sentinel.pixel-minds.ru/api/v1/email/status`
+
+## Почта: Postbox + SMTP.BZ (2026-10-24)
+
+Исходящая почта идёт через один провайдер, выбранный `AEZA_EMAIL_PROVIDER`
+(пусто = авто: Postbox, иначе SMTP.BZ). Оба транспорта живут в
+`backend/app/integrations/email.py` за одним контрактом `send_email`; отдельная
+система не создавалась, Telegram-OTP сохраняет интерфейс `EmailProvider`.
+
+- Postbox: SMTP `postbox.cloud.yandex.net`, 465 (TLS) или 587 (STARTTLS),
+  `AUTH PLAIN/LOGIN` с идентификатором и секретом API-ключа. Подтверждение —
+  `250` на `DATA`; отказ на `MAIL FROM` → `EmailRejected`.
+- Явно выбранный провайдер без учётных данных **выключает** почту, а не
+  переключается молча: подтверждение может прийти только от реально
+  использованного провайдера.
+- Секреты — только из окружения; статус и ошибки их не печатают.
+- Тесты: `backend/tests/test_postbox.py` поднимает локальный SMTP-сервер
+  (`aiosmtpd`, dev-зависимость) и проверяет приём, отказ отправителя, отказ
+  аутентификации, недоступный сервер, STARTTLS и обвязку роутов.
+
+**Push и deploy — ЗАБЛОКИРОВАНЫ.** Оба токена окружения (`GITHUB_TOKEN`,
+`GITHUB_PERSONAL_ACCESS_TOKEN`) и GitHub-MCP read-only: `POST /git/refs` →
+`403 Resource not accessible by personal access token`. Изменения закоммичены
+локально (`main`, поверх `58685d0`). SSH на стенд тоже недоступен (publickey
+без ключа). Владельцу: запушить ветку с write-токеном, затем `git pull` +
+`docker compose up -d --build` на сервере.
+
+Внешние требования, которые не обходятся кодом: домен `pixel-minds.ru` должен
+быть привязан к Postbox с Easy DKIM (две CNAME), адрес отправителя — из этого
+домена, а API-ключ — с областью `yc.postbox.send`. Подробности в `docs/EMAIL.md`.
