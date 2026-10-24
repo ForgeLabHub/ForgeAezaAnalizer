@@ -50,6 +50,20 @@ services:
       AEZA_OLLAMA_TIMEOUT_SECONDS: ${AEZA_OLLAMA_TIMEOUT_SECONDS:-90}
       AEZA_LLM_MAX_TOKENS: ${AEZA_LLM_MAX_TOKENS:-700}
       AEZA_LLM_TEMPERATURE: ${AEZA_LLM_TEMPERATURE:-0.2}
+      # Telegram integration. Off by default; the stack runs normally without a
+      # bot token. Set TELEGRAM_* in the host environment (or an .env file) and
+      # never bake a real token into the image.
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL:-}
+      TELEGRAM_API_BASE: ${TELEGRAM_API_BASE:-https://api.telegram.org}
+      TELEGRAM_TIMEOUT_SECONDS: ${TELEGRAM_TIMEOUT_SECONDS:-10}
+      TELEGRAM_LINK_CODE_TTL_SECONDS: ${TELEGRAM_LINK_CODE_TTL_SECONDS:-600}
+      TELEGRAM_LINK_MAX_ATTEMPTS: ${TELEGRAM_LINK_MAX_ATTEMPTS:-5}
+      TELEGRAM_MIN_SEND_INTERVAL_SECONDS: ${TELEGRAM_MIN_SEND_INTERVAL_SECONDS:-3}
+      TELEGRAM_MAX_RETRIES: ${TELEGRAM_MAX_RETRIES:-2}
+      TELEGRAM_APP_BASE_URL: ${TELEGRAM_APP_BASE_URL:-http://localhost:8080}
     depends_on:
       db:
         condition: service_healthy

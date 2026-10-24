@@ -14,11 +14,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST
-from sqlalchemy import text
+from sqlalchemy import select, text
 from starlette.concurrency import run_in_threadpool
 
 from core import ConflictError, Core, InvalidInput, NotReadyError, ResourceNotFoundError
-from backend.app.api import routes_actions, routes_ai, routes_analytics, routes_auth, routes_customers, routes_export, routes_insights, routes_model, routes_source
+from backend.app.api import routes_actions, routes_ai, routes_analytics, routes_auth, routes_customers, routes_export, routes_insights, routes_model, routes_source, routes_telegram
 from backend.app.api.deps import Runtime, RuntimeDep
 from backend.app.api.schemas import ErrorResponse
 from backend.app.auth.security import AuthService, RateLimited, Unauthorized
@@ -32,6 +32,38 @@ from backend.app.storage import Storage
 logger = logging.getLogger("aeza")
 
 
+def dispatch_notifications(runtime: Runtime) -> None:
+    """Push notifications for the newly published generation to linked chats.
+
+    Called after a recalculation publishes a new generation, so alerts follow the
+    data instead of a timer that might race it. Failures are swallowed and
+    logged: a Telegram problem must never affect the analytics run that produced
+    the generation.
+    """
+
+    service = getattr(runtime, "telegram", None)
+    if service is None:
+        return
+    try:
+        from backend.app.integrations.telegram import notifications
+        from backend.app.integrations.telegram.service import TelegramLinkRow
+
+        analysis = runtime.calculation.calculate(runtime.storage.load())
+        with runtime.database.sessions() as session:
+            chats = [
+                row.chat_id
+                for row in session.scalars(
+                    select(TelegramLinkRow).where(TelegramLinkRow.revoked_at.is_(None))
+                ).all()
+            ]
+        for chat_id in chats:
+            notifications.dispatch(
+                service, analysis, settings=runtime.settings, chat_id=chat_id
+            )
+    except Exception:
+        logger.exception("telegram notification dispatch failed; analytics unaffected")
+
+
 async def recalculate(runtime: Runtime, stop: asyncio.Event):
     while True:
         try:
@@ -40,6 +72,7 @@ async def recalculate(runtime: Runtime, stop: asyncio.Event):
         except asyncio.TimeoutError:
             try:
                 await run_in_threadpool(runtime.core.update, actor="clock", recalculate=True)
+                await run_in_threadpool(dispatch_notifications, runtime)
             except Exception:
                 logger.exception("scheduled calculation failed; previous result retained")
 
@@ -55,6 +88,25 @@ def build_ai(storage: Storage, calculation: CalculationAdapter) -> AIService | N
         return AIService(storage, calculation)
     except Exception:
         logger.exception("AI Analyst could not be initialised; continuing without it")
+        return None
+
+
+def build_telegram(settings: Settings, database: Database):
+    """Build the Telegram service, or ``None`` when the feature is off.
+
+    Same contract as the AI layer: an optional integration must never stop the
+    analytics product from starting. A misconfiguration is logged and the
+    integration is simply absent, which the API reports as ``enabled: false``.
+    """
+
+    if not settings.telegram_enabled:
+        return None
+    try:
+        from backend.app.integrations.telegram.service import TelegramService
+
+        return TelegramService(database, settings)
+    except Exception:
+        logger.exception("Telegram integration could not be initialised; continuing without it")
         return None
 
 
@@ -92,6 +144,7 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
         try:
             await run_in_threadpool(initialize)
             runtime.ai = build_ai(storage, calculation)
+            runtime.telegram = build_telegram(settings, database)
             application.state.runtime = runtime
             application.state.metrics = Metrics(storage)
             if settings.as_of.lower() == "now" and not isinstance(module, UnavailableAnalytics):
@@ -204,6 +257,7 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
 
     for router in (routes_auth.router, routes_customers.router, routes_analytics.router,
                    routes_model.router, routes_source.router, routes_insights.router,
-                   routes_export.router, routes_ai.router, routes_actions.router):
+                   routes_export.router, routes_ai.router, routes_actions.router,
+                   routes_telegram.router):
         app.include_router(router, prefix=settings.api_prefix)
     return app
