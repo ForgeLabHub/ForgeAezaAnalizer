@@ -222,13 +222,13 @@ managed `containerd`), and PostgreSQL as the live store (SQLite was used).
 
 ## 10. Release-candidate commit
 
-Active branch: `feat/deployment-readiness`, HEAD `d2427b5`. Its tree is the
-release candidate; everything in this report describes that tree.
+The release candidate is the tip of `feat/deployment-readiness`. Read it with
+`git rev-parse HEAD` rather than from this file: a report that pins its own
+commit hash would change that hash the moment it is edited.
 
 A trailer-free copy is kept on the branch `feat/deployment-readiness-clean`.
-Because the clean branch's commit hash depends on the commit messages (including
-this report), it is reproduced on demand rather than pinned to a hash that would
-go stale the moment this file changes:
+Because the clean branch's hash depends on the commit messages (including this
+report), it is reproduced on demand rather than pinned:
 
 ```bash
 git clone --bare --no-local . /tmp/aeza-clean.git
