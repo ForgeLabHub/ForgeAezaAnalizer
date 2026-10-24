@@ -186,6 +186,10 @@ def diagnostics(runtime: RuntimeDep, user: UserDep):
     if not settings.telegram_enabled:
         return {"enabled": False, "detail": "Интеграция отключена."}
     service = _service(runtime)
+    # Report the webhook state recorded at startup, not just whether the env var
+    # is set. Reading Telegram here would add an outbound API call to every
+    # diagnostics request.
+    webhook = service.webhook_status()
     # Scope the delivery log to the caller's own chat. There are no roles in this
     # deployment, so "administrative" cannot mean "sees every account's chat". An
     # unlinked caller has no chat, so they see no delivery history at all rather
@@ -196,6 +200,11 @@ def diagnostics(runtime: RuntimeDep, user: UserDep):
         "enabled": True,
         "webhookConfigured": bool(settings.telegram_webhook_url),
         "webhookSecretConfigured": bool(settings.telegram_webhook_secret),
+        "webhookRegistered": bool(webhook.get("registered")),
+        "webhookUrl": webhook.get("url") or None,
+        "webhookChecked": bool(webhook.get("checked", True)),
+        "webhookPendingUpdates": webhook.get("pendingUpdateCount"),
+        "webhookLastError": webhook.get("lastErrorMessage") or webhook.get("reason"),
         "recentDeliveries": recent,
     }
 
@@ -234,6 +243,11 @@ async def webhook(
     except (ValueError, UnicodeDecodeError):
         return Response(status_code=200, content=b"ok")
     if not isinstance(update, dict):
+        return Response(status_code=200, content=b"ok")
+    if not service.accept_update(update):
+        # A redelivery of an update already handled. Acknowledge without
+        # processing so a retried /start cannot re-run the linking command.
+        logger.info("ignoring a redelivered telegram update")
         return Response(status_code=200, content=b"ok")
 
     def analytics():

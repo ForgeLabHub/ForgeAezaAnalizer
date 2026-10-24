@@ -216,6 +216,12 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
             # whether notifications may be delivered.
             digest_task = None
             if runtime.telegram is not None:
+                # Register the webhook before scheduling anything. The bot only
+                # receives updates through it, so a deployment that skips this
+                # looks healthy while silently receiving nothing.
+                registration = await run_in_threadpool(runtime.telegram.ensure_webhook)
+                if not registration.get("registered"):
+                    logger.warning("telegram webhook is not registered: %s", registration)
                 digest_task = asyncio.create_task(digest_scheduler(runtime, stop))
             yield
         finally:

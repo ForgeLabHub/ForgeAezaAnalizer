@@ -868,3 +868,174 @@ def test_lifespan_starts_the_digest_scheduler_with_a_pinned_as_of(tmp_path):
     assert seen.get("digest") is True, "digest scheduler not started with a pinned as_of"
     # The recalculate loop is still gated on as_of=now; that is intentional.
     assert seen.get("recalculate") is False
+
+
+# --------------------------------------------------------------------------- #
+# Webhook registration and redelivery handling
+# --------------------------------------------------------------------------- #
+
+class StubWebhookClient(StubClient):
+    """A Bot API stub that records webhook registration calls.
+
+    ``mirror_set`` controls whether ``setWebhook`` updates the URL that
+    ``getWebhookInfo`` reports. Turning it off models the real failure where the
+    call succeeds but Telegram still holds a different URL.
+    """
+
+    def __init__(self, *, live_url: str | None = None, mirror_set: bool = True):
+        super().__init__()
+        self.calls: list[tuple[str, dict]] = []
+        self.live_url = live_url
+        self.mirror_set = mirror_set
+
+    def call(self, method, payload=None):
+        self.calls.append((method, payload or {}))
+        if method == "getWebhookInfo":
+            return {"url": self.live_url or "", "pending_update_count": 0}
+        return {}
+
+    def set_webhook(self, url, secret_token):
+        self.calls.append(("setWebhook", {"url": url, "secret_token": secret_token}))
+        if self.mirror_set:
+            self.live_url = url
+        return {}
+
+    def get_webhook_info(self):
+        return self.call("getWebhookInfo")
+
+
+def _webhook_service(tmp_path, *, url, live_url=None, mirror_set=True):
+    settings = _settings(tmp_path, telegram_webhook_url=url)
+    database = Database(settings.database_url)
+    database.initialize()
+    stub = StubWebhookClient(live_url=live_url, mirror_set=mirror_set)
+    return TelegramService(database, settings, client=stub), stub
+
+
+def test_webhook_is_registered_on_startup(tmp_path):
+    """The bot only receives updates through the webhook, so it must be set."""
+
+    svc, stub = _webhook_service(tmp_path, url="https://example.test/api/v1/telegram/webhook")
+    result = svc.ensure_webhook()
+    assert result["registered"] is True
+    assert ("setWebhook", {"url": "https://example.test/api/v1/telegram/webhook",
+                           "secret_token": "webhook-secret"}) in stub.calls
+
+
+def test_webhook_registration_requires_https(tmp_path):
+    """Telegram refuses a non-HTTPS webhook; say so instead of calling the API."""
+
+    svc, stub = _webhook_service(tmp_path, url="http://example.test/api/v1/telegram/webhook")
+    result = svc.ensure_webhook()
+    assert result["registered"] is False
+    assert "https" in result["reason"]
+    assert not [c for c in stub.calls if c[0] == "setWebhook"]
+
+
+def test_webhook_registration_is_reported_as_unregistered_without_a_url(tmp_path):
+    svc, stub = _webhook_service(tmp_path, url="")
+    result = svc.ensure_webhook()
+    assert result["registered"] is False
+    assert "TELEGRAM_WEBHOOK_URL" in result["reason"]
+
+
+def test_webhook_registration_detects_a_mismatch(tmp_path):
+    """If Telegram still holds a different URL, registration must not be claimed.
+
+    This is the failure that makes a deployment look configured while the bot
+    receives nothing, so the check reads back what Telegram reports.
+    """
+
+    svc, _ = _webhook_service(tmp_path, url="https://example.test/hook",
+                              live_url="https://old.test/hook", mirror_set=False)
+    result = svc.ensure_webhook()
+    assert result["registered"] is False
+    assert result["url"] == "https://old.test/hook"
+
+
+def test_webhook_failure_never_raises(tmp_path):
+    """A Telegram outage must not stop the app from starting."""
+
+    settings = _settings(tmp_path, telegram_webhook_url="https://example.test/hook")
+    database = Database(settings.database_url)
+    database.initialize()
+
+    class Broken(StubClient):
+        def set_webhook(self, url, secret_token):
+            raise TelegramUnavailable("down")
+
+        def get_webhook_info(self):
+            raise TelegramUnavailable("down")
+
+    svc = TelegramService(database, settings, client=Broken())
+    result = svc.ensure_webhook()
+    assert result["registered"] is False
+    assert "down" in result["reason"]
+
+
+def test_redelivered_update_is_ignored(service):
+    """Telegram retries an update when the 200 is slow; it must not run twice."""
+
+    svc, _, _, _ = service
+    update = {"update_id": 4242, "message": {"chat": {"id": 555}, "text": "/help"}}
+    assert svc.accept_update(update) is True
+    assert svc.accept_update(update) is False
+    # A different update id is still accepted.
+    assert svc.accept_update({"update_id": 4243, "message": {}}) is True
+
+
+def test_update_without_an_id_is_processed(service):
+    svc, _, _, _ = service
+    assert svc.accept_update({"message": {}}) is True
+
+
+def test_webhook_does_not_handle_a_redelivered_update_twice(tmp_path, monkeypatch):
+    """End to end through the route: the second delivery must not reach the bot."""
+
+    settings = _settings(tmp_path)
+    module = load_module("backend.app.domain.module:create")
+
+    handled: list[dict] = []
+    original = bot.handle_update
+
+    def counting(service, settings_, update, *, analytics=None):
+        handled.append(update)
+        return original(service, settings_, update, analytics=analytics)
+
+    monkeypatch.setattr(bot, "handle_update", counting)
+
+    with TestClient(_app(settings, module, tmp_path)) as client:
+        body = {"update_id": 9001, "message": {"chat": {"id": 555}, "text": "/help"}}
+        headers = {"X-Telegram-Bot-Api-Secret-Token": "webhook-secret"}
+        first = client.post("/api/v1/telegram/webhook", json=body, headers=headers)
+        second = client.post("/api/v1/telegram/webhook", json=body, headers=headers)
+        # Both are acknowledged, so Telegram stops retrying, but only one ran.
+        assert first.status_code == 200 and second.status_code == 200
+        assert len(handled) == 1
+
+
+def test_allowed_updates_matches_what_the_bot_handles():
+    """Requesting an update type nothing processes only wastes traffic."""
+
+    from backend.app.integrations.telegram.client import ALLOWED_UPDATES
+
+    assert ALLOWED_UPDATES == ("message",)
+    assert "callback_query" not in ALLOWED_UPDATES
+
+
+def test_startup_registers_the_webhook(tmp_path, monkeypatch):
+    """The app must register the webhook itself, not rely on a manual curl.
+
+    Without this the deployment looks healthy while the bot receives nothing.
+    """
+
+    settings = _settings(tmp_path, telegram_webhook_url="https://example.test/hook")
+    module = load_module("backend.app.domain.module:create")
+    stub = StubWebhookClient()
+    monkeypatch.setattr(
+        "backend.app.integrations.telegram.service.TelegramClient",
+        lambda *a, **k: stub,
+    )
+    with TestClient(_app(settings, module, tmp_path)) as client:
+        assert client.get("/health").status_code == 200
+    assert [c for c in stub.calls if c[0] == "setWebhook"], "startup did not register the webhook"

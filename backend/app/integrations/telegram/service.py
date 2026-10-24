@@ -46,6 +46,7 @@ from backend.app.integrations.telegram.client import (
     TelegramUnavailable,
     escape_text,
 )
+from backend.auth.cache import CacheFull, TTLCache
 
 logger = logging.getLogger("aeza.telegram")
 
@@ -94,6 +95,107 @@ class TelegramService:
         self.settings = settings
         self.client = client or TelegramClient(settings)
         self._last_send: dict[str, float] = {}
+        #: Update ids already handled. Telegram redelivers an update when it does
+        #: not receive a timely 200, and a redelivered ``/start <code>`` or
+        #: ``/customer`` must not be processed twice.
+        self._seen_updates: TTLCache[int] = TTLCache(1024)
+        #: The last known webhook state, recorded by :meth:`ensure_webhook`.
+        #: Diagnostics reads this instead of calling Telegram on every request.
+        self._webhook_state: dict | None = None
+
+    # ------------------------------------------------------------------ #
+    # Webhook registration
+    # ------------------------------------------------------------------ #
+
+    def ensure_webhook(self) -> dict:
+        """Register the webhook with Telegram and report what is now live.
+
+        The integration is webhook-based, so without this call the bot receives
+        nothing and ``TELEGRAM_WEBHOOK_URL`` is inert. It runs on startup, is
+        idempotent (``setWebhook`` is a no-op when the URL and secret already
+        match), and returns Telegram's own view via ``getWebhookInfo`` so the
+        result can be verified instead of assumed.
+
+        Never raises: a Telegram problem must not stop the analytics product.
+        """
+
+        url = (self.settings.telegram_webhook_url or "").strip()
+        if not url:
+            logger.warning(
+                "TELEGRAM_WEBHOOK_URL is empty; the bot will not receive updates. "
+                "Set it to https://<host>/api/v1/telegram/webhook"
+            )
+            self._webhook_state = {"registered": False, "url": None, "pendingUpdateCount": None,
+                                   "lastErrorDate": None, "lastErrorMessage": None,
+                                   "reason": "TELEGRAM_WEBHOOK_URL is not set", "checked": True}
+            return self._webhook_state
+        if not url.startswith("https://"):
+            # Telegram refuses a non-HTTPS webhook, so this would fail anyway;
+            # say why instead of surfacing an opaque API error.
+            logger.error("TELEGRAM_WEBHOOK_URL must be https://; got %r", url[:40])
+            self._webhook_state = {"registered": False, "url": None, "pendingUpdateCount": None,
+                                   "lastErrorDate": None, "lastErrorMessage": None,
+                                   "reason": "TELEGRAM_WEBHOOK_URL must use https", "checked": True}
+            return self._webhook_state
+        try:
+            self.client.set_webhook(url, self.settings.telegram_webhook_secret)
+            info = self.client.get_webhook_info()
+        except TelegramError as exc:
+            logger.error("could not register the Telegram webhook: %s", exc)
+            self._webhook_state = {"registered": False, "url": None, "pendingUpdateCount": None,
+                                   "lastErrorDate": None, "lastErrorMessage": None,
+                                   "reason": str(exc), "checked": True}
+            return self._webhook_state
+        live = str(info.get("url") or "")
+        registered = live == url
+        if not registered:
+            logger.error("Telegram reports webhook %r, expected %r", live[:40], url[:40])
+        self._webhook_state = {
+            "registered": registered,
+            "url": live or None,
+            "pendingUpdateCount": info.get("pending_update_count"),
+            "lastErrorDate": info.get("last_error_date"),
+            "lastErrorMessage": info.get("last_error_message"),
+            "checked": True,
+        }
+        return self._webhook_state
+
+    def webhook_status(self) -> dict:
+        """The last recorded webhook state, without contacting Telegram.
+
+        Diagnostics must not make an outbound API call per request, so this
+        returns what :meth:`ensure_webhook` last observed. Before the first
+        check it reports that nothing has been verified yet.
+        """
+
+        if self._webhook_state is not None:
+            return self._webhook_state
+        return {"registered": False, "url": None, "pendingUpdateCount": None,
+                "lastErrorDate": None, "lastErrorMessage": None, "checked": False}
+
+    def accept_update(self, update: dict) -> bool:
+        """True the first time an ``update_id`` is seen, False on a redelivery.
+
+        Telegram retries an update when the webhook does not answer in time, so
+        the same ``update_id`` can arrive more than once. Processing it twice
+        would, for example, re-run a linking command.
+        """
+
+        update_id = update.get("update_id")
+        if not isinstance(update_id, int):
+            # Without an id there is nothing to deduplicate on; let it through
+            # rather than dropping a legitimate update.
+            return True
+        key = str(update_id)
+        if self._seen_updates.get(key) is not None:
+            return False
+        try:
+            self._seen_updates.put(key, update_id, 600)
+        except CacheFull:
+            # The cache is full of live entries; skip dedup rather than refuse
+            # a real update.
+            return True
+        return True
 
     # ------------------------------------------------------------------ #
     # Linking

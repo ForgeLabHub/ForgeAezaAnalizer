@@ -29,6 +29,12 @@ from backend.app.config import Settings
 
 logger = logging.getLogger("aeza.telegram")
 
+#: Update types the bot actually handles. ``handle_update`` reads ``message``
+#: only; there are no inline keyboards, so ``callback_query`` is deliberately not
+#: requested — asking for an update type nothing processes just makes Telegram
+#: deliver traffic that is silently dropped.
+ALLOWED_UPDATES = ("message",)
+
 
 class TelegramError(Exception):
     """Base class for Telegram integration failures."""
@@ -134,12 +140,22 @@ class TelegramClient:
         return self.call("setWebhook", {
             "url": url,
             "secret_token": secret_token,
-            "allowed_updates": ["message", "callback_query"],
+            "allowed_updates": list(ALLOWED_UPDATES),
             "drop_pending_updates": False,
         })
 
     def delete_webhook(self) -> dict:
         return self.call("deleteWebhook", {"drop_pending_updates": False})
+
+    def get_webhook_info(self) -> dict:
+        """What Telegram actually has registered for this bot.
+
+        Used to verify a deployment rather than assume it: a webhook that was
+        never registered, or points at the wrong URL, is indistinguishable from a
+        working one until the first update fails to arrive.
+        """
+
+        return self.call("getWebhookInfo")
 
 
 def _describe(exc: urllib.error.HTTPError) -> str:
