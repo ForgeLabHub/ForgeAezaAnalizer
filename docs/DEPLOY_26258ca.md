@@ -61,10 +61,12 @@ TELEGRAM_DIGEST_HOUR_UTC=9
 TELEGRAM_DIGEST_CHECK_SECONDS=300
 ```
 
-Keep the existing `AEZA_JWT_SECRET`, `AEZA_ADMIN_EMAIL`, `AEZA_ADMIN_PASSWORD`,
-`POSTGRES_PASSWORD`. **Do not confuse these with `AEZA_AI_ENABLED` /
-`AEZA_LLM_ENABLED`** — those are the local-LLM switches and are unrelated to
-Telegram.
+Keep the existing `POSTGRES_PASSWORD` and the `AUTH_*` settings. The old
+`AEZA_JWT_SECRET` / `AEZA_ADMIN_EMAIL` / `AEZA_ADMIN_PASSWORD` are **no longer
+read** after the auth rewrite and were removed from `docker-compose.yml`; if they
+are still in the host `.env`, they are inert and can be deleted. **Do not confuse
+the AI switches with Telegram**: `AEZA_AI_ENABLED` / `AEZA_LLM_ENABLED` are the
+local-LLM toggles and are unrelated to Telegram.
 
 ## 5. Deploy
 

@@ -367,10 +367,11 @@ These were real defects that only appear on a clean checkout or a shared host.
   bind-mount would impose the host uid on `/app/db` (the container runs as uid
   10001). Both are replaced by a **named volume** `auth_data:/app/db`, seeded
   from the image so permissions are correct. Postgres likewise uses `pg_data`.
-- **No default secrets.** Compose fails closed: `POSTGRES_PASSWORD`,
-  `AEZA_JWT_SECRET`, `AEZA_ADMIN_EMAIL`, `AEZA_ADMIN_PASSWORD` use `${VAR:?…}`.
-  `docker compose config` exits 1 without them. CORS defaults to
-  `http://localhost:8080`, never `*`.
+- **No default secret for the database.** Compose fails closed on
+  `POSTGRES_PASSWORD` alone (${VAR:?…}); `docker compose config` exits 1 without
+  it. The old `AEZA_JWT_SECRET`/`AEZA_ADMIN_*` requirements were removed with the
+  auth rewrite: nothing reads them any more, and requiring them blocked a fresh
+  checkout from starting. CORS defaults to `http://localhost:8080`, never `*`.
 - **Login field is `access_token`** (snake_case), not `accessToken`.
 - **Invalid `sortBy` returns an empty page, not 422.** `GET /customers?sortBy=risk`
   (wrong key) silently yields `items: []`. Use `riskScore`. Worth tightening.

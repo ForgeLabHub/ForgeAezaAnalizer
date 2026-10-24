@@ -28,6 +28,16 @@ SKIP_PARTS = {"node_modules", ".venv", ".git", "dist", "postgres"}
 ENV_EXEMPT = {"AUTH_ISSUER", "AUTH_FRONTEND_LOGIN_URL", "AUTH_COOKIE_SECURE",
               "OIDC_CLIENT_ID", "OIDC_REDIRECT_URIS", "OIDC_CLIENT_SECRET"}
 
+#: Variables that were removed from the code and are now named in the docs only
+#: to say so ("no longer read, deleted from compose"). They are deliberately not
+#: in .env.example, so requiring them would defeat the note. Keep this list
+#: short: an entry here is a claim that the variable is retired, not merely
+#: undocumented.
+RETIRED_ENV = {
+    "AEZA_JWT_SECRET", "AEZA_ADMIN_EMAIL", "AEZA_ADMIN_PASSWORD",
+    "AEZA_ALLOW_DEV_SECRET", "AEZA_AUTH_DATABASE_URL", "AEZA_TOKEN_TTL_MINUTES",
+}
+
 SECRET_PATTERNS = (
     re.compile(r"ghp_[A-Za-z0-9]{20,}"),
     re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
@@ -74,7 +84,11 @@ def check_env_vars() -> list[str]:
             continue
         text = md.read_text(encoding="utf-8", errors="replace")
         for name in set(re.findall(r"\b(AEZA_[A-Z0-9_]+)\b", text)):
-            if name in declared or name in ENV_EXEMPT:
+            if name in declared or name in ENV_EXEMPT or name in RETIRED_ENV:
+                continue
+            # A trailing underscore is a family wildcard such as ``AEZA_AI_*``,
+            # not a variable anyone is expected to set literally.
+            if name.endswith("_"):
                 continue
             problems.append(f"{md.relative_to(ROOT)}: {name} not in .env.example")
     return sorted(set(problems))

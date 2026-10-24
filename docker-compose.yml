@@ -22,25 +22,20 @@ services:
     environment:
       # Inside the Compose network the API talks to the bundled Postgres.
       AEZA_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-aeza}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-aeza}
-      # No defaults for secrets: Compose refuses to start unless these are set.
-      # Generate: python -c "import secrets; print(secrets.token_urlsafe(48))"
-      AEZA_JWT_SECRET: ${AEZA_JWT_SECRET:?set AEZA_JWT_SECRET in .env (see .env.example)}
-      AEZA_ADMIN_EMAIL: ${AEZA_ADMIN_EMAIL:?set AEZA_ADMIN_EMAIL in .env}
-      AEZA_ADMIN_PASSWORD: ${AEZA_ADMIN_PASSWORD:?set AEZA_ADMIN_PASSWORD in .env}
-      AEZA_ALLOW_DEV_SECRET: "0"
-      # Seed the official organiser dataset through the app's own validated
-      # importer. Do NOT pre-load db/analytics_seed.sql: it holds a different
-      # 60/115/285 fixture, not the official 10/30/100 snapshot.
+      # Analytics API only. The app's own settings no longer carry JWT or
+      # bootstrap-admin fields: authentication lives in the standalone module
+      # (backend/auth/), which creates accounts explicitly with
+      # `docker compose exec api python -m backend.users create <login>`.
       AEZA_SEED_DEMO_DATA: "1"
       AEZA_SNAPSHOT_PATH: /app/dataset/data.json
-      AEZA_AUTH_DATABASE_URL: sqlite:////app/db/auth.sqlite3
       # Standalone auth module (backend/auth/ + backend/main.py). It keeps its
       # own SQLite store and RSA signing key inside the mounted /app/db volume.
+      # AUTH_* is the module's configuration; it is separate from AEZA_* above.
       AUTH_DATABASE: /app/db/auth.sqlite3
       AUTH_PRIVATE_KEY: /app/db/private_key.pem
-      AUTH_ISSUER: ${AUTH_ISSUER:-https://aeza-sentinel.pixel-minds.ru}
-      AUTH_FRONTEND_LOGIN_URL: ${AUTH_FRONTEND_LOGIN_URL:-https://aeza-sentinel.pixel-minds.ru/login}
-      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
+      AUTH_ISSUER: ${AUTH_ISSUER:-http://localhost:8080}
+      AUTH_FRONTEND_LOGIN_URL: ${AUTH_FRONTEND_LOGIN_URL:-http://localhost:8080/login}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       AEZA_AS_OF: ${AEZA_AS_OF:-2026-10-19T15:00:00+00:00}
       AEZA_ANALYTICS_FACTORY: ${AEZA_ANALYTICS_FACTORY:-backend.app.domain.module:create}
       AEZA_RECALCULATE_SECONDS: ${AEZA_RECALCULATE_SECONDS:-60}
