@@ -7,6 +7,7 @@ from dataclasses import replace
 from threading import Barrier, Lock
 
 from fastapi.testclient import TestClient
+import pytest
 from sqlalchemy import event, func, select
 
 from core import Analysis
@@ -206,6 +207,25 @@ def test_settings_and_auth_sessions_survive_restart(settings, auth_settings, ana
         assert without_module.get("/api/v1/customers", headers=fresh_headers).status_code == 200
         assert without_module.get("/api/v1/model/settings", headers=fresh_headers).status_code == 200
         assert without_module.patch("/api/v1/model/settings", json={"horizonDays": 8}, headers=fresh_headers).status_code == 503
+
+
+def test_startup_failure_reports_its_real_cause(settings, auth_settings):
+    """A failing startup must not be masked by an unbound local in ``finally``.
+
+    The lifespan awaits ``digest_task`` in its ``finally`` clause. When that name
+    was first bound inside the ``try``, any earlier failure — a database that is
+    down, a bad migration — was replaced by ``UnboundLocalError``, so the log
+    named the wrong problem. Point the app at an unreachable database and assert
+    the connection error is what surfaces.
+    """
+
+    broken = replace(settings, database_url="postgresql+psycopg://nobody:nobody@127.0.0.1:1/none")
+    with pytest.raises(Exception) as caught:
+        with TestClient(create_app(broken, auth_settings=auth_settings)):
+            pass
+    assert not isinstance(caught.value, UnboundLocalError), (
+        f"startup failure was masked: {caught.value!r}"
+    )
 
 
 def test_observations_do_not_invent_event_times(client, auth_headers, snapshot_payload):
