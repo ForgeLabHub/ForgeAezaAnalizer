@@ -33,7 +33,7 @@ aeza_analyzer/
   static/          vanilla-JS SPA (index.html, app.js, styles.css)
 tests/             pytest suite (69 tests)
 docs/              PROJECT_GUIDE.md, AI_ANALYST.md, AI_ASSISTANT.md, AUTH_MODULE.md,
-                   TELEGRAM.md, DATA_ARCHITECTURE.md, DEPLOYMENT_PART_B.md,
+                   DATA_ARCHITECTURE.md, DEPLOYMENT_PART_B.md,
                    PROVENANCE_AUDIT.md, API_PART_A_LEGACY.md, audits/, deck/
 ```
 
@@ -118,22 +118,11 @@ without reloading modules. Keep it lazy.
 Also avoid naming a loop/local variable `service` in API handlers — it shadowed
 the analytics service and caused a 500.
 
-**`generation` lives under `summary["version"]`, not `summary["generation"]`.**
-`CalculationAdapter.calculate` attaches `state.metadata()` as `summary["version"]`.
-Reading `summary["generation"]` yields `None` silently. This bit the Telegram
-dedupe keys: every key became `high_risk:None:<id>`, so the first alert suppressed
-all later ones. Use `notifications._generation_of(analysis)`.
-
 **A "recalculate" tick must not publish a generation.** `Core.update(force=False)`
 returns `previous` when nothing changed. `force=True` exists only for the
 engine-version upgrade path in `main.initialize`. Do not reintroduce an
 unconditional `recalculate=True` branch: it made `generation` a tick counter and
 grew `analyzer_analyses`/`analyzer_customers` by one row per customer per minute.
-
-**Do not recompute the previous analysis to pass it to the notifier.** Use
-`storage.published_analysis(generation)`, which reads the stored rows. Calling
-`calculation.calculate()` again inflates the `analytics.calls` counter that the
-idempotency test asserts on.
 
 ---
 

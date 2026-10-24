@@ -212,11 +212,8 @@ def test_settings_and_auth_sessions_survive_restart(settings, auth_settings, ana
 def test_startup_failure_reports_its_real_cause(settings, auth_settings):
     """A failing startup must not be masked by an unbound local in ``finally``.
 
-    The lifespan awaits ``digest_task`` in its ``finally`` clause. When that name
-    was first bound inside the ``try``, any earlier failure — a database that is
-    down, a bad migration — was replaced by ``UnboundLocalError``, so the log
-    named the wrong problem. Point the app at an unreachable database and assert
-    the connection error is what surfaces.
+    Point the app at an unreachable database and assert the connection error is
+    what surfaces instead of an ``UnboundLocalError`` from cleanup.
     """
 
     broken = replace(settings, database_url="postgresql+psycopg://nobody:nobody@127.0.0.1:1/none")

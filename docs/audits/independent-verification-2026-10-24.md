@@ -33,9 +33,8 @@ them.
 
 The defects the assessment did not surface, all reproduced in §2, are the real
 findings: a fabricated number that survived the AI safety check while the answer
-claimed it had been removed, a notification dedupe key that suppressed every
-alert after the first, a recalculation loop that grew the analysis tables without
-any input change, and a diagnostics route that exposed every linked chat.
+claimed it had been removed, and a recalculation loop that grew the analysis
+tables without any input change.
 
 ---
 
@@ -66,33 +65,7 @@ source of a claim. Fix: citations are checked, and an offending citation is
 dropped. Tests: `test_invented_number_in_a_citation_is_detected_and_dropped`,
 `test_grounded_citation_is_kept`.
 
-### T-1 (high) — every alert after the first was suppressed
-
-**[VERIFIED]** `build_events` read `summary["generation"]`, but the engine nests it
-under `summary["version"]`.
-
-```
-before:  dedupe_key = "high_risk:None:1"   # identical across generations
-after:   dedupe_key = "high_risk:3:1"      # distinct per generation
-```
-
-Impact: once the first alert was delivered, the key never changed, so no later
-alert for that customer could ever be sent.
-
-Fix: `notifications._generation_of(analysis)` reads both shapes. Test:
-`test_generation_is_read_from_the_version_block`.
-
-### T-2 (medium) — every high-risk customer re-alerted on every run
-
-**[VERIFIED]** `dispatch_notifications` never passed `previous`, so the event
-builder could not tell a transition from a steady state and treated every
-high-risk customer as newly high-risk.
-
-Fix: the callers pass the previously published analysis, read from storage via
-`Storage.published_analysis()` (not recomputed — see the idempotency note in
-`AGENTS.md`). Tests: `test_standing_high_risk_does_not_re_alert_when_previous_is_passed`.
-
-### T-3 / C-1 (medium) — recalculation grew the tables with no change
+### C-1 (medium) — recalculation grew the tables with no change
 
 **[VERIFIED]** `Core.update(recalculate=True)` entered the publication branch
 unconditionally.
@@ -102,46 +75,14 @@ before:  gen after import 1 | after 3 no-op ticks 4   # +1 per tick
 after:   gen after import 1 | after 3 no-op ticks 1
 ```
 
-Impact: `generation` was a tick counter, `analyzer_analyses` and
-`analyzer_customers` grew by one row per customer per minute, and any
-generation-based dedupe key looked "new" forever.
+Impact: `generation` was a tick counter, and `analyzer_analyses` and
+`analyzer_customers` grew by one row per customer per minute.
 
 Fix: `Core.update(force=...)` replaced `recalculate=...`. A plain tick returns
 `previous`; `force=True` is used only for the engine-version upgrade in
 `main.initialize`, where the inputs are identical but the result must change.
 Tests: `test_a_plain_tick_does_not_publish_a_new_generation`,
 `test_force_publishes_without_an_input_change`.
-
-### T-4 (medium) — a rate-limited event was lost permanently
-
-**[VERIFIED]** the claim row was written before the rate-limit check and left as
-`rate_limited`, so a retry with the same key never sent.
-
-```
-before:  rows after rate-limit = [('A','sent'), ('B','rate_limited')]
-         retry B -> False   # lost
-after:   rows after rate-limit = [('A','sent')]        # claim released
-         retry B after the window -> True              # delivered
-```
-
-Fix: `TelegramService._release()` drops the claim when no attempt was made.
-Test: `test_rate_limited_event_is_not_lost`.
-
-### T-6 (medium) — diagnostics exposed every linked chat
-
-**[VERIFIED]** `deliveries()` returned rows for all chats and the route only
-required authentication, so any analyst could read every `chatId` and delivery
-history.
-
-Fix: `deliveries(chat_id=...)` and the route scopes the result to the caller's own
-chat; an unlinked caller sees none. Test:
-`test_deliveries_can_be_scoped_to_one_chat`.
-
-### T-7 (low) — the delivery table was never pruned
-
-**[VERIFIED]** `purge_old_deliveries()` was defined but never called, so the table
-grew without bound. Fix: it runs on the periodic digest tick. Test:
-`test_old_deliveries_are_purged`.
 
 ### Operations — no backup or restore existed
 
@@ -156,11 +97,10 @@ sidecars before replacing the auth file). `backups/` is gitignored. Tests:
 ## 3. Secrets in history — what is actually there
 
 **[VERIFIED]** the only credential-bearing files in history are `.env.bak` and
-`.env.before-telegram-20261024-071249` (commit `1fae9e1`), and one historical
-`db/auth.sqlite3` blob.
+a historical environment backup, and one historical `db/auth.sqlite3` blob.
 
 ```
-.env.before-telegram-...:
+Historical environment backup:
   AEZA_ADMIN_PASSWORD=demo123
   AEZA_JWT_SECRET=change-me-in-production
   POSTGRES_PASSWORD=aeza
@@ -173,7 +113,7 @@ auth.sqlite3 -> analyzer_users: analyst@aeza.test / pbkdf2_sha256$600000$...
 - `change-me-in-production` is a placeholder, and nothing reads `AEZA_JWT_SECRET`
   or `AEZA_ADMIN_*` any more (authentication moved to `backend/auth/`).
 - A full-history scan for private keys, `ghp_`/`github_pat_`, `sk-`, `AKIA`,
-  Slack and Telegram bot-token patterns returned **no hits**.
+  third-party bot-token patterns returned **no hits**.
 
 **[OWNER DECISION]** rewriting published history is destructive and shared (`main`
 has 40+ commits from other authors). The demo password should be rotated on the
@@ -194,8 +134,7 @@ That is an operator action, not a code change.
   available through `/customers/{id}` to the same authenticated user; returning it
   again is a duplication, not an exposure. Confirm the intent.
 - **Roles.** There are none: any authenticated account is an administrator. The
-  Telegram diagnostics leak (T-6) was the one place that turned into a real
-  exposure, now scoped. A role model is a product decision.
+  role model is a product decision.
 
 ---
 

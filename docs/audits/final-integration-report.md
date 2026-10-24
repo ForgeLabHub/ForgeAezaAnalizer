@@ -56,8 +56,8 @@ repository above.
 ## 4. The three test files reported as locally modified (Stage 3)
 
 **VERIFIED — they were not modified.** `git status` and `git diff HEAD` show
-`backend/tests/test_robustness.py`, `tests/test_auth.py` and
-`backend/tests/test_telegram.py` identical to `db3feee`.
+`backend/tests/test_robustness.py` and `tests/test_auth.py` identical to
+`db3feee`.
 
 What the reconciliation *did* uncover is the inverse: **`origin/main` carries a
 broken test file.** `backend/tests/test_robustness.py` has a duplicated
@@ -76,18 +76,10 @@ The same merge duplicated an `auth_settings = …` assignment in
 makes the suite green is worthless, so each repair was checked to assert the
 real behaviour:
 
-- `test_enabling_telegram_without_a_token_is_rejected` (upstream) asserted that
-  `Settings` raises when `TELEGRAM_ENABLED=1` has no token. That is exactly the
-  outage commit `baa2000` fixed: an optional channel must not stop the API. The
-  correct regression guard asserts the app starts and `/telegram/status`
-  explains the missing token. Restored.
 - `test_expired_code_and_session_are_rejected` patched `sessions.clock`, which
   no longer exists now that sessions live in SQLite. It now advances the wall
   clock the store actually compares against, and was sanity-checked outside the
   suite: a fresh session resolves, an hour-old one is rejected.
-- `test_telegram.py` referenced a removed `_auth_settings` helper; replaced with
-  the real `make_test_auth_settings` call.
-
 ---
 
 ## 5. GitHub sync state (Stage 4)
@@ -109,7 +101,7 @@ which is exactly why it must be a deliberate decision.
 **VERIFIED.**
 
 - **History secret scan** (private keys, `ghp_`, `github_pat_`, `sk-`, `AKIA`,
-  Slack and Telegram bot-token patterns) over every blob in every ref: **no
+  third-party bot-token patterns) over every blob in every ref: **no
   hits**. Reported without printing values.
 - **`backend/auth/passwords.py.bak`**: present on `origin/main`, **not** in this
   branch's history. It contains only code (no hash, no literal), but it is a
@@ -189,7 +181,6 @@ verified item by item on a live stack.
 | 16-19 | AI grounding, citations, RAG, injection refusal | `ai/safety.py`, `ai/service.py` | `test_ai.py` | unit-verified; no live model here | PASSED WITH LIMITATIONS |
 | 20 | AI without a token → 401 | `UserDep` | `test_ai.py` | 401 | VERIFIED |
 | — | Sessions survive a restart | `SessionStore` (from `origin/main`) | `test_integration.py` | cookie refresh 200 after restart | VERIFIED |
-| — | Telegram: link, subscriptions, test, dedup | `integrations/telegram/` | `test_telegram.py` | rate-limit release, generation keys | VERIFIED |
 | — | Backup and restore | `scripts/backup.sh`, `scripts/restore.sh` | `test_ops_scripts.py` | full round-trip, data recovered | VERIFIED |
 
 Items 15–19 need a reachable Ollama instance, which is not present in this
@@ -217,8 +208,7 @@ healthy), not a health check standing in for a test:
 
 **Production (`https://aeza-sentinel.pixel-minds.ru`), read-only:** root 200,
 `/health` 200, 35 documented routes, login 200, summary generation 1 with 10
-customers, Telegram enabled with the webhook configured, customers sorted
-71.4/71.4/65.4. No write, migration or destructive operation was performed.
+customers sorted 71.4/71.4/65.4. No write, migration or destructive operation was performed.
 
 Production runs the older code, so the fixes in this branch are **not** deployed
 there. Deploying is a separate, owner-approved action.

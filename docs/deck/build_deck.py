@@ -848,7 +848,7 @@ def s10_final(prs):
                  "[ИМЯ УЧАСТНИКА 3] · [РОЛЬ УЧАСТНИКА 3]"):
         ty = E(ty + text_block(s, M, E(ty + Inches(0.02)), Inches(5.4), line, 10.5,
                                SOFT, 400, spacing=1.35, tag="fin-m"))
-    text_block(s, M, E(ty + Inches(0.10)), Inches(5.4), "[КОНТАКТ / TELEGRAM]", 10.5,
+    text_block(s, M, E(ty + Inches(0.10)), Inches(5.4), "[КОНТАКТ]", 10.5,
                MINT, 500, tag="fin-c")
 
     rx = E(SW - Inches(3.42))

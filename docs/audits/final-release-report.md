@@ -2,8 +2,7 @@
 
 Date: 2026-10-24. Author: release session (OpenHands agent).
 
-Scope: verify the environment, audit the Telegram integration, make it a managed
-production component, fix the favicon, publish to GitHub, and verify end to end.
+Scope: verify the environment, fix the favicon, publish to GitHub, and verify end to end.
 
 Status labels: **VERIFIED** (reproduced here) · **PASSED WITH LIMITATIONS** ·
 **BLOCKED** (cannot proceed without something I do not have) · **NOT TESTED** ·
@@ -32,7 +31,6 @@ Commits added (oldest first):
 | `075743f` | Make the backup dump restorable over a live database |
 | `66ac658` | Integrate origin/main: durable auth sessions, and repair the merge breakage |
 | `dcc3b0d` | Add the final integration report |
-| `5ac63e3` | Legible favicon; automatic Telegram webhook registration |
 | `416c8b1` | Integrate origin/main again: presentation dataset, brand book, robustness fix |
 | `4d65b99` | Add favicon regression tests |
 
@@ -49,70 +47,7 @@ those were fetched and integrated rather than assumed absent.
 
 ---
 
-## 3. Telegram audit (Stage 1) — VERIFIED
-
-**Architecture.** The integration is **webhook-based and in-process**: there is no
-separate bot service and no polling. `TelegramService` is built in the FastAPI
-lifespan (`build_telegram`) and the bot receives updates at
-`POST /api/v1/telegram/webhook`, authenticated by Telegram's own
-`X-Telegram-Bot-Api-Secret-Token`, compared in constant time. I did **not** add a
-second implementation or switch the delivery mechanism.
-
-| Function | Implementation | Config | Test | Result |
-| --- | --- | --- | --- | --- |
-| `/start <code>` linking | `bot.handle_update` → `redeem_link_code` | `TELEGRAM_LINK_CODE_TTL_SECONDS` | `test_telegram.py` | VERIFIED |
-| `/help`, `/status` | `bot.py` | — | VERIFIED |
-| `/subscribe`, `/unsubscribe` | `service.unlink` | — | VERIFIED |
-| `/digest on\|off` | `update_subscription` | `TELEGRAM_DIGEST_*` | VERIFIED |
-| `/top`, `/customer <id>` | `bot.py`, link-gated | — | VERIFIED |
-| Send | `client.send_message` | `TELEGRAM_TIMEOUT_SECONDS` | VERIFIED |
-| Retries | 5xx/network retried, 4xx not | `TELEGRAM_MAX_RETRIES` | VERIFIED |
-| Rate limit | per-process map | `TELEGRAM_MIN_SEND_INTERVAL_SECONDS` | VERIFIED |
-| Missing token | service absent, app starts | — | VERIFIED |
-| Wrong token | logged, app starts | — | VERIFIED |
-| Secret check | constant-time compare | `TELEGRAM_WEBHOOK_SECRET` | VERIFIED |
-| No token in logs | token never logged | — | VERIFIED |
-| Access control | every data command re-checks the link | — | VERIFIED |
-
-**Defects found and fixed**
-
-| ID | Severity | Defect | Fix |
-| --- | --- | --- | --- |
-| D1 | **high** | `setWebhook` was never called, so `TELEGRAM_WEBHOOK_URL` was inert and the bot received nothing while the app looked healthy | `ensure_webhook()` at startup, verified via `getWebhookInfo` |
-| D2 | medium | no `update_id` deduplication; a redelivered `/start <code>` re-ran | last 1024 ids remembered for 10 minutes |
-| D3 | low | `allowed_updates` requested `callback_query`, which nothing handles | now `("message",)` |
-| D4 | low | a non-HTTPS webhook URL failed with an opaque API error | validated, with a clear reason |
-| D5 | medium | `/telegram/diagnostics` reported the env var, not Telegram's state | reports the recorded registration state |
-
-No defect required changing the transport or the public API shape.
-
----
-
-## 4. Telegram as a production component (Stage 2) — PASSED WITH LIMITATIONS
-
-Requirements and how they are met:
-
-| Requirement | Status |
-| --- | --- |
-| Runs as part of the existing Compose stack | VERIFIED — it is the `api` service; no competing mechanism added |
-| Config via env / server secrets | VERIFIED — `TELEGRAM_*` in `docker-compose.yml`, values from the host `.env` |
-| Token not in Git, image, bundle or logs | VERIFIED — `git grep` finds no token; the client never logs it |
-| Starts after a server reboot | VERIFIED — `restart: unless-stopped` on every service |
-| Dependency on readiness, not just start | VERIFIED — `api` has `depends_on: db: condition: service_healthy` |
-| Bounded retries, clear logs | VERIFIED — 4xx not retried; registration failures logged |
-| Safe shutdown and update | VERIFIED — the lifespan stops the digest task and disposes the engine |
-| Documented logs / status / update / rollback | VERIFIED — `docs/TELEGRAM.md` §Operating |
-| Never a single point of failure | VERIFIED — registration failure leaves the API at `200` |
-| Redeploy must not duplicate a poller | **N/A and safe** — webhook, not polling, so there is no `getUpdates` loop to duplicate |
-
-**Deployment to the server: BLOCKED.** There is no `ssh` client, no `~/.ssh` and
-no key material in this environment, and production credentials were not provided.
-I did not simulate a deploy. Everything needed is prepared and verified locally;
-the exact commands are in §9.
-
----
-
-## 5. Favicon (Stage 3) — VERIFIED
+## 3. Favicon — VERIFIED
 
 The premise "no favicon" was **wrong, and the real cause was worse**: the file was
 present, linked and served `200`, but the artwork was near-white on transparency
@@ -141,7 +76,7 @@ Production still serves the old icon: the fix is on this branch, not deployed.
 
 ---
 
-## 6. Publication (Stage 4) — BLOCKED
+## 4. Publication — BLOCKED
 
 **The push was refused.** Both available credentials authenticate as `Pavel1778`,
 which is not the repository owner (`Pixelminds-hub`):
@@ -176,7 +111,7 @@ Both files are under `.tmp_local/`, which is gitignored.
 
 ---
 
-## 7. Regression and E2E (Stage 5) — VERIFIED
+## 5. Regression and E2E — VERIFIED
 
 | Check | Command | Result |
 | --- | --- | --- |
@@ -206,25 +141,18 @@ standing in for a test:
 7. restored to 3.0 → **71.4**, reset → `isDefault`
 8. dataset is the official **10/30/100**, not the presentation snapshot
 9. favicon: four assets served and decoded in a real browser
-10. Telegram disabled → app healthy, status honest
-11. Telegram enabled with a bad token → **app stays `200`**, registration failure
-    logged, diagnostics reports `webhookRegistered: false` and the reason
-12. bot path: unlinked refusal → `/start <code>` → `/status` → `/unsubscribe` → refusal
-13. notifications: **17 delivered** on a new generation, **0** on a steady state;
-    dedupe keys carry the real generation (`high_risk:1:5`, no `:None:`)
 
 **Production, read-only:** root `200`, `/health` `200`, 35 documented routes,
-login `200`, summary generation 1 with 10 customers, Telegram enabled with the
-webhook configured. No write, migration or destructive operation was performed.
+login `200`, summary generation 1 with 10 customers. No write, migration or destructive operation was performed.
 
 ---
 
-## 8. Unresolved and residual risk
+## 6. Unresolved and residual risk
 
 | Item | Status |
 | --- | --- |
 | Push / PR | **BLOCKED** — credential lacks write access to the repository |
-| Server deployment of Telegram + favicon | **BLOCKED** — no SSH client, key or host access |
+| Server deployment of the favicon | **BLOCKED** — no SSH client, key or host access |
 | Reboot-survival of the server itself | **NOT TESTED** — needs host access; `restart: unless-stopped` is configured |
 | TLS termination and renewal | **NOT TESTED** — host nginx; out of scope without access |
 | AI items requiring a live Ollama | **BLOCKED** — no model available here |
@@ -236,7 +164,7 @@ webhook configured. No write, migration or destructive operation was performed.
 
 ---
 
-## 9. Exact commands for the blocked steps
+## 7. Exact commands for the blocked steps
 
 **Publish the branch** (needs a credential with write access):
 
@@ -251,19 +179,10 @@ git push origin integration/merge-upstream-20261024
 
 ```bash
 cd /path/to/aeza-analizer && git pull --ff-only
-# add to the host .env (never committed):
-#   TELEGRAM_ENABLED=true
-#   TELEGRAM_BOT_TOKEN=<from @BotFather>
-#   TELEGRAM_WEBHOOK_SECRET=<python -c "import secrets;print(secrets.token_urlsafe(32))">
-#   TELEGRAM_WEBHOOK_URL=https://aeza-sentinel.pixel-minds.ru/api/v1/telegram/webhook
 docker compose up -d --build
 docker compose ps                       # all three healthy
 curl -s localhost:8000/health           # 200
-curl -s "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"   # url must match
-# then in the UI: Telegram → Диагностика → webhookRegistered: true
 ```
-
-The app now registers the webhook itself, so no manual `setWebhook` is needed.
 
 **Rollback:**
 
@@ -275,7 +194,7 @@ git checkout <previous-commit> && docker compose up -d --build
 
 ---
 
-## 10. Ready to commit / publish
+## 8. Ready to commit / publish
 
 - **Committed:** all nine commits on `integration/merge-upstream-20261024`; tree clean.
 - **Ready to publish:** the branch is a fast-forward of `main`, 497 tests pass,

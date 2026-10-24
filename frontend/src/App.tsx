@@ -10,7 +10,6 @@ import PriorityPage from './pages/PriorityPage'
 import CustomersPage from './pages/CustomersPage'
 import CustomerDetailPage from './pages/CustomerDetailPage'
 import SettingsPage from './pages/SettingsPage'
-import TelegramPage from './pages/TelegramPage'
 import { AIAnalystWidget } from './components/AIAnalystPanel'
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -34,7 +33,6 @@ function Shell({ children }: { children: React.ReactNode }) {
           <NavLink to="/priority">Приоритеты</NavLink>
           <NavLink to="/customers">Клиенты</NavLink>
           <NavLink to="/settings">Модель и сценарии</NavLink>
-          <NavLink to="/telegram">Telegram</NavLink>
         </nav>
         <div className="header-user">
           <GenerationControl />
@@ -97,7 +95,6 @@ export default function App() {
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/:id" element={<CustomerDetailPage />} />
           <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/telegram" element={<TelegramPage />} />
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
