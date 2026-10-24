@@ -47,6 +47,13 @@ backend/data/rag_index.json
 # Secrets and local env
 .env
 .env.local
+# Ad-hoc copies of env/compose files made before an edit. They carry the same
+# secrets as .env and must never be committed; the pattern caught one such leak.
+.env.*
+*.env.bak
+docker-compose.yml.bak*
+docker-compose.yml.before*
+!.env.example
 
 # Tooling scratch
 .tmp_local/

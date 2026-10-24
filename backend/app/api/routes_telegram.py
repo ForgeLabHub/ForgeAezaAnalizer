@@ -76,6 +76,18 @@ def status(runtime: RuntimeDep, user: UserDep):
             "kinds": list(NOTIFICATION_KINDS),
             "detail": "Интеграция отключена (TELEGRAM_ENABLED=0).",
         }
+    if runtime.telegram is None:
+        # Enabled but not built: the operator asked for the feature without a
+        # token. Report the real reason instead of an enabled-but-broken state.
+        return {
+            "enabled": False,
+            "linked": False,
+            "kinds": list(NOTIFICATION_KINDS),
+            "detail": (
+                "TELEGRAM_ENABLED=1, но TELEGRAM_BOT_TOKEN не задан. "
+                "Задайте токен бота на сервере и перезапустите API."
+            ),
+        }
     service = _service(runtime)
     link = service.link_status(user.email)
     payload = {

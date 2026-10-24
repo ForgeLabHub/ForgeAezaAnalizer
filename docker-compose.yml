@@ -1,14 +1,18 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-aeza}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-aeza}
+      POSTGRES_USER: ${POSTGRES_USER:-aeza}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}
     volumes:
+      # Named volume so a clean checkout never depends on host-owned ./db/postgres.
       - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aeza} -d ${POSTGRES_DB:-aeza}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
   api:
@@ -35,24 +39,29 @@ services:
       # The SPA is served through the same nginx origin, so the demo needs no
       # wildcard. Widen this only if you host the UI elsewhere.
       AEZA_CORS_ORIGINS: ${AEZA_CORS_ORIGINS:-http://localhost:8080}
-      # --- Local AI, two conventions in one repo (off by default) ---
-      # AI Analyst (backend/app/ai): grounded explanations + RAG.
+      # --- Local AI, two conventions in one repo (both off by default) ---
+      # (a) AI Analyst (backend/app/ai): grounded explanations + RAG.
       AEZA_AI_ENABLED: ${AEZA_AI_ENABLED:-0}
       AEZA_AI_PROVIDER: ${AEZA_AI_PROVIDER:-ollama}
       AEZA_AI_MODEL: ${AEZA_AI_MODEL:-qwen2.5:3b-instruct}
-      AEZA_AI_BASE_URL: ${AEZA_AI_BASE_URL:-http://docker.internal}
-      # Insights narration. Keep disabled unless explicitly enabled in .env.
+      AEZA_AI_BASE_URL: ${AEZA_AI_BASE_URL:-http://host.docker.internal:11434}
+      # (b) Insights narration (backend/app/domain/llm.py). AEZA_OLLAMA_URL is
+      # the canonical name and wins over the older AEZA_LLM_BASE_URL alias; both
+      # are honoured so an existing .env keeps working.
       AEZA_LLM_ENABLED: ${AEZA_LLM_ENABLED:-0}
-      AEZA_OLLAMA_URL: ${AEZA_OLLAMA_URL:-http://docker.internal}
+      AEZA_OLLAMA_URL: ${AEZA_OLLAMA_URL:-http://host.docker.internal:11434}
       AEZA_OLLAMA_MODEL: ${AEZA_OLLAMA_MODEL:-qwen2.5:3b-instruct}
       AEZA_OLLAMA_TIMEOUT_SECONDS: ${AEZA_OLLAMA_TIMEOUT_SECONDS:-90}
       AEZA_LLM_MAX_TOKENS: ${AEZA_LLM_MAX_TOKENS:-700}
       AEZA_LLM_TEMPERATURE: ${AEZA_LLM_TEMPERATURE:-0.2}
+      # Telegram integration. Off by default; the stack runs normally without a
+      # bot token. Set TELEGRAM_* in the host environment (or an .env file) and
+      # never bake a real token into the image.
       TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL:-}
-      TELEGRAM_API_BASE: ${TELEGRAM_API_BASE:-https://telegram.org}
+      TELEGRAM_API_BASE: ${TELEGRAM_API_BASE:-https://api.telegram.org}
       TELEGRAM_TIMEOUT_SECONDS: ${TELEGRAM_TIMEOUT_SECONDS:-10}
       TELEGRAM_LINK_CODE_TTL_SECONDS: ${TELEGRAM_LINK_CODE_TTL_SECONDS:-600}
       TELEGRAM_LINK_MAX_ATTEMPTS: ${TELEGRAM_LINK_MAX_ATTEMPTS:-5}
@@ -94,4 +103,3 @@ services:
 volumes:
   auth_data:
   pg_data:
-

@@ -1,20 +1,21 @@
-FROM python:3.11-slim
+FROM python:3.12-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libpq-dev \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY backend/requirements.txt .
+COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY core.py .
-COPY main.py .
+COPY core.py main.py ./
+COPY backend/__init__.py ./backend/__init__.py
+COPY backend/auth ./backend/auth
+COPY backend/config.py backend/database.py backend/users.py ./backend/
 COPY backend/app ./backend/app
 COPY backend/scripts ./backend/scripts
+# The standalone auth module reads its DDL from this file at startup.
 COPY db/schema.sql ./backend/auth_schema.sql
 # Official organiser dataset: seeded at startup through the app's importer.
 COPY dataset/data.json ./dataset/data.json
@@ -36,4 +37,7 @@ USER aeza
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).status==200 else 1)"
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

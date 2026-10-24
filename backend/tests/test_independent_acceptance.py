@@ -55,12 +55,15 @@ def client(tmp_path_factory):
     # The factory is read from the environment, not a Settings field.
     previous = os.environ.get("AEZA_ANALYTICS_FACTORY")
     os.environ["AEZA_ANALYTICS_FACTORY"] = "backend.app.domain.module:create"
+    # Authentication lives in the standalone module, so the app is built with
+    # its own auth settings and the shared test credential.
     settings = Settings(
         database_url=f"sqlite:///{(tmp / 'acc.db').as_posix()}",
         seed_demo_data=True,
         snapshot_path=str(SNAPSHOT),
         as_of=AS_OF,
     )
+    auth_settings = make_test_auth_settings(tmp / "acc_auth.db")
     auth_settings = make_test_auth_settings(tmp / "acc_auth.db")
     try:
         with TestClient(create_app(settings, auth_settings=auth_settings), raise_server_exceptions=False) as test_client:
