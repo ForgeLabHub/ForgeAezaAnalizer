@@ -144,10 +144,3 @@ def test_icon_is_drawn_on_an_opaque_tile():
     centre = pixel(width // 2, int(height * 0.72))
     assert centre[3] > 200, "the glyph pixel is transparent"
     assert luminance(centre) < 100, "the glyph is not dark against the light tile"
-
-
-def test_part_a_favicon_is_a_valid_ico():
-    """The archive app serves this file; it used to be an unreadable container."""
-
-    path = ROOT / "aeza_analyzer" / "static" / "favicon.ico"
-    assert _ico_sizes(path), "the Part A favicon has no frames"

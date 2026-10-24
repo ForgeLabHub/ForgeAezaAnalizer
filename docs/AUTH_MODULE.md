@@ -1,10 +1,8 @@
-# Модуль аутентификации (FastAPI + SQLite + OIDC)
+# Общий модуль аутентификации (FastAPI + SQLite + OIDC)
 
-> Этот документ сохранён из README ветки `origin/main` (коммит 6f64213), где он
-> временно заменил общий README. Содержание принадлежит автору auth-модуля и
-> приведено без изменений, чтобы не потерять документацию OIDC.
-
-Модуль проверяет логин и пароль в SQLite, выдаёт JWT access token и устанавливает HttpOnly cookie серверной сессии. Повторные запросы используют сессию; пароль не сохраняется в кеше. Модуль выступает OIDC-провайдером для одного доверенного сайта и является единственным хранилищем учётных записей основного API.
+Модуль `backend/auth/` обслуживает учётные записи и серверные сессии Compose API.
+Он проверяет пароль, выпускает RS256 access token и предоставляет OIDC-маршруты
+для интеграций. Пароли хранятся только в виде хешей в SQLite.
 
 Добавлены зависимости **PyJWT и cryptography** для RS256/JWKS. SQLite, scrypt и кеш используют стандартную библиотеку Python. Фронтенд в этот модуль не входит.
 
@@ -13,7 +11,7 @@
 Python 3.12+. Из корня проекта в PowerShell:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
 .\.venv\Scripts\python.exe -m backend.users create alice
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
 ```

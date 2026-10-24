@@ -6,6 +6,18 @@ from backend.auth.service import AuthError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 SESSION_COOKIE = "auth_session"
+METRICS_COOKIE = "metrics_session"
+
+
+def set_session_cookies(response: Response, runtime: RuntimeDep, value: str) -> None:
+    cookie_options = {
+        "max_age": runtime.auth.settings.session_ttl,
+        "httponly": True,
+        "secure": runtime.auth.settings.cookie_secure,
+        "samesite": "lax",
+    }
+    response.set_cookie(SESSION_COOKIE, value, path="/api/v1/auth", **cookie_options)
+    response.set_cookie(METRICS_COOKIE, value, path="/metrics", **cookie_options)
 
 
 def require_trusted_origin(request: Request, runtime: RuntimeDep) -> None:
@@ -23,11 +35,7 @@ def login(payload: LoginRequest, runtime: RuntimeDep, response: Response, reques
     client = request.client.host if request.client else ""
     user = runtime.auth.authenticate(payload.email, payload.password.get_secret_value(), client)
     session, cookie = runtime.auth.create_session(user)
-    response.set_cookie(
-        SESSION_COOKIE, cookie, max_age=runtime.auth.settings.session_ttl,
-        httponly=True, secure=runtime.auth.settings.cookie_secure,
-        samesite="lax", path="/api/v1/auth",
-    )
+    set_session_cookies(response, runtime, cookie)
     return runtime.auth.tokens(session, user)
 
 
@@ -43,6 +51,7 @@ def refresh(request: Request, runtime: RuntimeDep, response: Response):
     session = runtime.auth.session_from_cookie(request.cookies.get(SESSION_COOKIE))
     if session is None:
         raise AuthError(401, "invalid_token", "Authentication required", {"WWW-Authenticate": "Bearer"})
+    set_session_cookies(response, runtime, request.cookies[SESSION_COOKIE])
     return runtime.auth.tokens(session, runtime.auth.user_for_session(session))
 
 
@@ -52,6 +61,10 @@ def logout(runtime: RuntimeDep, user: UserDep):
     response = Response(status_code=204)
     response.delete_cookie(
         SESSION_COOKIE, path="/api/v1/auth", secure=runtime.auth.settings.cookie_secure,
+        httponly=True, samesite="lax",
+    )
+    response.delete_cookie(
+        METRICS_COOKIE, path="/metrics", secure=runtime.auth.settings.cookie_secure,
         httponly=True, samesite="lax",
     )
     return response

@@ -10,6 +10,8 @@ and the restore refuses to run without an explicit confirmation.
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -19,17 +21,38 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 BACKUP = SCRIPTS / "backup.sh"
 RESTORE = SCRIPTS / "restore.sh"
+RUN = ROOT / "run.sh"
 
 
 def test_both_scripts_are_present_and_executable():
     for script in (BACKUP, RESTORE):
         assert script.is_file(), f"{script.name} is missing"
+    if os.name == "nt":
+        pytest.skip("POSIX execute bits are not available on Windows")
+    for script in (BACKUP, RESTORE):
         assert script.stat().st_mode & 0o111, f"{script.name} is not executable"
+
+
+def test_run_script_targets_compose():
+    source = RUN.read_text(encoding="utf-8")
+    assert "docker compose up --build -d" in source
+    assert "docker compose down" in source
 
 
 @pytest.mark.parametrize("script", [BACKUP, RESTORE])
 def test_scripts_are_valid_bash(script):
-    result = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("bash is not installed")
+    result = subprocess.run([bash, "-n", str(script)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_run_script_is_valid_bash():
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("bash is not installed")
+    result = subprocess.run([bash, "-n", str(RUN)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
 
 

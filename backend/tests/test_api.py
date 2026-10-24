@@ -94,6 +94,21 @@ def test_auth_session_cookie_refresh_and_trusted_origin(client):
     headers = {"Authorization": f"Bearer {refreshed.json()['access_token']}"}
     assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
 
+    assert any(name == "metrics_session" for name, _ in client.cookies.items())
+    assert client.get("/metrics").status_code == 200
+    assert client.post("/api/v1/auth/logout", headers=headers).status_code == 204
+    assert client.get("/metrics").status_code == 401
+
+
+def test_metrics_cookie_is_scoped_to_metrics(client):
+    login = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD})
+    assert login.status_code == 200
+    cookies = login.headers.get_list("set-cookie")
+    metrics_cookie = next(value.lower() for value in cookies if value.startswith("metrics_session="))
+    assert "httponly" in metrics_cookie and "samesite=lax" in metrics_cookie
+    assert "path=/metrics" in metrics_cookie
+    assert client.get("/api/v1/analytics/summary").status_code == 401
+
 
 def test_logout_revokes_only_current_session(client, auth_headers):
     other = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD}).json()

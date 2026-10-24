@@ -1,8 +1,7 @@
-# Развёртывание канонического продукта (часть B)
+# Развёртывание Aéza Analyzer
 
-Этот документ описывает развёртывание **`backend/app/` + `frontend/`** —
-канонической реализации (см. `docs/ARCHITECTURE_DECISION.md`). Развёртывание
-части A (SQLite + `run.sh` + Render) описано в `docs/DEPLOYMENT.md`.
+Этот документ описывает поддерживаемый Compose-стек: FastAPI API, React SPA,
+PostgreSQL для аналитики и SQLite для учётных записей и сессий.
 
 ## 1. Состав стека
 
@@ -12,8 +11,8 @@
 | `api` | `backend/Dockerfile` | 8000 | FastAPI: `/api/v1/*`, `/metrics`, `/health`, `/ready` |
 | `web` | `frontend/Dockerfile` | 80 | статика React + прокси `/api` и `/metrics` на `api` |
 
-Compose публикует `web` на `8080`, API на `8000`; ограничьте доступ к API
-правилами reverse proxy и firewall.
+Compose публикует `web` на `8080`, API на `8000`; при публичном размещении
+ограничьте доступ к API правилами reverse proxy и firewall.
 
 ## 2. Обязательные переменные окружения
 
@@ -82,15 +81,21 @@ curl -X PUT http://localhost:8000/api/v1/source/snapshot \
 
 ## 6. Наблюдаемость
 
-* `GET /metrics` — формат Prometheus. Доступ: access token аналитика либо
-  отдельный `AEZA_METRICS_TOKEN` в заголовке Bearer. Без токена endpoint
-  закрыт и отвечает `401`.
+* `GET /metrics` — формат Prometheus. В браузере endpoint принимает отдельную
+  HttpOnly-cookie, выдаваемую при входе и ограниченную путём `/metrics`.
+  Также принимаются Bearer access token аналитика и отдельный
+  `AEZA_METRICS_TOKEN` сборщика. Без авторизации endpoint отвечает `401`.
 * Метрики включают готовность и generation анализа, число клиентов и услуг,
   категории риска, денежные агрегаты, количество HTTP-ответов и их длительность.
   Метки агрегированные, без email и идентификаторов клиентов.
 * `/health` — живость процесса; `/ready` — готовность отдавать расчёты.
 
-Для локального Compose задайте секрет в `.env` и перезапустите API:
+После входа в SPA откройте `http://localhost:8000/metrics` напрямую. Если
+приложение уже было открыто во время обновления сервера, перезагрузите SPA,
+чтобы запрос обновления сессии выдал cookie для `/metrics`.
+
+Для отдельного локального Compose-сборщика задайте секрет в `.env` и
+пересоздайте API:
 
 ```dotenv
 AEZA_METRICS_TOKEN=replace-with-a-long-random-secret
@@ -101,9 +106,10 @@ docker compose up -d api
 curl -H "Authorization: Bearer $AEZA_METRICS_TOKEN" http://localhost:8000/metrics
 ```
 
-На публичном стенде используйте `https://aeza-sentinel.pixel-minds.ru/metrics`.
-Если отдельный токен вам не выдан, войдите через `POST /api/v1/auth/login`,
-возьмите поле `access_token` из ответа и передайте его в таком же заголовке:
+На публичном стенде после входа откройте
+`https://aeza-sentinel.pixel-minds.ru/metrics`. Для скрипта без браузерной
+сессии войдите через `POST /api/v1/auth/login`, возьмите поле `access_token`
+из ответа и передайте его в заголовке:
 
 ```bash
 curl -H "Authorization: Bearer $ACCESS_TOKEN" \
