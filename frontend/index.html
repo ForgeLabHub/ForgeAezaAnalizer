@@ -3,10 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Aeza brand mark, taken from aeza.ru (/favicon.ico, /favicon.png, /apple-touch-icon.png). -->
+    <!--
+      App icon: the brand symbol "é" in the monochrome treatment the Aéza brand
+      book defines for it (white on black, black on white). The SVG adapts to the
+      browser's colour scheme; the PNG/ICO are the raster fallbacks. The glyph is
+      the official path from docs/deck/brand/icon_light.svg, reused verbatim.
+    -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="256x256" href="/favicon.png" />
-    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <link rel="apple-touch-icon" sizes="512x512" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/x-icon" sizes="16x16 32x32 48x48" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#ff6b00" />
     <script>
       // Apply the saved theme before first paint to avoid a light flash in dark mode.

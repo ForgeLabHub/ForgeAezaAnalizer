@@ -101,7 +101,23 @@ wrong" until connectivity itself is confirmed.
    `TELEGRAM_WEBHOOK_URL` pointing at your public HTTPS host.
 4. Restart the API. The tables are created automatically at startup; there is no
    separate migration step, exactly like the other integration tables.
-5. Register the webhook — either from the host:
+5. **The app registers the webhook itself on startup.** `setWebhook` is called
+   with `TELEGRAM_WEBHOOK_URL` and `TELEGRAM_WEBHOOK_SECRET`, then
+   `getWebhookInfo` is read back to confirm Telegram accepted it. Nothing needs
+   to be done by hand, and the call is idempotent.
+
+   To verify the registration took effect:
+
+   ```bash
+   curl -s "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
+   # "url" must equal TELEGRAM_WEBHOOK_URL and "pending_update_count" should be 0
+   ```
+
+   The same information is in the UI: **Telegram → Диагностика** reports
+   `webhookRegistered`, `webhookUrl` and the last Telegram-side error. It reads
+   the state recorded at startup, so it never calls Telegram per request.
+
+   Registering by hand is only needed if the app cannot reach the Bot API:
 
    ```bash
    curl -s "https://api.telegram.org/bot<TOKEN>/setWebhook" \
@@ -110,7 +126,23 @@ wrong" until connectivity itself is confirmed.
      -d 'allowed_updates=["message"]'
    ```
 
-   or let the app do it (it uses the same values from the environment).
+### Operating the integration
+
+```bash
+docker compose logs -f api | grep -i telegram   # webhook registration and send failures
+curl -s localhost:8000/health                   # the app is up
+```
+
+A missing or wrong webhook never takes the app down: registration failure is
+logged and the API keeps serving analytics. The reverse also holds — with
+`TELEGRAM_ENABLED=false` the webhook answers `200` and does nothing.
+
+### Redelivered updates
+
+Telegram retries an update when the webhook does not answer in time. The service
+remembers the last 1024 `update_id`s for ten minutes and ignores a redelivery, so
+a retried `/start <code>` cannot be processed twice. A redelivery is still
+answered `200`, which is what stops Telegram retrying.
 
 ## Using it
 
