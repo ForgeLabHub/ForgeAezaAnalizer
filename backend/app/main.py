@@ -130,10 +130,6 @@ def build_ai(storage: Storage, calculation: CalculationAdapter) -> AIService | N
         return None
 
 
-<<<<<<< HEAD
-def create_app(settings: Settings | None = None, analytics: AnalyticsModule | None = None,
-               auth_settings: AuthSettings | None = None) -> FastAPI:
-=======
 def build_telegram(settings: Settings, database: Database):
     """Build the Telegram service, or ``None`` when the feature is off.
 
@@ -153,8 +149,8 @@ def build_telegram(settings: Settings, database: Database):
         return None
 
 
-def create_app(settings: Settings | None = None, analytics: AnalyticsModule | None = None) -> FastAPI:
->>>>>>> 8bee307f006ccfac1e70afb61de23a22375b331e
+def create_app(settings: Settings | None = None, analytics: AnalyticsModule | None = None,
+               auth_settings: AuthSettings | None = None) -> FastAPI:
     settings = settings or get_settings()
     auth_settings = auth_settings or AuthSettings.from_env()
     module = analytics if analytics is not None else load_module(os.getenv("AEZA_ANALYTICS_FACTORY", ""))

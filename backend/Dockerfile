@@ -15,26 +15,19 @@ COPY backend/auth ./backend/auth
 COPY backend/config.py backend/database.py backend/users.py ./backend/
 COPY backend/app ./backend/app
 COPY backend/scripts ./backend/scripts
-<<<<<<< HEAD
+# The standalone auth module reads its DDL from this file at startup.
 COPY db/schema.sql ./backend/auth_schema.sql
-=======
+
 # Official organiser dataset: seeded at startup through the app's importer.
 COPY dataset/data.json ./dataset/data.json
-# Local documentation corpus for the AI Analyst's RAG retrieval.
-COPY docs ./docs
-
-# Build the local TF-IDF RAG index at image build time: deterministic, offline,
-# no embedding API. Rebuilt whenever docs/ or the builder change.
-RUN mkdir -p /app/backend/data \
-    && python -m backend.app.ai.rag --docs /app/docs --out /app/backend/data/rag_index.json
 
 # The AI Analyst grounds its answers in docs/ via a prebuilt RAG index
 # (AEZA_AI_DOCS_PATH / AEZA_AI_RAG_INDEX_PATH). Ship the docs and build the
 # index here: without them the retriever silently returns nothing and answers
-# lose their grounding.
+# lose their grounding. Deterministic and offline, so it is safe at build time.
 COPY docs ./docs
-RUN python -m backend.app.ai.rag --docs /app/docs --out /app/backend/data/rag_index.json
->>>>>>> 8bee307f006ccfac1e70afb61de23a22375b331e
+RUN mkdir -p /app/backend/data \
+    && python -m backend.app.ai.rag --docs /app/docs --out /app/backend/data/rag_index.json
 
 # Run as an unprivileged user; auth storage is mounted under /app/db.
 RUN useradd --create-home --uid 10001 aeza \
