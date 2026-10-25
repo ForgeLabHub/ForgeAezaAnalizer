@@ -210,7 +210,6 @@ export interface ModelSettings extends Partial<VersionInfo> {
   isDefault: boolean
 }
 
-// ------------------------------------------------------------------ AI Analyst
 export type AIStatusValue = 'disabled' | 'ready' | 'unavailable'
 
 export interface AIStatus {
@@ -259,10 +258,6 @@ export interface AIResponse {
 export type SupportConversationStatus = 'open' | 'closed'
 export type SupportDeliveryStatus = 'received' | 'pending' | 'delivered' | 'failed' | 'stubbed'
 
-// ------------------------------------------------------- Telegram Mini App client
-// The client surface is separate from the analyst session: the server derives the
-// account from a token exchanged for signed Telegram initData.
-
 export interface ClientSession {
   accessToken: string
   tokenType: string
@@ -279,7 +274,6 @@ export interface ClientMe {
 export interface ClientAccount {
   id: number
   email: string
-  /** ``cents`` is null when the source has no balance — never zero. */
   balance: { cents: number | null; eur: string | null }
 }
 

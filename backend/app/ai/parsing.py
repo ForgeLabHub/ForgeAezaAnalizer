@@ -85,8 +85,7 @@ def parse_json(text: str) -> dict:
     except json.JSONDecodeError:
         pass
 
-    # Trim back to the last structurally safe point, then close what is open.
-    # Repeated trailing-comma removal handles a cut between array elements.
+
     working = _safe_prefix(candidate)
     for _ in range(64):
         attempt = working.rstrip().rstrip(",")

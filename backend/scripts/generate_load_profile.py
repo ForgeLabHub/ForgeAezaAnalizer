@@ -21,23 +21,19 @@ import random
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-#: Reference instant of the organiser dataset, so generated profiles are
-#: comparable with the baseline and with each other.
+
 REFERENCE = datetime(2026, 10, 19, 15, 0, tzinfo=timezone.utc)
 
 TERMS = ("hour", "week", "month", "quarter_year", "half_year", "year")
 STATUSES = ("active", "blocked", "deleted", "suspended", "prolong_wait")
 
-#: Profile sizes. Small/Medium/Stress are engineering test scenarios chosen to
-#: span two orders of magnitude; they are NOT a forecast of the provider's real
-#: customer count.
+
 PROFILES = {
     "baseline": {"accounts": 10, "services_per_account": 3, "transactions_per_service": 3},
     "small": {"accounts": 500, "services_per_account": 4, "transactions_per_service": 6},
     "medium": {"accounts": 5_000, "services_per_account": 5, "transactions_per_service": 8},
-    # Stress sits just under the hard caps the source validator enforces
-    # (100k accounts / 200k services / 500k transactions, see backend/app/source.py),
-    # so it measures behaviour at the largest snapshot the platform accepts.
+
+
     "stress": {"accounts": 50_000, "services_per_account": 4, "transactions_per_service": 2},
 }
 
@@ -82,8 +78,8 @@ def generate(profile: str, seed: int) -> dict:
             service_id += 1
             term = TERMS[service_id % len(TERMS)]
             status = STATUSES[service_id % len(STATUSES)]
-            # Spread creation over a year and push expiry across the horizon, so
-            # the run exercises live, overdue and concluded services alike.
+
+
             created = REFERENCE - timedelta(days=rng.randint(1, 400))
             services.append(
                 {

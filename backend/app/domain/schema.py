@@ -42,10 +42,8 @@ class _SourceModel(BaseModel):
 class Account(_SourceModel):
     id: int
     email: str = Field(min_length=3, max_length=320)
-    # The platform's source validator allows any analytical field to arrive as
-    # null (see backend/app/source.py), so the domain model must accept that
-    # rather than reject the whole snapshot.  A null amount stays unknown and is
-    # never silently read as zero; the risk engine treats it explicitly.
+
+
     balance: NonNegativeCents | None = None
     withdraw_balance: NonNegativeCents | None = Field(default=None, alias="withdrawBalance")
     total_replenished: NonNegativeCents | None = Field(default=None, alias="totalReplenished")
@@ -61,13 +59,8 @@ class Account(_SourceModel):
 
     @model_validator(mode="after")
     def _check_balances(self) -> "Account":
-        # The source README documents these as business expectations rather than
-        # schema constraints.  We surface a violation instead of silently
-        # trusting a snapshot that contradicts the documented invariants.
-        #
-        # Only compare values that are actually present: a null amount is
-        # unknown, and treating "unknown" as a violation would reject a
-        # snapshot for lacking a field rather than for contradicting itself.
+
+
         if (
             self.withdraw_balance is not None
             and self.balance is not None

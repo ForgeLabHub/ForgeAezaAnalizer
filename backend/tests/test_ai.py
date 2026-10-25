@@ -32,7 +32,6 @@ ROOT = Path(__file__).resolve().parents[2]
 AS_OF = "2026-10-19T15:00:00+00:00"
 
 
-# --------------------------------------------------------------------- parsing
 def test_parse_json_accepts_clean_object():
     assert parsing.parse_json('{"summary": "ok"}') == {"summary": "ok"}
 
@@ -56,7 +55,6 @@ def test_parse_json_rejects_unrelated_text():
         parsing.parse_json("совершенно не JSON")
 
 
-# ---------------------------------------------------------------------- safety
 def _answer(**kwargs) -> AIAnswer:
     base = {"summary": "ok", "facts": [], "factor_explanation": "", "recommendations": [], "limitations": ""}
     base.update(kwargs)
@@ -117,7 +115,7 @@ def test_enforce_repairs_ungrounded_answer_and_reports_it():
     assert cleaned.facts == []
     assert "не подтверждённое данными" in cleaned.summary
     assert cleaned.factor_explanation == ""
-    # The repaired answer is still schema-valid and carries the disclaimer.
+
     assert "индекс" in cleaned.limitations
 
 
@@ -141,7 +139,7 @@ def test_enforce_removes_invented_number_from_limitations():
     assert report.grounded is False
     assert "99.9" in " ".join(report.invented_numbers)
     assert "99.9" not in cleaned.limitations
-    # The disclaimer is still added, and it is now true.
+
     assert "индекс" in cleaned.limitations
 
 
@@ -180,7 +178,6 @@ def test_detect_injection_finds_sql_and_prompt_patterns():
     assert len(hits) >= 2
 
 
-# ------------------------------------------------------------------------- rag
 def test_build_index_and_retrieve_relevant_chunk(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()
@@ -225,7 +222,6 @@ def test_retriever_respects_character_budget(tmp_path):
     assert sum(len(hit.text) for hit in hits) <= 120
 
 
-# ------------------------------------------------------------------- providers
 def test_mock_provider_quotes_only_facts_lines():
     provider = MockProvider()
     user = "ФАКТЫ:\n- Балл 71.4 из 100.\n- Выручка 5.80 EUR.\n\nДОКУМЕНТЫ:\nтекст\n"
@@ -261,7 +257,7 @@ def test_truncated_generation_is_reported_not_hidden(ai_settings, tmp_path):
         class TruncatingProvider(MockProvider):
             def generate(self, **kwargs):
                 generation = super().generate(**kwargs)
-                # Simulate the model consuming its whole output budget.
+
                 return generation.__class__(
                     text=generation.text, model=generation.model, provider=generation.provider,
                     latency_ms=0, prompt_tokens=10, completion_tokens=kwargs["max_tokens"],
@@ -287,7 +283,6 @@ def test_ollama_provider_accepts_loopback_and_service_name():
     assert OllamaProvider(base_url="http://ollama:11434", model="m").model == "m"
 
 
-# -------------------------------------------------------------------- settings
 def test_ai_settings_reject_unknown_provider(monkeypatch):
     from backend.app.ai.config import ai_settings
 
@@ -330,7 +325,6 @@ def test_default_timeout_covers_a_cpu_only_cold_start(monkeypatch):
     assert settings.request_timeout_seconds >= measured_cold_seconds * 1.5
 
 
-# ------------------------------------------------------------------------ API
 @pytest.fixture
 def ai_settings(tmp_path):
     """Real analytics module plus the offline provider, index built in tmp."""
@@ -398,7 +392,7 @@ def test_explain_customer_returns_grounded_answer(ai_client, ai_headers):
     body = response.json()
     assert body["task"] == "customer_explain"
     assert body["grounded"] is True
-    # Facts come from the real engine, not from the model.
+
     assert "71.4" in body["context"]["facts"]
     assert any(citation["kind"] == "fact" for citation in body["citations"])
     assert body["answer"]["summary"]
@@ -433,13 +427,13 @@ def test_scenario_explain_uses_isolated_calculation(ai_client, ai_headers):
     assert response.status_code == 200, response.text
     body = response.json()
     assert "база" in body["context"]["facts"]
-    # The live settings must be untouched by a scenario preview.
+
     live = ai_client.get("/api/v1/model/settings", headers=ai_headers).json()
     assert live["settings"]["weights"]["expiry_proximity"] != 1.0
 
 
 def test_scenario_explain_requires_overrides(ai_client, ai_headers):
-    # ``InvalidInput`` maps to 422 in this API, matching the model-settings routes.
+
     response = ai_client.post("/api/v1/ai/scenarios/explain", headers=ai_headers, json={"overrides": {}})
     assert response.status_code == 422
 
@@ -465,7 +459,7 @@ def test_ungrounded_model_output_is_repaired_not_served(ai_settings, tmp_path):
         token = client.post("/api/v1/auth/login", json={"email": TEST_LOGIN, "password": TEST_PASSWORD}).json()
         headers = {"Authorization": f"Bearer {token['access_token']}"}
 
-        # Swap in a misbehaving provider on the live service.
+
         runtime.ai._provider = MockProvider(raw=json.dumps({
             "summary": "Вероятность оттока 71.4% и потеря 12345.67 EUR.",
             "facts": ["Выдуманный факт 4242 EUR."],
@@ -492,7 +486,7 @@ def test_service_disabled_raises_when_flag_off(ai_client, ai_headers, monkeypatc
     runtime.ai.settings = runtime.ai.settings.__class__()
     response = ai_client.post("/api/v1/ai/chat", headers=ai_headers, json={"question": "hi"})
     assert response.status_code == 503
-    # Analytics is unaffected.
+
     assert ai_client.get("/api/v1/analytics/summary", headers=ai_headers).status_code == 200
 
 

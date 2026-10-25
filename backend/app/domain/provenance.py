@@ -16,7 +16,7 @@ customer base would simply report zero synthetic records.
 
 from __future__ import annotations
 
-#: Domains that cannot host a real customer address (RFC 2606, RFC 6761).
+
 RESERVED_TEST_DOMAINS = (
     "example.test",
     "example.com",
@@ -25,7 +25,7 @@ RESERVED_TEST_DOMAINS = (
     "example.invalid",
 )
 
-#: Local-part prefixes used by the bundled demonstration cohort.
+
 DEMO_PREFIXES = ("demo-", "demo.", "demo_")
 
 SYNTHETIC_EMAIL_DOMAIN = "тестовый домен (RFC 2606)"

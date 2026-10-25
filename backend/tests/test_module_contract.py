@@ -68,7 +68,7 @@ def test_definition_satisfies_platform_contract():
     SettingsPayload.model_validate(definition.defaults)
     keys = [factor["key"] for factor in definition.factors]
     assert len(set(keys)) == len(keys)
-    # The platform requires the factor keys to match the default weights.
+
     assert set(definition.defaults["weights"]) == set(keys)
 
 
@@ -99,7 +99,7 @@ def test_money_matches_the_source_accounts_exactly():
         account = accounts[customer["id"]]
         for name in ("balance", "withdrawBalance", "totalReplenished", "bonusBalance"):
             assert customer[name]["cents"] == account[name]
-        # eur must be the exact two-decimal rendering of cents.
+
         cents = customer["balance"]["cents"]
         assert customer["balance"]["eur"] == f"{cents // 100}.{cents % 100:02d}"
 
@@ -143,14 +143,14 @@ def test_approved_methodology_reaches_the_output():
     """The decisions approved for this stage must be visible in the result."""
     adapter = CalculationAdapter(create())
     result = adapter.calculate(_state())
-    # revenue at risk and the categories measured in docs/SENSITIVITY_ANALYSIS.md
+
     assert result.summary["revenue"]["revenueAtRiskEur"] == "5.80"
     assert result.summary["revenue"]["upcomingRenewalsEur"] == "17.03"
     categories = result.summary["customers"]["byCategory"]
     assert categories["high"] == 3 and categories["medium"] == 3
     assert categories["not_applicable"] == 4
 
-    # failed_renewals is present but unweighted; the rate is the live factor.
+
     customer = next(c for c in result.customers if c["services"])
     factors = {f["key"]: f for f in customer["services"][0]["factors"]}
     assert factors["failed_renewals"]["deprecated"] is True
@@ -170,7 +170,7 @@ def test_settings_accept_null_window_as_whole_snapshot():
     adapter = CalculationAdapter(create())
     settings = adapter.settings({}, {"failedRenewalWindowDays": None}, reset=False)
     assert settings["failedRenewalWindowDays"] is None
-    # And the calculation still succeeds with that configuration.
+
     adapter.calculate(_state(settings=settings))
 
 
@@ -192,7 +192,7 @@ def test_default_window_is_the_approved_ninety_days():
     definition = CalculationAdapter(create()).definition()
     assert definition.defaults["failedRenewalWindowDays"] == 90
 
-    # And the default configuration reproduces the published figures.
+
     result = CalculationAdapter(create()).calculate(_state(settings=definition.defaults))
     categories = result.summary["customers"]["byCategory"]
     assert categories["high"] == 3 and categories["medium"] == 3

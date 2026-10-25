@@ -26,7 +26,7 @@ from core import InvalidInput
 
 ACTION_STATUSES = ("open", "in_progress", "done", "dismissed")
 
-#: Statuses a caller may set through the API.
+
 OPEN_STATUSES = ("open", "in_progress")
 CLOSED_STATUSES = ("done", "dismissed")
 

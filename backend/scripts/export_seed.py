@@ -22,10 +22,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from sqlalchemy import create_engine, text  # noqa: E402
+from sqlalchemy import create_engine, text
 
-#: Column order per table.  Mirrors the CREATE TABLE statements below, which in
-#: turn mirror ``backend/app/db.py``.
+
 TABLES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("analyzer_current", ("id", "generation", "source_version", "model_version")),
     ("analyzer_models", ("version", "created_at", "payload")),
@@ -37,7 +36,7 @@ TABLES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("analyzer_service_index", ("generation", "service_id", "customer_id", "status")),
 )
 
-#: JSON-valued columns need the object serialised, everything else is a literal.
+
 JSON_COLUMNS = {"payload", "summary"}
 
 DDL = """BEGIN;
@@ -129,14 +128,13 @@ CREATE INDEX IF NOT EXISTS analyzer_customers_risk_idx ON analyzer_customers (ge
 CREATE INDEX IF NOT EXISTS analyzer_service_status_idx ON analyzer_service_index (generation, status, customer_id);
 """
 
-#: Rows per INSERT.  The original dump chunked large tables; matching that keeps
-#: the diff readable and avoids very long single statements.
+
 CHUNK = 100
 
 
 def quote(value, *, as_json: bool = False) -> str:
     if as_json:
-        # Drivers differ: SQLite hands back the stored text, PostgreSQL a dict.
+
         document = json.loads(value) if isinstance(value, str) else value
         literal = "'" + json.dumps(document, ensure_ascii=False, separators=(",", ":")).replace("'", "''") + "'"
         return literal + "::json"

@@ -19,10 +19,8 @@ def main() -> None:
         return
 
     if arguments.command == "list":
-        # Exists so an operator can confirm a created account is really stored,
-        # in the same file the API reads. Without it the only check available was
-        # find(), which takes a user id and silently returns None for a login —
-        # that mismatch once looked like data loss.
+
+
         rows = repository.all()
         print(f"Database: {repository.path}")
         if not rows:

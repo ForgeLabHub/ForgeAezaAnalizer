@@ -35,7 +35,7 @@ def test_demo_prefix_is_synthetic_even_on_a_real_looking_domain():
 
 
 def test_missing_or_malformed_address_is_not_flagged():
-    # Absent data is unknown, not evidence of fabrication.
+
     assert classify_email(None) == (False, None)
     assert classify_email("") == (False, None)
     assert classify_email("no-at-sign") == (False, None)

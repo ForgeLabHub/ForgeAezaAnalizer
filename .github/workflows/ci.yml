@@ -71,6 +71,4 @@ jobs:
         with:
           python-version: "3.12"
       - name: Check docs against the code
-        # Fails on broken relative links, unknown AEZA_* variables, documented
-        # routes missing from openapi.json, or a secret-looking value in docs.
         run: python backend/scripts/check_docs.py

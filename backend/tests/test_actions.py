@@ -83,7 +83,6 @@ def _first_code(client, headers, customer_id=5) -> str:
     return customer["recommendations"][0]["code"]
 
 
-# ------------------------------------------------------------------ happy path
 def test_confirm_action_round_trip(act_client, act_headers):
     """The full demo loop: risk -> AI explains -> human confirms -> stored."""
 
@@ -134,8 +133,7 @@ def test_action_survives_recalculation(act_client, act_headers):
     action_id = act_client.post("/api/v1/actions", headers=act_headers,
                                 json={"customerId": 5, "code": code}).json()["id"]
 
-    # A model change republishes the analytics generation; the action is keyed by
-    # customer, so it must remain visible afterwards.
+
     changed = act_client.patch("/api/v1/model/settings", headers=act_headers,
                                json={"weights": {"expiry_proximity": 2.0}})
     assert changed.status_code == 200, changed.text
@@ -144,7 +142,6 @@ def test_action_survives_recalculation(act_client, act_headers):
     assert action_id in [item["id"] for item in remaining]
 
 
-# ------------------------------------------------------------------ validation
 def test_unknown_recommendation_code_is_rejected(act_client, act_headers):
     response = act_client.post("/api/v1/actions", headers=act_headers,
                                json={"customerId": 5, "code": "totally_made_up"})
@@ -184,7 +181,6 @@ def test_missing_action_is_404(act_client, act_headers):
                             json={"status": "done"}).status_code == 404
 
 
-# ---------------------------------------------------------------- access control
 def test_action_routes_require_authentication(act_client):
     assert act_client.get("/api/v1/actions").status_code == 401
     assert act_client.post("/api/v1/actions", json={"customerId": 5, "code": "x"}).status_code == 401
@@ -201,7 +197,6 @@ def test_actions_are_scoped_to_requested_customer(act_client, act_headers):
     assert {item["customerId"] for item in only5} == {5}
 
 
-# ------------------------------------------------------------- AI read-only
 def test_ai_tool_can_read_actions(act_client, act_headers):
     code = _first_code(act_client, act_headers)
     act_client.post("/api/v1/actions", headers=act_headers,
@@ -262,7 +257,6 @@ def test_ai_chat_does_not_create_actions(act_client, act_headers):
     assert len(after) == len(before)
 
 
-# ----------------------------------------------------------------- empty data
 def test_actions_api_is_empty_but_valid_without_data(actions_settings, tmp_path):
     """No dataset: the endpoint returns an empty list, not an error."""
 
@@ -270,7 +264,7 @@ def test_actions_api_is_empty_but_valid_without_data(actions_settings, tmp_path)
         headers = _headers(client)
         payload = client.get("/api/v1/actions", headers=headers).json()
         assert payload["items"] == []
-        # Creating an action for a non-existent customer must fail cleanly.
+
         assert client.post("/api/v1/actions", headers=headers,
                            json={"customerId": 1, "code": "overdue_renewal"}).status_code == 404
 
@@ -281,7 +275,6 @@ def test_ai_explains_customer_with_no_confirmed_actions(act_client, act_headers)
     assert response.json()["answer"]["summary"]
 
 
-# --------------------------------------------------------------- provider error
 class _BrokenProvider(MockProvider):
     def generate(self, **kwargs):
         from backend.app.ai.providers.base import ProviderError

@@ -191,11 +191,8 @@ class TelegramService:
                         challenge.consumed_at = now
                     failure = "Неверный код"
                 else:
-                    # Claim the code atomically. ``with_for_update`` is a no-op on
-                    # SQLite, so two concurrent verifications could both pass the
-                    # check above and both link the account. A conditional UPDATE
-                    # whose rowcount must be exactly 1 makes consumption a
-                    # compare-and-set: the loser sees 0 and is refused.
+
+
                     claimed = session.execute(
                         TelegramOtpRow.__table__.update()
                         .where(TelegramOtpRow.id == challenge.id, TelegramOtpRow.consumed_at.is_(None))
@@ -586,9 +583,8 @@ class TelegramService:
         for service in state.source.get("services", []):
             if service.get("status") != "active" or service.get("autoProlong") is not True:
                 continue
-            # An unknown renewal time is not a renewal time: a service without a
-            # parseable ``expiresAt`` cannot be scheduled, so it is skipped
-            # rather than crashing the whole sync (unknown != zero).
+
+
             raw_expiry = service.get("expiresAt")
             if not raw_expiry:
                 continue
@@ -702,9 +698,8 @@ class TelegramService:
 
     @staticmethod
     def _notification_text(service: dict, interval_days: int, expires_at: datetime) -> str:
-        # The expiry comes from the queued row, which is the value the reminder
-        # was scheduled against; the source is only consulted for the display
-        # name and price.
+
+
         date_text = expires_at.astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
         price = service.get("price")
         amount = f"{price // 100}.{price % 100:02d} €" if price is not None else "сумма неизвестна"
@@ -872,7 +867,7 @@ class TelegramService:
             logger.info("telegram reply skipped: %s", exc)
         except DeliveryError as exc:
             logger.warning("telegram reply failed: %s", exc)
-        except Exception:  # noqa: BLE001 - a reply must never break update handling
+        except Exception:
             logger.exception("unexpected telegram reply failure")
         return ""
 

@@ -46,11 +46,7 @@ from .risk import (
 )
 from .schema import Snapshot
 
-#: Bumped whenever the scoring algorithm changes, so the platform recalculates
-#: stored results instead of serving numbers produced by older code.
-#: 1.3.1 clamps every weighted feature to [0, 1] and drops deprecated factors
-#: from the sum. 1.4.0 adds the provenance and per-customer horizon fields, which
-#: only appear once a generation is recomputed.
+
 MODEL_VERSION = "aeza-heuristic-1.4.0"
 
 STATUS_LABELS = {
@@ -133,8 +129,8 @@ def _factor_info() -> list[dict]:
             "normalization": factor.normalization,
             "defaultWeight": float(factor.default_weight),
             "missingDataBehaviour": factor.missing_data_behaviour,
-            # Additive: the platform schema allows extra fields, and this lets a
-            # client tell a live rating factor from a diagnostic one.
+
+
             "deprecated": factor.deprecated,
         }
         for factor in FACTORS
@@ -170,9 +166,8 @@ class AézaAnalyticsModule:
                 "weights": {k: float(v) for k, v in DEFAULT_WEIGHTS.items()},
                 "lowMax": 34,
                 "mediumMax": 64,
-                # Without this the platform's SettingsPayload would fill the
-                # field with its own default and the approved 90-day window
-                # would silently become "whole snapshot" on a fresh database.
+
+
                 "failedRenewalWindowDays": FAILED_RENEWAL_WINDOW_DAYS,
             },
             factors=tuple(_factor_info()),
@@ -188,8 +183,8 @@ class AézaAnalyticsModule:
         """
 
         risk_settings = _settings_from_payload(settings)
-        # Re-read through the same constructor the scoring uses, so a bad
-        # combination fails here (HTTP 422) rather than mid-calculation.
+
+
         validated = RiskSettings(
             horizon_days=risk_settings.horizon_days,
             weights=risk_settings.weights,
@@ -210,7 +205,7 @@ class AézaAnalyticsModule:
     def calculate(self, state: State) -> Analysis:
         try:
             snapshot = Snapshot.model_validate(state.source)
-        except Exception as exc:  # noqa: BLE001 - surfaced as InvalidInput to the platform
+        except Exception as exc:
             raise InvalidInput(f"снимок не прошёл разбор: {exc}") from exc
 
         settings = _settings_from_payload(state.settings)
@@ -380,8 +375,8 @@ class AézaAnalyticsModule:
                         }
                         for renewal in customer_exposure.renewals
                     ],
-                    # Additive fields the platform preserves: concentration and
-                    # the operational backlog, kept apart from the score itself.
+
+
                     "highRiskShare": round(customer_risk.high_risk_share, 4),
                     "horizonDays": settings.horizon_days,
                     "overdueServiceCount": customer_risk.overdue_service_count,
@@ -427,9 +422,8 @@ class AézaAnalyticsModule:
                 "historicalReplenishedCents": historical_total,
                 "historicalReplenishedEur": str(cents_to_eur(historical_total)),
             },
-            # Provenance of the loaded base. Derived from the addresses, so a
-            # real customer base reports "real" and the synthetic demo cohort
-            # can never be mistaken for Aéza customers.
+
+
             "provenance": summarize_provenance(account.email for account in snapshot.accounts),
             "topRiskReasons": [
                 {"label": label, "count": count}

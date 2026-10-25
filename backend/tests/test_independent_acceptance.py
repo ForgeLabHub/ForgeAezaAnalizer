@@ -28,8 +28,7 @@ from backend.tests.conftest import make_test_auth_settings
 ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT = ROOT / "dataset" / "data.json"
 
-#: Pinned reference instant (``AEZA_AS_OF``); the snapshot's own max timestamp is
-#: 2026-10-19T14:35:53Z, which the engine rounds up to the top of the hour.
+
 AS_OF = "2026-10-19T15:00:00+00:00"
 HORIZON_DAYS = 30
 OPEN_STATUSES = {"active", "prolong_wait", "suspended"}
@@ -52,11 +51,11 @@ def raw():
 @pytest.fixture(scope="module")
 def client(tmp_path_factory):
     tmp = tmp_path_factory.mktemp("acceptance")
-    # The factory is read from the environment, not a Settings field.
+
     previous = os.environ.get("AEZA_ANALYTICS_FACTORY")
     os.environ["AEZA_ANALYTICS_FACTORY"] = "backend.app.domain.module:create"
-    # Authentication lives in the standalone module, so the app is built with
-    # its own auth settings and the shared test credential.
+
+
     settings = Settings(
         database_url=f"sqlite:///{(tmp / 'acc.db').as_posix()}",
         seed_demo_data=True,
@@ -102,7 +101,7 @@ def test_revenue_at_risk_matches_independent_recomputation(raw, client):
     now = _parse(AS_OF)
     horizon_end = now + timedelta(days=HORIZON_DAYS)
 
-    # Scores come from the engine; the *money formula* is recomputed here.
+
     scores: dict[int, float] = {}
     listing = client.get("/api/v1/customers", headers=headers).json()
     for item in listing["items"]:
@@ -148,7 +147,7 @@ def test_customer_five_score_matches_independent_weighted_sum(client):
         assert score == service["riskScore"], (service["id"], score, service["riskScore"])
         best = service["riskScore"] if best is None else max(best, score)
 
-    # Customer risk is the maximum over forecastable services, not the average.
+
     assert best == 71.4
     assert detail["riskScore"] == best
 
@@ -169,9 +168,9 @@ def test_missing_signal_lowers_confidence_not_risk(raw, client):
             if factor["available"]:
                 continue
             seen_unavailable = True
-            # An unavailable factor never adds to the numerator...
+
             assert factor["contribution"] == 0
-            # ...and the omission is surfaced rather than hidden.
+
             assert factor["reason"], factor["key"]
         if service["eligibleForForecast"]:
             assert service["missingData"] is not None

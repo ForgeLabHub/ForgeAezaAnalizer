@@ -14,8 +14,7 @@ logger = logging.getLogger("aeza.telegram")
 
 router = APIRouter(prefix="/telegram", tags=["telegram"])
 
-#: Telegram updates are small. Anything larger is not a real update, and reading
-#: it into memory would let an unauthenticated caller spend the server's RAM.
+
 MAX_UPDATE_BYTES = 128 * 1024
 
 
@@ -79,16 +78,16 @@ async def webhook(
 
     update_id = update.get("update_id")
     if isinstance(update_id, int) and not runtime.telegram.claim_update(update_id):
-        # A redelivery of an update already handled. Acknowledge without running
-        # the business action again, so a retried /start cannot relink a chat.
+
+
         logger.info("ignoring a redelivered telegram update")
         return Response(status_code=200, content=b"ok")
 
     try:
         result = runtime.telegram.handle_update(update)
     except Exception:
-        # Never leak a traceback to Telegram, and never 5xx (which would make it
-        # retry forever). Log server-side and acknowledge.
+
+
         logger.exception("telegram update handling failed")
         return Response(status_code=200, content=b"ok")
     return result
@@ -128,7 +127,7 @@ def diagnostics(runtime: RuntimeDep, user: UserDep):
                 "pendingUpdateCount": info.get("pending_update_count"),
                 "lastErrorMessage": info.get("last_error_message"),
             }
-    except Exception as exc:  # noqa: BLE001 - diagnostics must never raise
+    except Exception as exc:
         payload["detail"] = f"Telegram API недоступен: {type(exc).__name__}"
     return payload
 

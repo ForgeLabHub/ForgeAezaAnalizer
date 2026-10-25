@@ -59,10 +59,6 @@ def _transport(handler) -> httpx.MockTransport:
     return httpx.MockTransport(handler)
 
 
-# --------------------------------------------------------------------------- #
-# Configuration guards
-# --------------------------------------------------------------------------- #
-
 def test_settings_reject_plain_http_provider_url():
     with pytest.raises(ValueError, match="SMTP_BZ_API_URL"):
         _settings(smtp_bz_api_url="http://api.smtp.bz/v1/smtp/send")
@@ -88,10 +84,6 @@ def test_email_configured_requires_key_and_from():
     assert _settings(smtp_bz_from_email="").email_configured is False
 
 
-# --------------------------------------------------------------------------- #
-# Client unit tests
-# --------------------------------------------------------------------------- #
-
 def test_send_refuses_when_unconfigured():
     with pytest.raises(email_integration.EmailDisabled):
         email_integration.send_email(
@@ -115,7 +107,7 @@ def test_send_posts_the_documented_contract():
 
     assert seen["method"] == "POST"
     assert seen["url"] == "https://api.smtp.bz/v1/smtp/send"
-    assert seen["auth"] == API_KEY  # verbatim, no Bearer prefix
+    assert seen["auth"] == API_KEY
     assert "application/json" in seen["content_type"]
     assert seen["body"] == {
         "from": FROM_EMAIL,
@@ -189,8 +181,7 @@ def test_send_treats_an_unreadable_body_as_a_failure():
         return httpx.Response(200, content=b"<html>not json</html>",
                               headers={"Content-Type": "text/html"})
 
-    # A 2xx with a non-JSON body is still the provider's acceptance, so it is a
-    # confirmed send with no message id — never a silent crash.
+
     result = email_integration.send_email(
         _settings(), to="recipient@example.test", subject="s", html="<b>x</b>",
         transport=_transport(handler))
@@ -209,8 +200,8 @@ def test_send_rejects_an_unexpected_2xx_body_that_denies_the_send():
 
 
 def test_send_surfaces_the_provider_reason_from_a_400_refusal():
-    # This is the exact shape SMTP.BZ returned for an unverified sender domain:
-    # {"result": false, "errors": {"message": "Domain ... not verified ..."}}.
+
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(400, json={
             "result": False,
@@ -220,7 +211,7 @@ def test_send_surfaces_the_provider_reason_from_a_400_refusal():
         email_integration.send_email(
             _settings(), to="recipient@example.test", subject="s", html="<b>x</b>",
             transport=_transport(handler))
-    # The operator-actionable reason must reach the caller, not be swallowed.
+
     assert "not verified" in str(error.value)
     assert "pixel-minds.ru" in str(error.value)
 
@@ -237,8 +228,8 @@ def test_send_treats_a_2xx_with_an_errors_body_as_a_refusal():
 
 
 def test_send_surfaces_field_level_validation_errors():
-    # SMTP.BZ answers a malformed request with per-field messages, e.g.
-    # {"result": false, "errors": {"to": "Invalid or missing to address"}}.
+
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(400, json={
             "result": False,
@@ -264,8 +255,8 @@ def test_send_never_calls_the_provider_after_a_timeout():
         email_integration.send_email(
             _settings(), to="recipient@example.test", subject="s", html="<b>x</b>",
             transport=_transport(handler))
-    # Exactly one attempt: a timeout has an unknown outcome, so the client must
-    # not blind-retry and risk a duplicate letter.
+
+
     assert calls["n"] == 1
 
 
@@ -302,7 +293,7 @@ def test_send_reports_a_transport_failure_as_unavailable():
 
 
 def test_send_rejects_an_invalid_recipient_before_calling_the_provider():
-    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+    def handler(request: httpx.Request) -> httpx.Response:
         raise AssertionError("provider must not be called for an invalid recipient")
 
     with pytest.raises(email_integration.EmailRejected):
@@ -312,7 +303,7 @@ def test_send_rejects_an_invalid_recipient_before_calling_the_provider():
 
 
 def test_send_rejects_header_injection_in_the_subject():
-    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+    def handler(request: httpx.Request) -> httpx.Response:
         raise AssertionError("provider must not be called for an injected header")
 
     with pytest.raises(email_integration.EmailRejected, match="перевод строки"):
@@ -347,15 +338,9 @@ def test_describe_never_leaks_the_api_key():
     assert API_KEY not in json.dumps(described, ensure_ascii=False)
 
 
-# --------------------------------------------------------------------------- #
-# OTP adapter (the interface the Telegram flow already calls)
-# --------------------------------------------------------------------------- #
-
 def test_otp_adapter_matches_the_telegram_provider_contract():
-    # ``EmailProvider`` is a plain ``Protocol`` (not runtime_checkable) and lives
-    # in the Telegram module, which this work must not edit, so the contract is
-    # asserted structurally: the method TelegramService calls must exist with the
-    # exact signature it invokes.
+
+
     import inspect
 
     provider = email_integration.SmtpBzEmailProvider(_settings())
@@ -401,8 +386,8 @@ def test_otp_adapter_maps_a_provider_failure_to_delivery_error_without_the_code(
 
 
 def test_otp_transport_is_wired_only_when_smtp_bz_is_configured():
-    # With SMTP.BZ configured, ``create_app`` wires the adapter behind the
-    # existing ``EmailProvider`` contract, so OTP can actually be sent.
+
+
     from backend.app.integrations.email import SmtpBzEmailProvider
 
     app = create_app(_settings(), FixtureAnalytics())
@@ -411,8 +396,8 @@ def test_otp_transport_is_wired_only_when_smtp_bz_is_configured():
 
 
 def test_otp_stays_disabled_when_smtp_bz_is_not_configured():
-    # Without a key the service keeps its unconfigured stub: OTP must not turn
-    # itself on and must never pretend to have sent.
+
+
     from backend.app.telegram.providers import UnconfiguredEmailProvider
 
     app = create_app(_settings(smtp_bz_api_key="", smtp_bz_from_email=""), FixtureAnalytics())
@@ -420,14 +405,10 @@ def test_otp_stays_disabled_when_smtp_bz_is_not_configured():
         assert isinstance(app.state.runtime.telegram.email_provider, UnconfiguredEmailProvider)
 
 
-# --------------------------------------------------------------------------- #
-# HTTP route tests against a real loopback provider
-# --------------------------------------------------------------------------- #
-
 class _ProviderHandler(BaseHTTPRequestHandler):
     """Minimal SMTP.BZ stand-in that records what it was sent."""
 
-    def do_POST(self) -> None:  # noqa: N802 - http.server API
+    def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length)
         self.server.requests.append({"path": self.path, "headers": dict(self.headers), "body": body})
@@ -439,7 +420,7 @@ class _ProviderHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def log_message(self, *args) -> None:  # keep test output quiet
+    def log_message(self, *args) -> None:
         return
 
 
@@ -498,7 +479,7 @@ def test_status_requires_authentication(client):
 
 
 def test_test_route_requires_authentication(client, provider):
-    # An anonymous caller must not be able to trigger a send.
+
     response = client.post("/api/v1/email/test", json={"to": "ops@example.test", "confirm": True})
     assert response.status_code == 401
     assert provider.requests == []
@@ -523,14 +504,13 @@ def test_test_route_refuses_without_explicit_confirmation(email_client):
 def test_test_route_rejects_a_malformed_recipient_before_the_provider(email_client):
     response = email_client.post("/api/v1/email/test", json={"to": "not-an-address", "confirm": True})
     assert response.status_code == 422
-    # The provider must never be asked to validate a shape-invalid address.
+
     assert response.status_code != 502
 
 
 def test_test_route_cannot_override_the_provider_url(email_client, provider):
-    # A caller tries to smuggle in a provider endpoint (SSRF attempt); the
-    # request model forbids unknown fields, so this is refused at the edge and
-    # no request reaches any provider.
+
+
     response = email_client.post("/api/v1/email/test", json={
         "to": "ops@example.test", "confirm": True, "apiUrl": "http://169.254.169.254/latest/meta-data"})
     assert response.status_code == 422
@@ -560,8 +540,8 @@ def test_status_response_never_contains_the_key_or_authorization(email_client):
 
 
 def test_send_and_refusal_leave_no_secret_in_the_logs(email_client, provider, caplog):
-    # A successful send and a provider refusal both go through the app; neither
-    # the API key nor the Authorization header may appear in captured logs.
+
+
     import logging
 
     with caplog.at_level(logging.DEBUG):

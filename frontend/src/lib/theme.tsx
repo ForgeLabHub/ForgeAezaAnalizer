@@ -4,13 +4,11 @@ export type Theme = 'light' | 'dark'
 
 const STORAGE_KEY = 'aeza-theme'
 
-/** Light is the primary theme; dark is used only if chosen or preferred by the OS. */
 export function getInitialTheme(): Theme {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored === 'light' || stored === 'dark') return stored
   } catch {
-    /* storage unavailable — fall through */
   }
   return 'light'
 }
@@ -48,7 +46,6 @@ export function useTheme() {
       try {
         localStorage.setItem(STORAGE_KEY, next)
       } catch {
-        /* ignore */
       }
       return next
     })

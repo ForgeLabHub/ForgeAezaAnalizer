@@ -71,7 +71,7 @@ def _describe_http_error(exc: HTTPError, token: str) -> str:
         payload = json.loads(body)
         if isinstance(payload, dict):
             detail = str(payload.get("description") or "")
-    except Exception:  # noqa: BLE001 - the body may be missing or not JSON
+    except Exception:
         detail = ""
     detail = _sanitize(detail, token)
     if detail:
@@ -139,7 +139,7 @@ class TelegramBotApi:
                         logger.warning("telegram %s retryable failure (%s); retrying in %ss", method, summary, delay)
                         self._sleep(delay)
                         continue
-                # Permanent, or retries exhausted: raise a token-free error.
+
                 raise DeliveryError(f"Telegram API error: {summary}") from None
             except (URLError, TimeoutError, OSError) as exc:
                 last_error = _sanitize(str(exc), self._token) or type(exc).__name__

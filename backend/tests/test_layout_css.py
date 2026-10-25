@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CSS = (ROOT / "frontend" / "src" / "styles.css").read_text(encoding="utf-8")
 
-#: Grids whose content can be wider than their track (tables, nav, cards).
+
 SHRINK_SENSITIVE = (".grid-2", ".grid-main")
 
 
@@ -43,8 +43,8 @@ def test_grids_use_a_shrink_safe_first_track():
             if not cols:
                 continue
             value = cols.group(1).strip()
-            # Remove every minmax(...) wrapper, then any remaining "1fr" is a
-            # bare track: minmax(auto, 1fr) cannot shrink below its content.
+
+
             remainder = re.sub(r"minmax\([^)]*\)", "", value)
             assert "1fr" not in remainder, (
                 f"{selector} uses a bare 1fr track ({value!r}); use minmax(0, 1fr) "

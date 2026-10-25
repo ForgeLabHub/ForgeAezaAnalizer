@@ -15,7 +15,7 @@ def test_half_up_not_bankers():
     assert round_cents(Decimal("0.5")) == 1
     assert round_cents(Decimal("1.5")) == 2
     assert round_cents(Decimal("2.5")) == 3
-    # The built-in disagrees on halves; this is why it is banned for money.
+
     assert round(2.5) == 2
 
 

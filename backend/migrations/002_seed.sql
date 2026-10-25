@@ -1,5 +1,3 @@
--- Seed data generated from the Aéza source snapshot (data.json).
--- Money values are integer eurocents, exactly as stored in the source.
 BEGIN;
 
 INSERT INTO public.accounts (id, email, balance, "withdrawBalance", "totalReplenished", "bonusBalance", "bonusState") VALUES
@@ -148,7 +146,6 @@ INSERT INTO public.transactions (id, amount, status, "performedAt", "createdAt",
     (99, 194, 'not_performed', NULL, '2026-08-09T15:01:00.000Z', 'prolong', 9),
     (100, 222, 'performed', '2025-09-14T15:02:04.000Z', '2025-09-14T15:02:00.000Z', 'prolong', 10);
 
--- Keep the identity sequences ahead of the explicit ids above.
 SELECT setval(pg_get_serial_sequence('public.accounts','id'), (SELECT MAX(id) FROM public.accounts));
 SELECT setval(pg_get_serial_sequence('public.services','id'), (SELECT MAX(id) FROM public.services));
 SELECT setval(pg_get_serial_sequence('public.transactions','id'), (SELECT MAX(id) FROM public.transactions));

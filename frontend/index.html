@@ -3,19 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!--
-      App icon: the brand symbol "é" in the monochrome treatment the Aéza brand
-      book defines for it (white on black, black on white). The SVG adapts to the
-      browser's colour scheme; the PNG/ICO are the raster fallbacks. The glyph is
-      the official path from docs/deck/brand/icon_light.svg, reused verbatim.
-    -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="256x256" href="/favicon.png" />
     <link rel="icon" type="image/x-icon" sizes="16x16 32x32 48x48" href="/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#ff6b00" />
     <script>
-      // Apply the saved theme before first paint to avoid a light flash in dark mode.
       try {
         var t = localStorage.getItem('aeza-theme')
         document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light'
@@ -25,12 +18,6 @@
     </script>
     <meta name="description" content="Aéza Sentinel — анализ риска оттока клиентов и оценка выручки под риском" />
     <title>Aéza · Sentinel</title>
-    <!--
-      Telegram Mini App SDK. Loaded on every page (it is inert outside Telegram)
-      so `window.Telegram.WebApp.initData` exists when the Mini App screen opens
-      inside Telegram. Without it the client cannot obtain the signed initData and
-      the Mini App can never authenticate.
-    -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
   <body>

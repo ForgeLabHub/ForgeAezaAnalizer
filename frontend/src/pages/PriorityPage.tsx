@@ -102,7 +102,6 @@ export default function PriorityPage() {
     if (sortBy !== col) return null
     if (col === 'urgency') return <span className="sort-ind">▲</span>
     if (col === 'id') return <span className="sort-ind">{sortDir === 'asc' ? '▲' : '▼'}</span>
-    // Backend orders riskScore and exposure descending when sortDir === 'asc'.
     return <span className="sort-ind">{sortDir === 'asc' ? '▼' : '▲'}</span>
   }
 

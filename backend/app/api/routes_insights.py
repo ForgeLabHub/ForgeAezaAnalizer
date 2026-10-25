@@ -64,8 +64,8 @@ def compare_scenario(payload: ScenarioRequest, runtime: RuntimeDep, user: UserDe
     try:
         overrides = insights.ScenarioDefinition(payload.name, payload.overrides).cleaned()
         candidate_settings = insights.apply_overrides(baseline_settings, overrides)
-        # Validated by the same code path the live product uses, so a scenario
-        # cannot introduce a configuration the product would reject.
+
+
         candidate_settings = runtime.calculation.settings({}, candidate_settings, reset=False)
     except (insights.ScenarioError, InvalidInput, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

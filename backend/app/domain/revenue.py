@@ -34,12 +34,9 @@ class RenewalExposure:
     in_horizon: bool
 
 
-#: Horizons reported side by side, in days.
 HORIZONS: tuple[int, ...] = (7, 30, 90)
 
-#: A ``prolong_wait`` service that has been awaiting payment longer than this
-#: should already have moved to ``deleted`` per the case brief.  Kept as a
-#: named constant so the diagnostic and its tests share one definition.
+
 PROLONG_WAIT_GRACE_DAYS = 5
 
 
@@ -58,8 +55,8 @@ class OverdueExposure:
     expired_at: datetime
     days_overdue: float
     amount_cents: int
-    #: True when a ``prolong_wait`` service is past the documented grace period,
-    #: i.e. the snapshot state contradicts the stated lifecycle.
+
+
     lifecycle_inconsistent: bool
 
 
@@ -79,11 +76,11 @@ class CustomerExposure:
     upcoming_renewals_cents: int
     revenue_at_risk_cents: int
     renewals: list[RenewalExposure] = field(default_factory=list)
-    #: Per-horizon breakdown keyed by day count (7 / 30 / 90).
+
     horizons: dict[int, HorizonExposure] = field(default_factory=dict)
     overdue: list[OverdueExposure] = field(default_factory=list)
     overdue_operational_cents: int = 0
-    #: Number of services whose state contradicts the documented lifecycle.
+
     lifecycle_inconsistent_count: int = 0
 
 

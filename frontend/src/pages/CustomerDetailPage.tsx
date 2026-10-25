@@ -197,7 +197,6 @@ export default function CustomerDetailPage() {
     if (customer.overdueDetails && customer.overdueDetails.length > 0) {
       return customer.overdueDetails
     }
-    // Fallback derivation when reading older stored snapshots without overdueDetails.
     return customer.services
       .filter((s) => s.eligibleForForecast && s.daysToExpiry !== null && s.daysToExpiry < 0)
       .map((s) => {

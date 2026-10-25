@@ -1,21 +1,4 @@
 #!/usr/bin/env bash
-#
-# Aéza Analyzer — restore a backup produced by scripts/backup.sh.
-#
-#   ./scripts/restore.sh <backup_dir>          # dry run: prints the plan
-#   ./scripts/restore.sh <backup_dir> --yes    # apply
-#
-# Applying is destructive: it replaces the analytics database and the auth
-# database in the running Compose stack. Without --yes it changes nothing, so it
-# can be run first to see exactly what would happen.
-#
-# Restore is a procedure, not a command:
-#
-#   1. ./scripts/backup.sh                 # capture the current state first
-#   2. ./scripts/restore.sh <dir>          # dry run
-#   3. ./scripts/restore.sh <dir> --yes    # apply
-#   4. curl -fsS localhost:8000/health     # verify the process
-#   5. log in and open the dashboard       # verify the data, not just the process
 
 set -euo pipefail
 
@@ -57,17 +40,11 @@ if [ "$CONFIRM" != "--yes" ]; then
   exit 0
 fi
 
-# --- analytics database ---------------------------------------------------- #
-# --single-transaction keeps the restore atomic: a failure leaves the previous
-# schema in place rather than a half-loaded one.
 echo "Restoring analytics database..."
 docker compose exec -T db sh -c \
   'psql --single-transaction --set ON_ERROR_STOP=1 -U "${POSTGRES_USER:-aeza}" -d "${POSTGRES_DB:-aeza}"' \
   < "$ANALYTICS_DUMP"
 
-# --- auth database --------------------------------------------------------- #
-# Copied into the container, then moved over the live file with the WAL/SHM
-# sidecars removed first: a stale -wal would shadow the restored database.
 echo "Restoring auth database..."
 docker compose cp "$AUTH_DB" "api:/tmp/auth-restore.sqlite3" >/dev/null
 docker compose exec -T api python - "$AUTH_PATH_IN_CONTAINER" <<'PY'

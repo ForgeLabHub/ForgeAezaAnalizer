@@ -16,36 +16,33 @@ from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.oxml.ns import qn
 from pptx.util import Emu, Inches, Pt
 
-# ---------------------------------------------------------------- palette ---
-# Aéza house colours, read from aeza.net: near-black canvas, orange accent.
-# Contrast on the two canvases was checked before choosing each value:
-#   ORANGE on INK 6.51:1 · ORANGE_DEEP on PAPER 4.75:1 · DIM on INK 5.67:1
-INK = RGBColor(0x13, 0x13, 0x13)        # Aéza canvas black
-INK_2 = RGBColor(0x1F, 0x1F, 0x1F)      # dark background level two
-PAPER = RGBColor(0xF4, 0xF4, 0xF4)      # Aéza light surface
+
+INK = RGBColor(0x13, 0x13, 0x13)
+INK_2 = RGBColor(0x1F, 0x1F, 0x1F)
+PAPER = RGBColor(0xF4, 0xF4, 0xF4)
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-TEXT = RGBColor(0x1A, 0x1A, 0x1A)       # primary text
-MUTED = RGBColor(0x66, 0x66, 0x66)      # secondary text on light backgrounds
-DIM = RGBColor(0x8E, 0x8E, 0x8E)        # secondary text on dark backgrounds
-CORAL = RGBColor(0xFF, 0x6B, 0x00)      # product accent (--brand-500)
-CORAL_DEEP = RGBColor(0xB8, 0x4A, 0x00)  # same accent, readable on light
-MINT = RGBColor(0x83, 0xCD, 0xB7)       # neutral positive accent
-LINE = RGBColor(0xE1, 0xE1, 0xE1)       # hairlines
+TEXT = RGBColor(0x1A, 0x1A, 0x1A)
+MUTED = RGBColor(0x66, 0x66, 0x66)
+DIM = RGBColor(0x8E, 0x8E, 0x8E)
+CORAL = RGBColor(0xFF, 0x6B, 0x00)
+CORAL_DEEP = RGBColor(0xB8, 0x4A, 0x00)
+MINT = RGBColor(0x83, 0xCD, 0xB7)
+LINE = RGBColor(0xE1, 0xE1, 0xE1)
 LINE_DARK = RGBColor(0x33, 0x33, 0x33)
 
 FONT = "Manrope"
 FONT_DISPLAY = "Manrope"
 
-# 16:9 canvas
+
 SW = Inches(13.333)
 SH = Inches(7.5)
-M = Inches(0.72)          # page margin
+M = Inches(0.72)
 CONTENT_W = SW - 2 * M
 
-# ------------------------------------------------------------- measuring ---
+
 _FONT_CACHE: dict[tuple[int, int], ImageFont.FreeTypeFont] = {}
-# Manrope ships with the deck (fonts/) so the build is reproducible anywhere.
-# An installed copy is used as a fallback if the bundled files are missing.
+
+
 _FONT_DIRS = [
     Path(__file__).resolve().parent / "fonts",
     Path.home() / ".local/share/fonts/manrope",
@@ -108,7 +105,6 @@ def line_height_in(pt: float, spacing: float = 1.16) -> float:
     return pt * spacing / 72.0
 
 
-# -------------------------------------------------------------- primitives ---
 def solid(shape, color: RGBColor) -> None:
     shape.fill.solid()
     shape.fill.fore_color.rgb = color
@@ -292,7 +288,7 @@ def placeholder(slide, x, y, w, h, label, sub="ЗАПОЛНИТЬ ПЕРЕД З�
     """Neutral outlined box marking a value the team must fill in."""
     line_color = line_color or RGBColor(0xC2, 0xC9, 0xD0)
     box = rect(slide, x, y, w, h, fill=fill, line=line_color, line_w=0.9)
-    box.line.dash_style = 4  # dash
+    box.line.dash_style = 4
     tf = box.text_frame
     tf.word_wrap = True
     tf.vertical_anchor = MSO_ANCHOR.MIDDLE

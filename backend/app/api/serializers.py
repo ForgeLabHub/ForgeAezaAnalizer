@@ -50,8 +50,8 @@ def factor_payload(factor) -> dict:
         "contribution": round(factor.contribution, 4),
         "available": factor.available,
         "reason": factor.reason,
-        # Additive: existing consumers ignore it, new ones can tell a live
-        # rating factor from a diagnostic one kept for compatibility.
+
+
         "deprecated": factor.deprecated,
     }
 

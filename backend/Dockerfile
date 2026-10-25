@@ -15,22 +15,14 @@ COPY backend/auth ./backend/auth
 COPY backend/config.py backend/database.py backend/users.py ./backend/
 COPY backend/app ./backend/app
 COPY backend/scripts ./backend/scripts
-# The standalone auth module reads its DDL from this file at startup.
 COPY db/schema.sql ./backend/auth_schema.sql
-# Official baseline and presentation snapshot with 30 additional customers.
 COPY dataset/data.json ./dataset/data.json
 COPY dataset/presentation.json ./dataset/presentation.json
-# Local documentation corpus for the AI Analyst's RAG retrieval.
 COPY docs ./docs
 
-# The AI Analyst grounds its answers in docs/ via a prebuilt RAG index
-# (AEZA_AI_DOCS_PATH / AEZA_AI_RAG_INDEX_PATH). Ship the docs and build the
-# index here: without them the retriever silently returns nothing and answers
-# lose their grounding.
 RUN mkdir -p /app/backend/data \
     && python -m backend.app.ai.rag --docs /app/docs --out /app/backend/data/rag_index.json
 
-# Run as an unprivileged user; auth storage is mounted under /app/db.
 RUN useradd --create-home --uid 10001 aeza \
     && mkdir -p /app/data /app/db \
     && chown -R aeza:aeza /app

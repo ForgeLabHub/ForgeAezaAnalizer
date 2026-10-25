@@ -104,7 +104,7 @@ class Client:
         except urllib.error.HTTPError as exc:
             exc.read()
             return exc.code, time.perf_counter() - started, None
-        except Exception as exc:  # noqa: BLE001 - reported as an error sample
+        except Exception as exc:
             return 0, time.perf_counter() - started, type(exc).__name__
 
 
@@ -149,7 +149,7 @@ class ContainerSampler(threading.Thread):
                     self.samples.append(
                         {"name": name, "cpu_percent": cpu, "mem": mem, "mem_percent": mem_pct}
                     )
-            except Exception:  # noqa: BLE001 - sampling is best-effort
+            except Exception:
                 pass
             self.stop_event.wait(self.interval)
 
@@ -179,8 +179,7 @@ def main() -> int:
     client = Client(args.base_url)
     client.login(args.email, args.password)
 
-    # A recommendation code must exist for the addressed customer, otherwise the
-    # API correctly answers 404. Discover one rather than assuming a fixed code.
+
     playbook_code = "overdue_renewal"
     status, _, _ = client.call("GET", f"/api/v1/customers/{args.customer_id}/recommendations")
     if status == 200:

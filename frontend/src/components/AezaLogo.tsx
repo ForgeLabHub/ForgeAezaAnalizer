@@ -1,23 +1,6 @@
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-/*
- * Letter-tile wordmark modelled on the aeza.ru header logo.
- *
- * At rest only the "é" keycap is visible. On hover the row slides and the
- * neighbouring keycaps fade in one by one, spelling "aéza". Timings mirror the
- * original (framer-motion variants on aeza.ru), reimplemented with plain CSS
- * transitions so no animation library is needed:
- *   row     margin   0.30s, delay 0.15s on enter
- *   a       fade/x   0.30s, delay 0.15s on enter
- *   é       scale 1 → 0.85 → 1 pulse on enter and (delayed) on leave
- *   z       fade/x   0.30s, delay 0.15s on enter / 0.20s on leave
- *   last a  fade/x   0.30s, delay 0.30s on enter
- *
- * Keycap colours come from CSS variables (--key-edge/--key-face/--key-glyph)
- * so the tiles follow the light/dark theme.
- */
-
 const KEY_EDGE =
   'M.312 10.443v14.185c0 2.107 0 3.16.177 4.035a8.894 8.894 0 0 0 6.948 6.948c.875.178 1.929.178 4.036.178h13.022c3.155 0 4.732 0 6.002-.439a8.005 8.005 0 0 0 4.953-4.953c.439-1.27.439-2.847.439-6.002V10.443c0-1.242 0-1.862-.062-2.384A8.894 8.894 0 0 0 28.042.274C27.52.212 26.899.212 25.657.212h-15.18c-3.048 0-4.572 0-5.783.473a6.893 6.893 0 0 0-3.909 3.91C.312 5.804.312 7.35.312 10.442Z'
 
@@ -27,7 +10,6 @@ const GLYPH_A =
 const GLYPH_E =
   'M17.281 28.092c3.9 0 6.529-1.899 7.144-4.824L20.381 23c-.441 1.2-1.57 1.827-3.028 1.827-2.187 0-3.572-1.447-3.572-3.798v-.01h10.737v-1.201c0-5.359-3.244-8.007-7.412-8.007-4.64 0-7.647 3.295-7.647 8.16 0 5 2.967 8.12 7.822 8.12Zm-3.5-9.782c.092-1.797 1.457-3.234 3.397-3.234 1.9 0 3.213 1.355 3.223 3.234h-6.62Zm1.652-8.325h3.09l3.13-4.67H17.61l-2.176 4.67Z'
 
-// "z" from the original 80×80 asset, rescaled into the shared 36×36 keycap grid.
 const GLYPH_Z = 'M10.18 27.7h13.41v-3.53h-7.6v-.11l7.33-9.43v-2.88H10.45v3.53h7.54v.11l-7.81 9.67v2.64Z'
 
 function Keycap({ glyph, accent }: { glyph: string; accent?: boolean }) {
@@ -42,7 +24,6 @@ function Keycap({ glyph, accent }: { glyph: string; accent?: boolean }) {
 
 export function AezaLogo({ to = '/', label = 'Aéza Sentinel' }: { to?: string; label?: string }) {
   const [hover, setHover] = useState(false)
-  // The "é" leave-pulse must not fire on first paint, only after a real hover.
   const [touched, setTouched] = useState(false)
   const rowRef = useRef<HTMLSpanElement>(null)
 
@@ -52,7 +33,6 @@ export function AezaLogo({ to = '/', label = 'Aéza Sentinel' }: { to?: string; 
   }
 
   function press() {
-    // Same click "squish" as aeza.ru: scale [1, .88, 1] over 0.35s.
     rowRef.current?.animate(
       [{ transform: 'scale(1)' }, { transform: 'scale(0.88)', offset: 0.35 }, { transform: 'scale(1)' }],
       { duration: 350, easing: 'ease-out' },
@@ -91,7 +71,6 @@ export function AezaLogo({ to = '/', label = 'Aéza Sentinel' }: { to?: string; 
   )
 }
 
-/** Static, fully spelled-out wordmark (used on the login screen). */
 export function AezaWordmark() {
   return (
     <span className="aeza-logo is-static" aria-label="Aéza">

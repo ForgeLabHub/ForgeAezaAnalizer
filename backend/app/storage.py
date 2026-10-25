@@ -10,9 +10,7 @@ from backend.app.domain import actions as actions_domain
 
 EMPTY_SOURCE = {"accounts": [], "services": [], "transactions": []}
 
-#: Allowed playbook workflow states. The lifecycle is intentionally small:
-#: a recommendation is new, being worked on, or done. "done" can be reopened
-#: because a retention action can be found to be premature.
+
 RECOMMENDATION_STATUSES = ("new", "in_progress", "done")
 
 
@@ -131,7 +129,7 @@ class Storage:
             row = session.get(ModelRow, analysis.model_version)
             return {"settings": row.payload, "updatedAt": row.created_at.isoformat(), **analysis.summary["version"]}
 
-    # ------------------------------------------------------- retention playbooks
+
     def recommendation_statuses(self, customer_id: int) -> dict[str, dict]:
         """Return the stored workflow status per recommendation code.
 
@@ -179,7 +177,7 @@ class Storage:
             elif dialect == "postgresql":
                 from sqlalchemy.dialects.postgresql import insert as dialect_insert
             else:
-                # Fall back to the portable path for any other backend.
+
                 row = session.get(RecommendationStatusRow, (customer_id, code))
                 if row is None:
                     session.add(RecommendationStatusRow(**values))
@@ -219,7 +217,7 @@ class Storage:
                 "previousObservedAt": row.previous_observed_at.isoformat() if row.previous_observed_at else None,
                 "eventAt": None} for row in rows]
 
-    # ------------------------------------------------------------------ actions
+
     @staticmethod
     def _action_payload(row) -> dict:
         return {

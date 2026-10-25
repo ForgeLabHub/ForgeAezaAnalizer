@@ -43,14 +43,10 @@ import httpx
 
 from backend.app.config import Settings
 
-# The Telegram OTP flow already defines the interface it calls
-# (``EmailProvider.send_otp``) and the two exceptions it catches. The adapter
-# below implements that exact contract so OTP can be sent through SMTP.BZ
-# without changing or bypassing the existing Telegram service.
+
 from backend.app.telegram.providers import DeliveryError, IntegrationNotConfigured
 
-#: A deliberately small e-mail shape check. The provider performs the real
-#: validation; this only rejects input that could never be an address.
+
 _ADDRESS_RE = re.compile(r"^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$")
 
 
@@ -148,7 +144,7 @@ def _failure_reason(payload: Any) -> str | None:
             nested = value.get("message") or value.get("detail")
             if isinstance(nested, str) and nested.strip():
                 return nested.strip()
-            # Field-level validation errors: keep them, they name the bad field.
+
             fields = [text.strip() for text in value.values() if isinstance(text, str) and text.strip()]
             if fields:
                 return "; ".join(fields)
@@ -168,8 +164,8 @@ def _interpret(response: httpx.Response) -> EmailResult:
     if status in (401, 403):
         raise EmailRejected("SMTP.BZ отклонил ключ API (проверьте SMTP_BZ_API_KEY)")
     if status == 429:
-        # Rate limiting is transient: the letter was not accepted, but the
-        # provider is reachable, so this is "try again later", not "refused".
+
+
         raise EmailUnavailable("SMTP.BZ ограничил частоту запросов (HTTP 429)")
     if status >= 500:
         raise EmailUnavailable(f"SMTP.BZ вернул ошибку сервера (HTTP {status})")
@@ -178,8 +174,7 @@ def _interpret(response: httpx.Response) -> EmailResult:
         suffix = f": {reason}" if reason else ""
         raise EmailRejected(f"SMTP.BZ отклонил письмо (HTTP {status}){suffix}")
 
-    # A 2xx is the provider's confirmation. If the body explicitly denies the
-    # send, trust the body over the status code and fail loudly.
+
     if isinstance(payload, dict):
         result = payload.get("result")
         if result is False or (result is None and (payload.get("error") or payload.get("errors"))):
@@ -329,7 +324,7 @@ def _send_via_postbox(
         except smtplib.SMTPRecipientsRefused as exc:
             raise EmailRejected(f"Postbox отклонил получателя ({len(exc.recipients)} адрес(ов))") from exc
         except smtplib.SMTPSenderRefused as exc:
-            # The classic unverified-domain refusal lives here.
+
             raise EmailRejected(f"Postbox отклонил отправителя: {exc.smtp_error!r}") from exc
         except smtplib.SMTPDataError as exc:
             raise EmailRejected(f"Postbox отклонил письмо (SMTP {exc.smtp_code})") from exc
@@ -449,8 +444,8 @@ class SmtpBzEmailProvider:
 
     def send_otp(self, email: str, code: str, expires_in_seconds: int) -> None:
         if not self._settings.email_configured:
-            # Maps to ``NotReadyError`` (503) in TelegramService, exactly as the
-            # unconfigured stub does — no silent success.
+
+
             raise IntegrationNotConfigured("Почтовый провайдер не настроен для отправки OTP")
 
         minutes = max(1, int(expires_in_seconds) // 60)
@@ -473,5 +468,5 @@ class SmtpBzEmailProvider:
         except EmailDisabled as exc:
             raise IntegrationNotConfigured("Почтовый провайдер не настроен для отправки OTP") from exc
         except EmailError as exc:
-            # The code itself is never placed in the exception text or a log line.
+
             raise DeliveryError("Не удалось отправить код подтверждения по почте") from exc

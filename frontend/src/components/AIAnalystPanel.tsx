@@ -6,9 +6,6 @@ import { SlidingTabs } from './motion'
 import { SupportWidgetPanel } from './SupportWidgetPanel'
 import { ErrorBox, Loading } from './ui'
 
-/** Pull customer ids out of the backend citation sources, so an answer can link
- * straight to the records it was grounded in rather than leaving the analyst to
- * hunt for them. */
 function citedCustomerIds(response: AIResponse): number[] {
   const found = new Set<number>()
   for (const citation of response.citations) {
@@ -20,12 +17,6 @@ function citedCustomerIds(response: AIResponse): number[] {
   return [...found].sort((a, b) => a - b)
 }
 
-/**
- * Renders one AI answer with the visual hierarchy the backend contract defines:
- * verdict, verified facts, factor explanation, recommendations, limitations.
- * Numbers shown here are the backend's, not the model's — the model only
- * narrates them, and any ungrounded claim is already stripped server-side.
- */
 function AnswerBlock({ response }: { response: AIResponse }) {
   const { answer } = response
   const customerIds = useMemo(() => citedCustomerIds(response), [response])
@@ -150,11 +141,6 @@ interface Turn {
   error?: string
 }
 
-/**
- * Floating support-chat-style AI Analyst widget mounted in the application shell.
- * Starts collapsed as a circular button in the bottom-right corner and opens an
- * overlay chat window above the active page without losing state across navigation.
- */
 export function AIAnalystWidget() {
   const customerMatch = useMatch('/customers/:id')
   const routeCustomerId = useMemo(() => {
@@ -175,7 +161,6 @@ export function AIAnalystWidget() {
   const endRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
-  // Reset scope override back to auto whenever the user navigates to a customer card
   useEffect(() => {
     if (routeCustomerId !== undefined) {
       setScopeOverride('auto')

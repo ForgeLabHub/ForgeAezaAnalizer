@@ -57,13 +57,9 @@ def _columns(db, table: str) -> set[str]:
     return {column["name"] for column in inspect(db.engine).get_columns(table)}
 
 
-# --------------------------------------------------------------------------- #
-# The reported defect
-# --------------------------------------------------------------------------- #
-
 def test_initialize_adds_the_columns_the_orm_needs(legacy_db):
     before = _columns(legacy_db, "analyzer_telegram_links")
-    assert "telegram_user_id" not in before  # the reported state
+    assert "telegram_user_id" not in before
 
     legacy_db.initialize()
 
@@ -100,15 +96,11 @@ def test_the_orm_can_read_a_link_after_reconciliation(legacy_db):
     assert row.telegram_user_id == "424242"
 
 
-# --------------------------------------------------------------------------- #
-# Idempotency and repeatability
-# --------------------------------------------------------------------------- #
-
 def test_initialize_is_idempotent(legacy_db):
     legacy_db.initialize()
     after_first = _columns(legacy_db, "analyzer_telegram_links")
 
-    legacy_db.initialize()  # must not raise
+    legacy_db.initialize()
     assert _columns(legacy_db, "analyzer_telegram_links") == after_first
 
 
@@ -121,20 +113,16 @@ def test_the_migration_is_recorded_once(legacy_db):
 
 
 def test_reconcile_reports_only_real_changes(legacy_db):
-    # First pass adds the missing columns; a second pass adds nothing.
+
     added = reconcile(legacy_db.engine)
     assert "analyzer_telegram_links.telegram_user_id" in added
     assert reconcile(legacy_db.engine) == []
 
 
-# --------------------------------------------------------------------------- #
-# A fresh database needs no reconciliation
-# --------------------------------------------------------------------------- #
-
 def test_a_fresh_database_needs_no_reconciliation(tmp_path):
     db = Database(f"sqlite:///{(tmp_path / 'fresh.db').as_posix()}")
     db.initialize()
-    # create_all made every table in the correct shape, so nothing is added.
+
     assert reconcile(db.engine) == []
     columns = _columns(db, "analyzer_telegram_links")
     assert "telegram_user_id" in columns
@@ -145,14 +133,14 @@ def test_a_missing_column_on_any_table_is_added(tmp_path):
 
     db = Database(f"sqlite:///{(tmp_path / 'partial.db').as_posix()}")
     db.initialize()
-    # Drop a column by rebuilding the table without it, as an older release would
-    # have left it.
+
+
     with db.engine.begin() as connection:
         connection.execute(text("ALTER TABLE analyzer_support_conversations RENAME TO _old_conv"))
         connection.execute(text(
             "CREATE TABLE analyzer_support_conversations ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, account_id BIGINT, status VARCHAR(16), "
-            "created_at DATETIME, updated_at DATETIME)"  # closed_at missing
+            "created_at DATETIME, updated_at DATETIME)"
         ))
         connection.execute(text("DROP TABLE _old_conv"))
 

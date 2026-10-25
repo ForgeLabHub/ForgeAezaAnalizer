@@ -102,7 +102,7 @@ class LlmAnswer:
     model: str
     provider: str
     context_digest: str
-    #: Facts actually handed to the model, for auditability.
+
     facts: dict[str, Any] = field(default_factory=dict)
 
 
@@ -203,14 +203,14 @@ def render_messages(context: dict, question: str | None = None) -> list[dict[str
 
 _NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)?")
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-#: Numbers that may legitimately appear without being in the fact set.
+
 _ALLOWED_BARE = {"1", "2", "3", "4", "5"}
 
 
 def _collect_allowed(context: dict) -> tuple[set[str], set[str]]:
     blob = json.dumps(context, ensure_ascii=False)
     numbers = {match.group(0) for match in _NUMBER_RE.finditer(blob)}
-    # Normalise decimal separators so "71,4" and "71.4" both match.
+
     normalised = {value.replace(",", ".") for value in numbers}
     emails = {match.group(0).lower() for match in _EMAIL_RE.finditer(blob)}
     return normalised, emails
@@ -366,8 +366,6 @@ def explain_customer(
     )
 
 
-#: Source labels returned with every aggregate answer, so the caller can see
-#: which published aggregates the model was grounded in.
 AGGREGATE_SOURCES: tuple[str, ...] = (
     "analytics.summary",
     "insights.inspect_source",
@@ -391,8 +389,7 @@ def build_aggregate_context(
     services = summary.get("services") or {}
     revenue = summary.get("revenue") or {}
 
-    # Only codes, levels, counts, messages and actions: no ``records`` list,
-    # which would leak customer identifiers.
+
     quality_issues = [
         {
             "code": issue.get("code"),

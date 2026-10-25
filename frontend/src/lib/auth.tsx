@@ -65,7 +65,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await api.logout()
     } catch {
-      // A failed logout call must not trap the user in the app.
     }
     setToken(null)
     setEmail(null)

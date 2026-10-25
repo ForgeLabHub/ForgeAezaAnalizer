@@ -20,7 +20,7 @@ HERE = Path(__file__).resolve().parent
 SHOTS = HERE / "shots"
 CHROMIUM = "/usr/lib/chromium/chromium"
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:12000"
-# Matches the Compose default in docker-compose.yml; override with AEZA_ADMIN_PASSWORD.
+
 EMAIL, PASSWORD = "analyst@aeza.test", "demo123"
 
 
@@ -41,7 +41,7 @@ def main() -> int:
         page.wait_for_url(lambda u: "/login" not in u, timeout=30000)
         page.wait_for_load_state("networkidle", timeout=30000)
 
-        # Dashboard blocks.
+
         page.goto(f"{BASE}/", wait_until="networkidle", timeout=60000)
         page.wait_for_timeout(1200)
         _dump(page, "dashboard")

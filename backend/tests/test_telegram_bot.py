@@ -154,10 +154,6 @@ def mini_app_init_data(user_id, *, token=TOKEN, auth_date=None, extra=None):
     return "&".join(f"{k}={v}" for k, v in values.items())
 
 
-# --------------------------------------------------------------------------- #
-# 1-2. Bot off, and on with an incomplete configuration
-# --------------------------------------------------------------------------- #
-
 def test_bot_disabled_webhook_reports_not_ready(tmp_path):
     settings = _settings(tmp_path, telegram_bot_enabled=False)
     with TestClient(_app(settings, tmp_path), raise_server_exceptions=False) as client:
@@ -184,10 +180,6 @@ def test_analyst_endpoints_require_authentication(tmp_path):
                      "/api/v1/telegram/diagnostics"):
             assert client.get(path).status_code == 401, path
 
-
-# --------------------------------------------------------------------------- #
-# 3-5. Webhook secret, malformed JSON, oversized body, internal error
-# --------------------------------------------------------------------------- #
 
 def test_webhook_requires_the_secret_header(bot):
     assert bot["client"].post("/api/v1/telegram/webhook", json=update(next_update_id(), "/start")).status_code == 403
@@ -232,10 +224,6 @@ def test_a_failed_reply_does_not_fail_the_webhook(bot):
     assert response.json()["processed"] is True
 
 
-# --------------------------------------------------------------------------- #
-# 6. Duplicate update_id, and duplicate Telegram message_id
-# --------------------------------------------------------------------------- #
-
 def test_a_redelivered_update_runs_once(bot):
     link_account(bot)
     payload = update(50, "Помогите, пожалуйста", message_id=777)
@@ -249,14 +237,10 @@ def test_a_redelivered_update_runs_once(bot):
 def test_the_same_message_id_is_stored_once(bot):
     link_account(bot)
     post(bot, update(50, "Первое", message_id=777))
-    post(bot, update(51, "Первое", message_id=777))  # same message, new update id
+    post(bot, update(51, "Первое", message_id=777))
     with bot["runtime"].database.sessions() as session:
         assert len(session.scalars(select(SupportMessageRow)).all()) == 1
 
-
-# --------------------------------------------------------------------------- #
-# 7-8. Commands
-# --------------------------------------------------------------------------- #
 
 def test_start_without_a_link_asks_for_email(bot):
     post(bot, update(next_update_id(), "/start"))
@@ -269,10 +253,6 @@ def test_unknown_text_before_linking_is_treated_as_an_email_attempt(bot):
     assert response.json()["processed"] is True
 
 
-# --------------------------------------------------------------------------- #
-# 9. Telegram API error handling and token safety
-# --------------------------------------------------------------------------- #
-
 def test_provider_error_never_leaks_the_token():
     token = "8123456789:AAF-SUPER-SECRET-VALUE"
     provider = TelegramBotApi(token, max_attempts=1, sleep=lambda _: None)
@@ -282,11 +262,11 @@ def test_provider_error_never_leaks_the_token():
     def fail(req, timeout=None):
         raise urllib.error.HTTPError(req.full_url, 401, "Unauthorized", {}, None)
 
-    provider._opener = fail  # type: ignore[attr-defined]
+    provider._opener = fail
     with pytest.raises(DeliveryError) as caught:
         provider.send_message("1", "hi")
     assert token not in str(caught.value)
-    assert caught.value.__cause__ is None  # the URL-carrying cause is not chained
+    assert caught.value.__cause__ is None
 
 
 def test_provider_retries_a_429_then_succeeds():
@@ -319,10 +299,6 @@ def test_provider_retries_a_429_then_succeeds():
     assert calls["n"] == 2
 
 
-# --------------------------------------------------------------------------- #
-# 10-12. Mini App initData validation
-# --------------------------------------------------------------------------- #
-
 def test_init_data_with_a_bad_signature_is_refused(bot):
     bad = mini_app_init_data(555, token="WRONG-TOKEN")
     assert bot["client"].post("/api/v1/client/session", json={"initData": bad}).status_code == 401
@@ -347,10 +323,6 @@ def test_valid_init_data_for_a_linked_user_creates_a_session(bot):
     assert response.json()["accessToken"]
 
 
-# --------------------------------------------------------------------------- #
-# 13. Client session lifecycle
-# --------------------------------------------------------------------------- #
-
 def client_token(bot, chat_id=100, email="user-0001@example.test"):
     link_account(bot, chat_id=chat_id, email=email)
     return bot["client"].post("/api/v1/client/session", json={"initData": mini_app_init_data(chat_id)}).json()["accessToken"]
@@ -373,10 +345,6 @@ def test_expired_client_session_is_refused(bot):
         row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
     assert bot["client"].get("/api/v1/client/me", headers=headers).status_code == 401
 
-
-# --------------------------------------------------------------------------- #
-# 14. OTP: not found, duplicates, wrong/expired/reused, attempt limit, resend
-# --------------------------------------------------------------------------- #
 
 def test_unknown_email_does_not_send_a_code(bot):
     post(bot, update(next_update_id(), "/start", chat_id=200))
@@ -438,11 +406,11 @@ def test_a_code_cannot_be_used_twice(bot):
     code = bot["email"].last_code
     post(bot, update(next_update_id(), "/rebind", chat_id=402))
     post(bot, update(next_update_id(), "user-0001@example.test", chat_id=402))
-    # The old code belongs to the previous challenge and is already consumed.
+
     post(bot, update(next_update_id(), code, chat_id=402))
     with bot["runtime"].database.sessions() as session:
         links = session.scalars(select(TelegramLinkRow).where(TelegramLinkRow.telegram_user_id == "402")).all()
-        assert len(links) == 1  # still one link, not relinked by the stale code
+        assert len(links) == 1
 
 
 def test_attempt_limit_consumes_the_code(bot):
@@ -464,7 +432,7 @@ def test_resend_is_throttled(bot):
     first_count = len(bot["email"].codes)
     post(bot, update(next_update_id(), "/rebind", chat_id=404))
     post(bot, update(next_update_id(), "user-0001@example.test", chat_id=404))
-    # The resend window has not elapsed, so no second letter is sent.
+
     assert len(bot["email"].codes) == first_count
 
 
@@ -478,10 +446,6 @@ def test_otp_is_stored_hashed_not_in_clear(bot):
         assert row.code_salt
         assert row.code_hash != code
 
-
-# --------------------------------------------------------------------------- #
-# 15. Consent and account scoping
-# --------------------------------------------------------------------------- #
 
 def test_consent_is_recorded(bot):
     link_account(bot, chat_id=500, consent=True)
@@ -515,10 +479,6 @@ def test_client_endpoints_require_a_session(bot):
     for path in ("/api/v1/client/me", "/api/v1/client/account", "/api/v1/client/services", "/api/v1/client/support"):
         assert bot["client"].get(path).status_code == 401, path
 
-
-# --------------------------------------------------------------------------- #
-# 16. Support: client → analyst → client, and delivery truthfulness
-# --------------------------------------------------------------------------- #
 
 def test_client_message_reaches_the_analyst_and_a_reply_is_delivered(bot):
     token = client_token(bot, chat_id=700, email="user-0001@example.test")
@@ -564,10 +524,6 @@ def test_client_cannot_read_another_accounts_conversation(bot):
     assert response.status_code == 404
 
 
-# --------------------------------------------------------------------------- #
-# 17. Notifications
-# --------------------------------------------------------------------------- #
-
 def test_notifications_are_queued_for_active_autoprolong_services(bot):
     runtime = bot["runtime"]
     runtime.telegram.sync_notifications()
@@ -608,14 +564,14 @@ def test_changing_expires_at_cancels_a_stale_notification(bot):
     runtime.telegram.sync_notifications()
     with runtime.database.sessions() as session:
         after = {row.id: row for row in session.scalars(select(NotificationQueueRow)).all()}
-    # The old rows are cancelled (not delivered); new rows exist for the new date.
+
     assert any(after[row_id].status == "cancelled" for row_id in before if row_id in after)
 
 
 def test_notification_delivery_is_idempotent(bot):
     runtime = bot["runtime"]
     link_account(bot, chat_id=800, email="user-0001@example.test")
-    # Make the notifications due now.
+
     runtime.telegram.sync_notifications()
     with runtime.database.transaction() as session:
         for row in session.scalars(select(NotificationQueueRow)).all():
@@ -637,19 +593,11 @@ def test_support_history_is_purged_after_30_days(bot):
     assert runtime.telegram.purge_support_history() >= 1
 
 
-# --------------------------------------------------------------------------- #
-# 18. Diagnostics never leak secrets
-# --------------------------------------------------------------------------- #
-
 def test_diagnostics_never_leaks_the_token_or_secret(bot):
     body = bot["client"].get("/api/v1/telegram/diagnostics", headers=bot["analyst"]).text
     assert TOKEN not in body
     assert SECRET not in body
 
-
-# --------------------------------------------------------------------------- #
-# 19. A service with no renewal time must not break the notification sync
-# --------------------------------------------------------------------------- #
 
 def test_a_service_without_expiry_does_not_break_the_notification_sync(tmp_path):
     """``expiresAt`` is optional in the ingest schema; an active auto-prolong
@@ -678,10 +626,6 @@ def test_a_service_without_expiry_does_not_break_the_notification_sync(tmp_path)
         assert client.post("/api/v1/telegram/notifications/sync", headers=headers).status_code == 200
         assert client.post("/api/v1/telegram/notifications/run", headers=headers).status_code == 200
 
-
-# --------------------------------------------------------------------------- #
-# 20. The SMTP.BZ OTP transport is wired only when it is configured
-# --------------------------------------------------------------------------- #
 
 def test_otp_transport_is_wired_when_smtp_bz_is_configured(tmp_path):
     from backend.app.integrations.email import SmtpBzEmailProvider

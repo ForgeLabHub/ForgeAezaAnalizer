@@ -7,7 +7,6 @@ RUN npm install --no-fund --no-audit
 COPY frontend/ ./
 RUN npm run build
 
-
 FROM nginx:1.27-alpine
 
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf

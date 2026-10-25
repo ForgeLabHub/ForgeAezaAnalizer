@@ -30,17 +30,17 @@ ROOT = _repo_root()
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core import State  # noqa: E402
-from backend.app.domain.module import create as create_engine  # noqa: E402
+from core import State
+from backend.app.domain.module import create as create_engine
 
-#: Reference instant of the organiser dataset, so results are reproducible.
+
 AS_OF = datetime(2026, 10, 19, 15, 0, tzinfo=timezone.utc)
 
-#: The client the walkthrough follows.
+
 CUSTOMER_ID = 10
-#: The service whose factor breakdown the deck explains.
+
 SERVICE_ID = 30
-#: The weight the demo raises, and the value it is raised to.
+
 DEMO_FACTOR = "expiry_proximity"
 DEMO_FROM = 3.0
 DEMO_TO = 9.0
@@ -92,8 +92,8 @@ def facts() -> dict:
 
     contrib_sum = round(sum(f["contribution"] for f in factors), 1)
     weight_total = round(sum(f["weight"] for f in factors), 1)
-    # The three factors with the largest contribution, formatted as the deck
-    # spells them out: "3,0 + 2,5 + 2,0 = 7,5".
+
+
     top3 = top[:3]
     top3_sum = round(sum(f["contribution"] for f in top3), 1)
 
@@ -131,7 +131,7 @@ def facts() -> dict:
             "upcoming_eur": summary["revenue"]["upcomingRenewalsEur"].replace(".", ","),
             "historical_eur": _eur(summary["revenue"]["historicalReplenishedCents"]),
             "after_eur": after_summary["revenue"]["revenueAtRiskEur"].replace(".", ","),
-            # Per-renewal risk-weighted amounts, in the order the table lists them.
+
             "renewal_terms": " + ".join(
                 item["revenueAtRiskEur"].replace(".", ",")
                 for item in summary["upcomingRenewals"]

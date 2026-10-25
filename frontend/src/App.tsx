@@ -94,8 +94,6 @@ function Shell({ children }: { children: React.ReactNode }) {
 export default function App() {
   const { email, ready } = useAuth()
 
-  // The Telegram Mini App has its own session (exchanged for signed initData),
-  // so it must render before — and independently of — the analyst auth gate.
   if (window.location.pathname.startsWith('/mini-app')) {
     return (
       <Routes>

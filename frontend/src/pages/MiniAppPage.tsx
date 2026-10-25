@@ -8,20 +8,8 @@ import type {
 } from '../types'
 import { ErrorBox, Loading, formatCents, STATUS_LABELS } from '../components/ui'
 
-/**
- * Telegram Mini App: the customer-facing screen.
- *
- * It is deliberately separate from the analyst panel. The session is obtained by
- * exchanging Telegram's signed `initData` with the backend, which derives the
- * account from the verified link — this screen never sends an account id, and the
- * server never returns another account's data. Risk scores, risk reasons and
- * analyst recommendations are intentionally absent: the plan says the customer
- * must not see them.
- */
-
 const TOKEN_KEY = 'aeza.telegram.clientToken'
 
-/** Minimal shape of the Telegram WebApp object this screen uses. */
 interface TelegramWebApp {
   initData?: string
   colorScheme?: 'light' | 'dark'
@@ -44,13 +32,10 @@ function readInitData(): string | null {
   return data && data.length > 0 ? data : null
 }
 
-/** Apply the Telegram theme and viewport height to the document. */
 function useTelegramChrome() {
   useEffect(() => {
     const app = webApp()
     if (!app) return
-    // Tell Telegram the app is ready and use the full height; without expand()
-    // the Mini App stays in the collapsed half-screen sheet.
     app.ready?.()
     app.expand?.()
     document.documentElement.dataset.theme = app.colorScheme === 'dark' ? 'dark' : 'light'
@@ -186,8 +171,6 @@ export default function MiniAppPage() {
     setAccount(null)
     setServices([])
     setThread([])
-    // Inside Telegram, "exit" means closing the Mini App; a browser tab must
-    // stay open, so close() is only called when the WebApp SDK is present.
     if (webApp()) webApp()?.close?.()
   }
 

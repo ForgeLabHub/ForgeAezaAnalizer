@@ -7,9 +7,8 @@ prometheus-client>=0.20,<1.0
 python-multipart>=0.0.9
 psycopg[binary]>=3.1,<4.0
 
-# Test dependencies
 pytest>=8.0,<9.0
 httpx>=0.27,<1.0
-# Postbox transport tests run against a real loopback SMTP server.
+
 aiosmtpd>=1.4,<2.0
 cryptography>=42,<51

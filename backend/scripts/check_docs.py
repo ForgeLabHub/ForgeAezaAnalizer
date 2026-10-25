@@ -24,15 +24,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SKIP_PARTS = {"node_modules", ".venv", ".git", "dist", "postgres"}
-#: Documentation that intentionally discusses variables it does not own.
+
 ENV_EXEMPT = {"AUTH_ISSUER", "AUTH_FRONTEND_LOGIN_URL", "AUTH_COOKIE_SECURE",
               "OIDC_CLIENT_ID", "OIDC_REDIRECT_URIS", "OIDC_CLIENT_SECRET"}
 
-#: Variables that were removed from the code and are now named in the docs only
-#: to say so ("no longer read, deleted from compose"). They are deliberately not
-#: in .env.example, so requiring them would defeat the note. Keep this list
-#: short: an entry here is a claim that the variable is retired, not merely
-#: undocumented.
+
 RETIRED_ENV = {
     "AEZA_JWT_SECRET", "AEZA_ADMIN_EMAIL", "AEZA_ADMIN_PASSWORD",
     "AEZA_ALLOW_DEV_SECRET", "AEZA_AUTH_DATABASE_URL", "AEZA_TOKEN_TTL_MINUTES",
@@ -46,11 +42,10 @@ SECRET_PATTERNS = (
     re.compile(r"(?i)password\s*=\s*[\"']([^\"'${}]{6,})[\"']"),
 )
 
-#: Values that are documentation placeholders or the public demo credential,
-#: not secrets. Keep this list short and justified.
+
 SECRET_ALLOWLIST = {"change-me", "example", "your-", "xxx", "<", "placeholder", "demo123"}
 
-#: Routes the framework serves but that do not appear in ``paths``.
+
 FRAMEWORK_ROUTES = {"/api/v1/docs", "/api/v1/openapi.json", "/api/v1/redoc"}
 
 
@@ -79,15 +74,15 @@ def check_env_vars() -> list[str]:
                  "AEZA_HOST", "AEZA_PORT", "AEZA_SOURCE_ZIP"}
     problems = []
     for md in markdown_files():
-        # Dated audits record historical settings and are not live guidance.
+
         if "audits" in md.relative_to(ROOT).parts:
             continue
         text = md.read_text(encoding="utf-8", errors="replace")
         for name in set(re.findall(r"\b(AEZA_[A-Z0-9_]+)\b", text)):
             if name in declared or name in ENV_EXEMPT or name in RETIRED_ENV:
                 continue
-            # A trailing underscore is a family wildcard such as ``AEZA_AI_*``,
-            # not a variable anyone is expected to set literally.
+
+
             if name.endswith("_"):
                 continue
             problems.append(f"{md.relative_to(ROOT)}: {name} not in .env.example")
@@ -100,8 +95,8 @@ def check_routes() -> list[str]:
         return ["backend/openapi.json missing; cannot verify documented routes"]
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
     paths = set(spec.get("paths", {}))
-    # Every documented prefix of a real route, so "/api/v1/customers/10" matches
-    # "/api/v1/customers/{customer_id}" and "/api/v1/auth" matches "/api/v1/auth/login".
+
+
     prefixes: set[str] = set()
     for path in paths:
         segments = path.split("/")
