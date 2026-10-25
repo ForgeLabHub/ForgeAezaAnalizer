@@ -36,6 +36,45 @@ from backend.database import UserRepository
 logger = logging.getLogger("aeza")
 
 
+def snapshot_file_signature(path: Path):
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return None
+    return stat.st_mtime_ns, stat.st_size, getattr(stat, "st_ino", 0)
+
+
+def read_snapshot_file(path: Path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+async def snapshot_file_worker(runtime: Runtime, stop: asyncio.Event):
+    path = Path(runtime.settings.snapshot_path)
+    signature = None
+    while True:
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=runtime.settings.snapshot_poll_seconds)
+            return
+        except asyncio.TimeoutError:
+            pass
+        current = snapshot_file_signature(path)
+        if current is None:
+            signature = None
+            continue
+        if current == signature:
+            continue
+        try:
+            source = await run_in_threadpool(read_snapshot_file, path)
+            await run_in_threadpool(runtime.core.update, source=source, actor="snapshot-file")
+            signature = current
+            logger.info("snapshot file checked: %s", path)
+        except (json.JSONDecodeError, UnicodeDecodeError, InvalidInput) as exc:
+            signature = current
+            logger.warning("snapshot file rejected: %s", exc)
+        except Exception as exc:
+            logger.warning("snapshot file import rejected: %s", exc)
+
+
 async def recalculate(runtime: Runtime, stop: asyncio.Event):
     while True:
         try:
@@ -124,6 +163,8 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
             application.state.metrics = Metrics(storage)
             if settings.as_of.lower() == "now" and not isinstance(module, UnavailableAnalytics):
                 tasks.append(asyncio.create_task(recalculate(runtime, stop)))
+            if not isinstance(module, UnavailableAnalytics):
+                tasks.append(asyncio.create_task(snapshot_file_worker(runtime, stop)))
             tasks.append(asyncio.create_task(telegram_worker(runtime, stop)))
             yield
         finally:

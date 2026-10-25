@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import hmac
 from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import Depends, Request
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
 from core import Core
 from backend.auth.service import AuthService, AuthError
@@ -14,6 +15,7 @@ from backend.app.modules import CalculationAdapter
 from backend.app.storage import Storage
 
 bearer = HTTPBearer(auto_error=False)
+source_token_header = APIKeyHeader(name="X-Source-Token", auto_error=False)
 
 
 @dataclass
@@ -51,6 +53,20 @@ def current_user(runtime: RuntimeDep, credentials: Annotated[HTTPAuthorizationCr
 
 
 UserDep = Annotated[Principal, Depends(current_user)]
+
+
+def source_ingest_actor(
+    runtime: RuntimeDep,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+    source_token: Annotated[str | None, Depends(source_token_header)],
+) -> str:
+    configured = runtime.settings.source_ingest_token
+    if configured and source_token and hmac.compare_digest(source_token.encode(), configured.encode()):
+        return "source-integration"
+    return current_user(runtime, credentials).email
+
+
+SourceIngestActorDep = Annotated[str, Depends(source_ingest_actor)]
 
 
 def version_headers(response, payload: dict):
