@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, ApiError } from '../lib/api'
 import type {
   ClientAccount,
@@ -83,6 +83,7 @@ export default function MiniAppPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(false)
+  const autoAuthAttempted = useRef(false)
 
   useTelegramChrome()
 
@@ -133,6 +134,35 @@ export default function MiniAppPage() {
       setBusy(false)
     }
   }
+
+  useEffect(() => {
+    if (!token && !autoAuthAttempted.current && readInitData()) {
+      autoAuthAttempted.current = true
+      void authenticate()
+    }
+  }, [token])
+
+  useEffect(() => {
+    if (!token) return
+    let active = true
+    const refreshSupport = async () => {
+      try {
+        const support = await api.clientSupport(token)
+        if (active) setThread(support.items)
+      } catch (err) {
+        if (active && err instanceof ApiError && err.status === 401) {
+          sessionStorage.removeItem(TOKEN_KEY)
+          setToken(null)
+          setError(err.detail)
+        }
+      }
+    }
+    const interval = window.setInterval(() => void refreshSupport(), 10000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [token])
 
   async function toggleConsent(enabled: boolean) {
     if (!token) return

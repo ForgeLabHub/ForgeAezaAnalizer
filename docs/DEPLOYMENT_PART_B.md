@@ -1,187 +1,50 @@
-# Развёртывание Aéza Analyzer
+# Развёртывание
 
-Этот документ описывает поддерживаемый Compose-стек: FastAPI API, React SPA,
-PostgreSQL для аналитики и SQLite для учётных записей и сессий.
+## Запуск
 
-## 1. Состав стека
+Нужны Docker и Docker Compose. В корне проекта создайте .env из образца и задайте POSTGRES_PASSWORD:
 
-| Сервис | Образ | Порт | Назначение |
-|---|---|---|---|
-| `db` | `postgres:16-alpine` | внутренний 5432 | аналитика: снимок, расчёты, настройки модели |
-| `api` | `backend/Dockerfile` | 8000 | FastAPI: `/api/v1/*`, `/metrics`, `/health`, `/ready` |
-| `web` | `frontend/Dockerfile` | 80 | статика React + прокси `/api` и `/metrics` на `api` |
-
-Compose публикует `web` на `8080`, API на `8000`; при публичном размещении
-ограничьте доступ к API правилами reverse proxy и firewall.
-
-## 2. Обязательные переменные окружения
-
-Задаются в `.env` рядом с `docker-compose.yml` (образец — `.env.example`).
-
-| Переменная | Обязательна | Комментарий |
-|---|---|---|
-| `POSTGRES_PASSWORD` | **да** | пароль PostgreSQL; Compose использует его для подключения API |
-| `AUTH_ISSUER` | production | публичный HTTPS origin приложения |
-| `AUTH_FRONTEND_LOGIN_URL` | production | HTTPS URL страницы входа |
-| `AUTH_COOKIE_SECURE` | production | задайте `true` при HTTPS |
-| `AEZA_CORS_ORIGINS` | да | origin интерфейса |
-
-Пользователи и хеши паролей хранятся в SQLite `auth_data`; первого пользователя
-создайте вручную после запуска стека.
-
-## 3. Запуск
-
-```bash
+~~~bash
 cp .env.example .env
-# отредактируйте .env: задайте пароль PostgreSQL и production auth origins
 docker compose up --build -d
-docker compose ps           # db healthy; api и web запущены
 docker compose exec api python -m backend.users create analyst@example.com
-```
+~~~
 
-Проверка:
+Откройте интерфейс на порту 8080, API — на 8000. Состояние: http://localhost:8000/health и /ready.
 
-```bash
-curl -fsS http://localhost:8000/health
-curl -fsS http://localhost:8000/ready
-```
+## Публичное размещение
 
-Панель: `http://localhost:8080` (в этом окружении — порт 12000).
+В .env укажите адреса приложения и включите защищённые cookies:
 
-## 4. Данные
+~~~dotenv
+AUTH_ISSUER=https://app.example.com
+AUTH_FRONTEND_LOGIN_URL=https://app.example.com/login
+AUTH_COOKIE_SECURE=true
+AEZA_CORS_ORIGINS=https://app.example.com
+~~~
 
-Порядок загрузки:
+Настройте HTTPS на reverse proxy и ограничьте публичный доступ к API согласно своей схеме сети. Секреты храните только в .env или менеджере секретов.
 
-1. При пустой базе приложение валидирует и загружает официальный снимок из
-   `AEZA_SNAPSHOT_PATH` атомарно.
-2. Любой другой снимок загружается через API:
+## Данные и обновление
 
-```bash
-read -r -p "Login: " LOGIN
-read -r -s -p "Password: " LOGIN_PASSWORD
-printf '\n'
-TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
-  -H 'Content-Type: application/json' \
-  -d "{\"email\":\"$LOGIN\",\"password\":\"$LOGIN_PASSWORD\"}" \
-  | python -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+При пустой PostgreSQL приложение импортирует dataset/data.json. Другой снимок можно загрузить через API; справка по схеме доступна в /api/v1/docs.
 
-curl -X PUT http://localhost:8000/api/v1/source/snapshot \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  --data-binary @dataset/data.json
-```
+Обновление после получения новой версии:
 
-`PUT /source/snapshot` валидирует структуру и применяет снимок целиком или не
-применяет вовсе — частично обновлённого состояния не бывает.
+~~~bash
+docker compose up --build -d
+~~~
 
-## 5. Миграции схемы
+docker compose down останавливает приложение и сохраняет данные. docker compose down -v удаляет volumes базы и учётных записей.
 
-Схема аналитики создаётся приложением при старте (`Database.initialize()`);
-отдельный шаг миграций не требуется. `db/schema.sql` описывает таблицу
-пользователей auth SQLite.
+## Резервная копия
 
-## 6. Наблюдаемость
+Скрипты сохраняют и восстанавливают PostgreSQL и SQLite:
 
-* `GET /metrics` — формат Prometheus. В браузере endpoint принимает отдельную
-  HttpOnly-cookie, выдаваемую при входе и ограниченную путём `/metrics`.
-  Также принимаются Bearer access token аналитика и отдельный
-  `AEZA_METRICS_TOKEN` сборщика. Без авторизации endpoint отвечает `401`.
-* Метрики включают готовность и generation анализа, число клиентов и услуг,
-  категории риска, денежные агрегаты, количество HTTP-ответов и их длительность.
-  Метки агрегированные, без email и идентификаторов клиентов.
-* `/health` — живость процесса; `/ready` — готовность отдавать расчёты.
+~~~bash
+./scripts/backup.sh
+./scripts/restore.sh backups/<каталог>
+./scripts/restore.sh backups/<каталог> --yes
+~~~
 
-После входа в SPA откройте `http://localhost:8000/metrics` напрямую. Если
-приложение уже было открыто во время обновления сервера, перезагрузите SPA,
-чтобы запрос обновления сессии выдал cookie для `/metrics`.
-
-Для отдельного локального Compose-сборщика задайте секрет в `.env` и
-пересоздайте API:
-
-```dotenv
-AEZA_METRICS_TOKEN=replace-with-a-long-random-secret
-```
-
-```bash
-docker compose up -d api
-curl -H "Authorization: Bearer $AEZA_METRICS_TOKEN" http://localhost:8000/metrics
-```
-
-На публичном стенде после входа откройте
-`https://aeza-sentinel.pixel-minds.ru/metrics`. Для скрипта без браузерной
-сессии войдите через `POST /api/v1/auth/login`, возьмите поле `access_token`
-из ответа и передайте его в заголовке:
-
-```bash
-curl -H "Authorization: Bearer $ACCESS_TOKEN" \
-  https://aeza-sentinel.pixel-minds.ru/metrics
-```
-
-Ответ содержит строки формата Prometheus (`# HELP`, `# TYPE` и значения
-метрик). Эту же страницу опрашивает Prometheus; используйте HTTPS и храните
-секрет в системе управления credentials, а не в публичном конфиге.
-
-Пример `prometheus.yml`:
-
-```yaml
-scrape_configs:
-  - job_name: aeza
-    metrics_path: /metrics
-    authorization:
-      type: Bearer
-      credentials_file: /etc/prometheus/secrets/aeza_metrics_token
-    static_configs:
-      - targets: ["api:8000"]
-```
-
-## 7. Обновление и откат
-
-```bash
-git pull
-docker compose build
-docker compose up -d
-```
-
-Данные лежат в именованных Docker volumes `pg_data` и `auth_data`, поэтому
-пересборка образов их не затрагивает. Откат — вернуться на предыдущий коммит и
-повторить сборку; при несовместимом изменении схемы восстановите том из
-резервной копии.
-
-### Резервная копия и восстановление
-
-Резервную копию и восстановление выполняют два скрипта, а не одна команда:
-`scripts/backup.sh` снимает оба хранилища, `scripts/restore.sh` возвращает их.
-
-```bash
-./scripts/backup.sh                 # ./backups/<UTC-метка>/{analytics.sql,auth.sqlite3,manifest.txt}
-./scripts/restore.sh backups/<метка>          # пробный запуск: печатает план, ничего не меняет
-./scripts/restore.sh backups/<метка> --yes    # применить
-```
-
-`backup.sh` снимает дамп аналитической БД через `pg_dump` и копию
-`auth.sqlite3` через штатный online-backup API SQLite, поэтому конкурентная
-запись не рвёт файл. `manifest.txt` фиксирует коммит и размеры — по нему
-проверяют, что восстановлено именно то, что снимали.
-
-Восстановление без `--yes` ничего не делает: сначала посмотрите план. После
-применения проверьте **данные**, а не только процесс: войдите учётной записью из
-копии и сверьте числа на дашборде с манифестом. Непроверенное восстановление
-резервной копией не является.
-
-## 8. Безопасность перед публикацией
-
-- [ ] создан отдельный пользователь через `backend.users create`
-- [ ] `AUTH_ISSUER` и `AUTH_FRONTEND_LOGIN_URL` используют HTTPS origin
-- [ ] `AUTH_COOKIE_SECURE=true`
-- [ ] `AEZA_CORS_ORIGINS` сужен до реальных доменов
-- [ ] доступ к API ограничен правилами reverse proxy и firewall
-- [ ] `AEZA_METRICS_TOKEN` задан, если `/metrics` доступен извне
-- [ ] настроены TLS и резервное копирование томов
-
-## 9. Известные ограничения
-
-* Пересчёт выполняется на каждый запрос (`AnalyticsService.analyze_all()`);
-  сортировка и фильтрация — в Python. Для 10–60 клиентов это незаметно, для
-  реальной базы потребуется кеш или SQL-выборки (см. `AGENTS.md`).
-* Учётные записи хранятся отдельно от аналитических данных в SQLite volume
-  `auth_data`; пользователь создаётся вручную через CLI.
-* Секретов в репозитории нет; `.env` не коммитится.
+Восстановление без --yes только показывает план. Проверяйте резервную копию до использования.
