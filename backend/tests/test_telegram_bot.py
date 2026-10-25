@@ -25,6 +25,7 @@ from backend.app.config import Settings
 from backend.app.db import (
     NotificationQueueRow,
     SupportMessageRow,
+    TelegramChatStateRow,
     TelegramLinkRow,
     TelegramOtpRow,
 )
@@ -43,12 +44,14 @@ class RecordingTelegram:
 
     def __init__(self, fail_with: Exception | None = None):
         self.sent: list[tuple[str, str]] = []
+        self.markups: list[dict | None] = []
         self.fail_with = fail_with
 
     def send_message(self, chat_id, text, reply_markup=None):
         if self.fail_with is not None:
             raise self.fail_with
         self.sent.append((str(chat_id), text))
+        self.markups.append(reply_markup)
         return f"m{len(self.sent)}"
 
 
@@ -245,6 +248,30 @@ def test_the_same_message_id_is_stored_once(bot):
 def test_start_without_a_link_asks_for_email(bot):
     post(bot, update(next_update_id(), "/start"))
     assert "email" in bot["telegram"].sent[-1][1].lower()
+
+
+def test_successful_otp_shows_the_mini_app_button(bot):
+    chat_id = 107
+    post(bot, update(next_update_id(), "/start", chat_id=chat_id))
+    post(bot, update(next_update_id(), "user-0001@example.test", chat_id=chat_id))
+    response = post(bot, update(next_update_id(), bot["email"].last_code, chat_id=chat_id))
+
+    assert response.json()["action"] == "verified"
+    assert bot["telegram"].markups[-1] == {
+        "inline_keyboard": [[{
+            "text": "Открыть Mini App",
+            "web_app": {"url": "https://example.test/app"},
+        }]],
+    }
+
+    session_response = bot["client"].post(
+        "/api/v1/client/session",
+        json={"initData": mini_app_init_data(chat_id)},
+    )
+    assert session_response.status_code == 200
+    with bot["runtime"].database.sessions() as session:
+        state = session.get(TelegramChatStateRow, str(chat_id))
+        assert state.state == "ready"
 
 
 def test_unknown_text_before_linking_is_treated_as_an_email_attempt(bot):

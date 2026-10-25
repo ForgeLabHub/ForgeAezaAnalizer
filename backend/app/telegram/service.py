@@ -288,6 +288,12 @@ class TelegramService:
                 expires_at=now + timedelta(seconds=self.settings.telegram_session_ttl_seconds),
                 created_at=now, revoked_at=None,
             ))
+            chat_state = session.get(TelegramChatStateRow, telegram_user_id)
+            if chat_state is not None:
+                chat_state.state = "ready"
+                chat_state.email = None
+                chat_state.otp_id = None
+                chat_state.updated_at = now
         return {"accessToken": token, "tokenType": "bearer", "expiresIn": self.settings.telegram_session_ttl_seconds}
 
     def authenticate(self, token: str) -> dict:
@@ -771,7 +777,7 @@ class TelegramService:
                 self._set_chat_state(telegram_user_id, "awaiting_consent", state.email, None)
                 reply = "Email подтверждён. Разрешить напоминания за 7 и 3 дня? Ответьте Да или Нет."
                 result = {"processed": True, "action": "verified", **result}
-                self._send_text(telegram_user_id, reply)
+                self._send_text(telegram_user_id, reply, self._mini_app_markup())
                 return result
             except ValueError:
                 reply = "Код недействителен или истёк. Запросите новый код."

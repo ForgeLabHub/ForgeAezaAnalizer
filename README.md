@@ -1,92 +1,36 @@
 # Aéza Analyzer
 
-Приложение для анализа риска оттока и выручки под риском на синтетическом
-наборе данных кейса UMIRHack 2026. Поддерживаемая версия — FastAPI API
-(`backend/app/`) и React-интерфейс (`frontend/`), запускаемые через Docker Compose.
-
-Официальный снимок находится в [`dataset/data.json`](dataset/data.json):
-10 аккаунтов, 30 услуг и 100 транзакций. Это синтетический снимок, а не
-история реальных клиентов. Оценка риска — объяснимая взвешенная формула,
-не вероятность оттока.
+Веб-приложение для анализа риска продления услуг и выручки под риском. Стек: FastAPI, React, PostgreSQL и Docker Compose.
 
 ## Запуск
 
-Нужны Docker и Docker Compose. Создайте `.env`, задайте собственный пароль
-PostgreSQL в `POSTGRES_PASSWORD` и запустите:
+Нужны Docker и Docker Compose. Создайте .env, задайте собственный пароль базы данных и запустите приложение:
 
-```bash
-cp .env.example .env
-# задайте POSTGRES_PASSWORD в .env
-./run.sh
-```
-
-Интерфейс: <http://localhost:8080>. API: <http://localhost:8000>.
-OpenAPI: <http://localhost:8000/api/v1/docs>.
-
-Создайте пользователя аналитика:
-
-```bash
+~~~powershell
+Copy-Item .env.example .env
+# Задайте POSTGRES_PASSWORD в .env
+docker compose up --build -d
 docker compose exec api python -m backend.users create analyst@example.com
-```
+~~~
 
-`run.sh` также принимает `status`, `logs` и `down`; по умолчанию он собирает
-образы и запускает сервисы в фоне.
+Интерфейс: http://localhost:8080. API и его справка: http://localhost:8000/api/v1/docs.
 
-## Данные и расчёты
+## Данные и оценки
 
-При первой загрузке пустой PostgreSQL API валидирует и импортирует
-`dataset/data.json`. Импорт атомарный: некорректный снимок не заменяет
-опубликованные данные. Другой снимок можно загрузить через
-`PUT /api/v1/source/snapshot`.
+При первом запуске приложение загружает dataset/data.json: синтетический набор из 10 аккаунтов, 30 услуг и 100 транзакций. Его можно заменить через PUT /api/v1/source/snapshot.
 
-Для сервиса формула риска:
+Оценка риска — объяснимая взвешенная эвристика, а не вероятность оттока: в наборе нет размеченных исходов. Выручка под риском считается отдельно по цене ближайшего продления и оценке риска услуги.
 
-```text
-score = 100 * sum(weight_i * feature_i) / sum(weight_i)
-```
+## Проверка
 
-В расчёт входят только доступные факторы с положительным весом; факторы
-нормализуются в диапазон 0–1, а отсутствующие данные не считаются нулевым
-риском. Оценка клиента равна максимальной оценке его прогнозируемых услуг.
-Завершённые статусы `deleted` и `blocked` не прогнозируются.
-
-Выручка под риском считается отдельно: цена каждого открытого платного
-продления в горизонте умножается на риск услуги и учитывается один раз.
-Цена не повышает риск. Деньги внутри приложения хранятся в евроцентах;
-`transactions.amount` денежным полем не является.
-
-## Метрики
-
-После входа в интерфейс `/metrics` можно открыть напрямую в том же браузере:
-<http://localhost:8000/metrics>. Endpoint выдаёт метрики Prometheus и защищён
-сессионной cookie для этого пути. Для отдельного сборщика задайте
-`AEZA_METRICS_TOKEN` и передавайте его в заголовке `Authorization: Bearer …`.
-Подробности — в [руководстве по развёртыванию](docs/DEPLOYMENT_PART_B.md).
-
-## Проверки
-
-```bash
+~~~powershell
 python -m pytest backend/tests/ -q
 python -m pytest tests/test_auth.py -q
 cd frontend
 npm ci
-npx tsc -b
 npm run build
-```
-
-Перед запуском тестов убедитесь, что в окружении нет неожиданных `AEZA_*`
-переменных. Проверка согласованности документации:
-
-```bash
-python backend/scripts/check_docs.py
-```
+~~~
 
 ## Документация
 
-- [Руководство проекта](docs/PROJECT_GUIDE.md)
-- [Развёртывание и Prometheus](docs/DEPLOYMENT_PART_B.md)
-- [Архитектура данных](docs/DATA_ARCHITECTURE.md)
-- [Авторизация](docs/AUTH_MODULE.md)
-- [AI Analyst](docs/AI_ANALYST.md)
-- [Агрегатный AI-ассистент](docs/AI_ASSISTANT.md)
-- [Данные и их происхождение](docs/PROVENANCE_AUDIT.md)
+[Запуск и обновление](docs/DEPLOYMENT_PART_B.md) · [Устройство и расчёты](docs/PROJECT_GUIDE.md) · [Все инструкции](docs/README.md)
