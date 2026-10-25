@@ -231,8 +231,7 @@ def build_portfolio_context(storage, *, retriever: Retriever | None, question: s
     documents_text = "ДОКУМЕНТЫ: не найдены.\n"
     injection_hits: list[str] = []
     if retriever is not None and top_k > 0:
-        query = f"{question} методология риск оттока выручка модель ограничения"
-        chunks = retriever.search(query, top_k=top_k, max_chars=max_doc_chars)
+        chunks = retriever.search(question, top_k=top_k, max_chars=max_doc_chars)
         documents_text, doc_citations, injection_hits = _documents_block(chunks)
         citations.extend(doc_citations)
 

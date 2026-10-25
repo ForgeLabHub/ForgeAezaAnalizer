@@ -411,6 +411,23 @@ def test_chat_without_customer_uses_portfolio_context(ai_client, ai_headers):
     assert body["grounded"] is True
 
 
+def test_portfolio_rag_search_uses_question_without_generic_terms(ai_client):
+    runtime = ai_client.app.state.runtime
+    question = "Какая выручка под риском в портфеле и из чего она складывается?"
+    queries = []
+
+    class CapturingRetriever:
+        def search(self, query, *, top_k, max_chars):
+            queries.append(query)
+            return []
+
+    context_builder.build_portfolio_context(
+        runtime.storage, retriever=CapturingRetriever(), question=question, top_k=2,
+    )
+
+    assert queries == [question]
+
+
 def test_chat_rejects_overlong_question(ai_client, ai_headers):
     response = ai_client.post("/api/v1/ai/chat", headers=ai_headers, json={"question": "x" * 3000})
     assert response.status_code == 422
@@ -527,3 +544,10 @@ def test_prompt_never_claims_probability():
     lowered = prompts.SYSTEM_PROMPT.lower()
     assert "не вероятность" in lowered
     assert "индекс" in lowered
+    assert lowered.count("отвечай исключительно на русском") == 1
+    assert "не повторяй один вывод в нескольких полях" in lowered
+    assert "возвращай пустой список или строку" in lowered
+
+
+def test_prompt_schema_requires_only_summary_for_focused_questions():
+    assert prompts.ANSWER_JSON_SCHEMA["required"] == ["summary"]
