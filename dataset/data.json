@@ -40,7 +40,7 @@
     {"id":38,"email":"presentation-0038@example.test","balance":18051,"withdrawBalance":8427,"totalReplenished":369555,"bonusBalance":1607,"bonusState":"unlocked"},
     {"id":39,"email":"presentation-0039@example.test","balance":73972,"withdrawBalance":67900,"totalReplenished":462410,"bonusBalance":6789,"bonusState":"locked"},
     {"id":40,"email":"presentation-0040@example.test","balance":1888,"withdrawBalance":130,"totalReplenished":273882,"bonusBalance":5761,"bonusState":"unlocked"},
-    {"id":41,"email":"PixelMinds.Hub@gmail.com","balance":12500,"withdrawBalance":2500,"totalReplenished":38000,"bonusBalance":1200,"bonusState":"locked"}
+    {"id":41,"email":"pixelminds.hub@gmail.com","balance":12500,"withdrawBalance":2500,"totalReplenished":38000,"bonusBalance":1200,"bonusState":"locked"}
   ],
   "services": [
     {"id":1,"name":"service-0001","ownerId":1,"paymentTerm":"hour","autoProlong":false,"createdAt":"2026-10-19T14:30:00.000Z","expiresAt":"2026-10-19T15:30:00.000Z","status":"active","price":95},
