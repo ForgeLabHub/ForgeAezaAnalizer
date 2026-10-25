@@ -98,6 +98,15 @@
       "totalReplenished": 38000,
       "bonusBalance": 1200,
       "bonusState": "locked"
+    },
+    {
+      "id": 12,
+      "email": "pixelminds.hub@gmail.com",
+      "balance": 0,
+      "withdrawBalance": 0,
+      "totalReplenished": 0,
+      "bonusBalance": 0,
+      "bonusState": "locked"
     }
   ],
   "services": [
