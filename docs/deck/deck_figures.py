@@ -23,8 +23,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "backend"))
 
-from core import State  # noqa: E402
-from backend.app.domain.module import create  # noqa: E402
+from core import State
+from backend.app.domain.module import create
 
 AS_OF = dt.datetime(2026, 10, 19, 15, 0, tzinfo=dt.timezone.utc)
 DEMO_WEIGHT = "expiry_proximity"
@@ -86,7 +86,7 @@ def main() -> int:
     show("service-0030 weight sum / contribution sum", f"{wsum} / {csum}")
     show("service-0030 implied score", round(100.0 * csum / wsum, 1))
 
-    # The demo re-weights one factor; report exactly what that changes.
+
     tuned = dict(base)
     tuned_weights = dict(base["weights"])
     tuned_weights[DEMO_WEIGHT] = DEMO_TO

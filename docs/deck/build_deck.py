@@ -41,14 +41,10 @@ from deckkit import (
 from layout import OVERFLOW, lines_box, text_block
 from values import facts
 
-# Every figure printed on a slide comes from here, computed by the real engine
-# over the organiser dataset. Do not type a number into a slide: the previous
-# hardcoded set drifted to an older weighting (73,3 / 5,74 EUR) and nothing
-# caught it. See values.py for the reproduction.
+
 F = facts()
 
-# Assets live next to this script; the decks themselves are written to the
-# repository root, where the team expects to find them.
+
 HERE = Path(__file__).resolve().parent
 IMG = HERE / "shots"
 BRAND = HERE / "brand"
@@ -63,8 +59,7 @@ def _repo_root() -> Path:
 
 ROOT = _repo_root()
 
-# Two event briefs were supplied for the same product. Everything that differs
-# between them lives here, so both decks come from one verified source of facts.
+
 PROFILES = {
     "hackathon": {
         "out": "aeza_hackathon_osen_2026.pptx",
@@ -101,8 +96,8 @@ OUT = ROOT / P["out"]
 
 M = Inches(0.72)
 CW = SW - 2 * M
-SOFT = RGBColor(0xC9, 0xC9, 0xC9)      # light text on dark
-HAIR = RGBColor(0xC9, 0xC9, 0xC9)      # placeholder outline
+SOFT = RGBColor(0xC9, 0xC9, 0xC9)
+HAIR = RGBColor(0xC9, 0xC9, 0xC9)
 
 
 def E(v) -> Emu:
@@ -115,7 +110,6 @@ def _ru(value) -> str:
     return text.replace(".", ",")
 
 
-# ------------------------------------------------------------------ heads ---
 def head(slide, kicker, title, sub=None, dark=False, y=0.60, title_size=30,
          sub_size=14, sub_w=None):
     """Kicker + statement headline + optional sub. Returns content start y (EMU)."""
@@ -160,7 +154,6 @@ def stat(slide, x, y, w, value, caption, vcolor=CORAL_DEEP, vsize=25, csize=9.5)
                csize, MUTED, 400, spacing=1.2, tag="statcap")
 
 
-# ================================================================= SLIDES ===
 def s01_cover(prs):
     s = prs.slides.add_slide(prs.slide_layouts[6])
     bg(s, INK)
@@ -247,7 +240,7 @@ def s02_problem(prs):
             rect(s, E(x + w + Inches(0.055)), E(y + Inches(0.80)), Inches(0.19),
                  Inches(0.26), fill=LINE, shape=MSO_SHAPE.RIGHT_ARROW)
 
-    # evidence strip
+
     ey = E(y + ch + Inches(0.30))
     eh = Inches(1.66)
     rect(s, M, ey, CW, eh, fill=WHITE, line=LINE, line_w=0.9)
@@ -314,7 +307,7 @@ def s03_solution(prs):
     rw = E(CW - lw - Inches(0.30))
     rx = E(M + lw + Inches(0.30))
 
-    # left: the ranked customer list
+
     label(s, M, py, lw, "РЕАЛЬНЫЙ ИНТЕРФЕЙС · СПИСОК КЛИЕНТОВ ПО РИСКУ")
     h1 = E(int(lw / 2.7579))
     shot(s, "cust_table_all.png", M, E(py + Inches(0.26)), lw, h1)
@@ -322,7 +315,7 @@ def s03_solution(prs):
                "Все 10 клиентов снимка отсортированы по риску: балл, уровень и выручка "
                "под риском в одной строке.", 10, MUTED, 400, spacing=1.28, tag="sol-cap-l")
 
-    # right: summary metrics above the risk-reason breakdown
+
     label(s, rx, py, rw, "СВОДКА ПО БАЗЕ")
     hm = E(int(rw / 3.2041))
     shot(s, "w_dash_metrics6.png", rx, E(py + Inches(0.26)), rw, hm)
@@ -437,9 +430,8 @@ def s05_factors(prs):
                f"Вклад факторов в балл {F['service']['score']} · service-0030", 12.5, TEXT, 600, tag="ch-t")
 
     cd = CategoryChartData()
-    # Derived from the engine, in the engine's own factor order, so the chart
-    # cannot list a factor the model no longer scores (the old list still showed
-    # failed_renewals at 2.0 and omitted renewal_failure_rate).
+
+
     cd.categories = [
         f"{name} · {_ru(weight)}" for name, weight, _ in F["service"]["factors"]
     ]

@@ -30,20 +30,20 @@ DEFAULT_TEST_SUBJECT = "Aéza Sentinel — проверка отправки"
 
 
 class TestEmailRequest(BaseModel):
-    # ``extra="forbid"`` is part of the SSRF guard: the provider URL comes only
-    # from ``SMTP_BZ_API_URL``, so a request cannot smuggle in an endpoint.
+
+
     model_config = ConfigDict(extra="forbid")
     to: Annotated[str, Field(min_length=3, max_length=254)]
     subject: Annotated[str | None, Field(max_length=200)] = None
-    #: A guard against accidental sends: a request without an explicit
-    #: ``confirm: true`` is rejected before any provider call is made.
+
+
     confirm: bool = False
 
     @field_validator("to")
     @classmethod
     def _validate_recipient(cls, value: str) -> str:
-        # Reject a malformed address with 422 at the edge, so it never becomes a
-        # 502 "provider refused" and the provider is never called for it.
+
+
         if not email_integration.is_valid_address(value):
             raise ValueError("Некорректный e-mail получателя")
         return value.strip()

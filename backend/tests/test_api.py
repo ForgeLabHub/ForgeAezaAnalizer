@@ -222,8 +222,6 @@ def test_openapi_describes_responses_and_all_frontend_paths(client):
     assert schema["$ref"].endswith("/CustomerPage")
 
 
-# Every path the shipped frontend calls must be present in the published schema,
-# otherwise the UI breaks at runtime while the OpenAPI document still looks fine.
 FRONTEND_CALLS = (
     ("get", "/api/v1/analytics/summary"),
     ("get", "/api/v1/analytics/events"),
@@ -248,9 +246,8 @@ def test_openapi_covers_every_frontend_call(client):
 
 
 def test_committed_openapi_matches_the_app(client):
-    # `backend/openapi.json` is published to integrators, so a route added without
-    # regenerating it ships a schema that silently omits that route. Regenerate with
-    # `python backend/scripts/export_openapi.py`.
+
+
     committed = json.loads((Path(__file__).resolve().parents[1] / "openapi.json").read_text(encoding="utf-8"))
     live = client.get("/api/v1/openapi.json").json()
     assert set(committed["paths"]) == set(live["paths"])
@@ -267,7 +264,7 @@ def test_openapi_documents_priority_query_parameters(client):
 
 
 def test_removed_whatif_endpoint_is_not_published(client):
-    # The scenario preview moved to POST /api/v1/scenarios/compare; the old
-    # route must not linger in the schema, or clients keep calling a 404.
+
+
     paths = client.get("/api/v1/openapi.json").json()["paths"]
     assert "/api/v1/whatif" not in paths

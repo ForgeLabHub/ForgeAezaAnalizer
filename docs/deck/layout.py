@@ -13,7 +13,7 @@ from pptx.util import Emu, Inches, Pt
 
 from deckkit import FONT, textbox, para, _set_weight, wrap, line_height_in
 
-# build-time log of anything that could not fit its box
+
 OVERFLOW: list[str] = []
 
 

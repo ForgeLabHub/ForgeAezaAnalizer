@@ -288,11 +288,10 @@ class TelegramUpdateRow(Base):
 ANALYTICS_TABLES = (
     CurrentRow.__table__, SourceRow.__table__, ModelRow.__table__, AnalysisRow.__table__,
     CustomerRow.__table__, ServiceIndexRow.__table__, ObservationRow.__table__, AuditRow.__table__,
-    # Workflow state for retention playbooks. Grouped with the analytics tables
-    # because it is created by the same initialise() call the runtime makes at
-    # startup; it holds no analytical data and is never versioned by generation.
+
+
     RecommendationStatusRow.__table__,
-    # Human-confirmed retention actions, created by the same initialise() call.
+
     ActionRow.__table__,
     TelegramLinkRow.__table__, TelegramOtpRow.__table__, TelegramChatStateRow.__table__,
     TelegramClientSessionRow.__table__, SupportConversationRow.__table__, SupportMessageRow.__table__,
@@ -323,10 +322,8 @@ class Database:
 
     def initialize(self):
         Base.metadata.create_all(self.engine, tables=ANALYTICS_TABLES)
-        # `create_all` never alters an existing table, so a release that adds a
-        # column would start against a database whose shape no longer matches the
-        # ORM. Reconcile first: additive column adds, then recorded migrations.
-        # Imported here to avoid a circular import (schema imports ANALYTICS_TABLES).
+
+
         from backend.app.schema import ensure_schema
 
         result = ensure_schema(self.engine)

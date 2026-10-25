@@ -28,11 +28,8 @@ from app.domain.schema import Account, Service, Snapshot, Transaction
 NOW = dt.datetime(2026, 10, 19, 15, 0, tzinfo=dt.timezone.utc)
 
 
-# --------------------------------------------------------------------------- money
-
-
 def test_cents_to_eur_documented_examples():
-    # 100 source units == EUR 1, so eurocents map 1:1 to 0.01 EUR.
+
     assert cents_to_eur(100) == Decimal("1.00")
     assert cents_to_eur(0) == Decimal("0.00")
     assert cents_to_eur(1) == Decimal("0.01")
@@ -46,8 +43,8 @@ def test_cents_to_eur_rounds_half_up():
 
 
 def test_cents_to_eur_is_not_double_converted():
-    # A value already expressed in euros must not be divided twice: the helper
-    # takes cents only, so calling it with the euro figure is a caller error.
+
+
     assert cents_to_eur(83810) != Decimal("83810.00")
 
 
@@ -65,9 +62,6 @@ def test_validate_non_negative_cents_rejects_negative():
 def test_cents_to_eur_rejects_bool():
     with pytest.raises(MoneyError):
         cents_to_eur(True)
-
-
-# --------------------------------------------------------------------------- schema
 
 
 def _service(**overrides) -> dict:
@@ -178,9 +172,6 @@ def test_snapshot_accepts_valid_bundle():
     assert snapshot.services[0].owner_id == 1
 
 
-# --------------------------------------------------------------------------- settings
-
-
 def test_validate_settings_rejects_negative_weight():
     with pytest.raises(RiskConfigError):
         validate_settings(RiskSettings(weights={**DEFAULT_WEIGHTS, "expiry_proximity": -1}))
@@ -234,17 +225,14 @@ def test_classify_boundaries():
     assert classify(None, settings) == "insufficient_data"
 
 
-# --------------------------------------------------------------------------- risk
-
-
 def _account(**overrides):
     balance = overrides.get("balance", 10_000)
     base = {
         "id": 1,
         "email": "a@b.c",
         "balance": balance,
-        # Keep the documented invariant (withdrawBalance <= balance) satisfied
-        # while letting tests vary the balance freely.
+
+
         "withdrawBalance": min(1_000, balance),
         "totalReplenished": max(50_000, balance),
         "bonusBalance": 500,
@@ -286,8 +274,7 @@ def test_risk_score_is_reproducible():
 def test_risk_score_matches_formula():
     """Verify the published formula on a hand-computed case."""
 
-    # month service expiring in 15 days of a 30-day horizon, no autoprolong,
-    # zero balance vs price, no transactions.
+
     service = Service.model_validate(
         _service(
             autoProlong=False,
@@ -312,9 +299,8 @@ def test_risk_score_matches_formula():
         DEFAULT_WEIGHTS[k] * v for k, v in expected_features.items()
     ) / total_weight
     assert result.score == pytest.approx(round(expected, 1))
-    # No renewal history: the *rate* is unknown, so it is reported as missing.
-    # The deprecated diagnostic factor must not appear in missing_data, since
-    # it never contributes to the score.
+
+
     assert "Доля неуспешных продлений" in result.missing_data
     assert "Неуспешные продления" not in result.missing_data
 
@@ -386,7 +372,7 @@ def test_zero_weight_excludes_factor():
     result = compute_service_risk(
         service=service, account=_account(balance=0), transactions=[], settings=settings, now=NOW
     )
-    # Only the autoprolong factor carries weight and it is fully present.
+
     assert result.score == 100.0
     assert [f.key for f in result.factors if f.available] == ["auto_prolong_disabled"]
 
@@ -426,7 +412,7 @@ def test_deleted_and_blocked_services_are_not_forecast():
 
 
 def test_expiry_boundary_at_horizon_is_zero():
-    # Exactly on the horizon edge: proximity feature must be 0, not 1.
+
     service = Service.model_validate(_service(expiresAt="2026-11-18T15:00:00.000Z", autoProlong=True))
     settings = RiskSettings(horizon_days=30)
     result = compute_service_risk(
@@ -477,20 +463,20 @@ def test_failed_renewals_is_diagnostic_only():
     diag1 = next(f for f in one.factors if f.key == "failed_renewals")
     diag3 = next(f for f in many.factors if f.key == "failed_renewals")
 
-    # Diagnostics report the raw historical count, normalised by nothing.
+
     assert diag1.value == pytest.approx(1.0)
     assert diag3.value == pytest.approx(3.0)
-    # ...but it is deprecated, unweighted and therefore not "available".
+
     assert diag1.deprecated is True
     assert diag1.weight == 0.0
     assert diag1.available is False
     assert diag1.contribution == 0.0
 
-    # The rate is the single rating factor and does move with the failures.
+
     rate1 = next(f for f in one.factors if f.key == "renewal_failure_rate")
     rate3 = next(f for f in many.factors if f.key == "renewal_failure_rate")
-    assert rate1.value == pytest.approx(1.0)  # 1 failed of 1 attempt
-    assert rate3.value == pytest.approx(1.0)  # 3 failed of 3 attempts
+    assert rate1.value == pytest.approx(1.0)
+    assert rate3.value == pytest.approx(1.0)
     assert rate1.weight == pytest.approx(2.5)
 
 
@@ -520,7 +506,7 @@ def test_failed_renewals_does_not_double_count():
         settings=RiskSettings(),
         now=NOW,
     )
-    # Both are 1 failed of 2 attempts -> identical rate -> identical score.
+
     assert few.score == pytest.approx(lots.score)
 
 
@@ -569,8 +555,6 @@ def test_factor_metadata_covers_every_factor():
         assert definition.label and definition.description and definition.normalization
 
 
-
-
 def test_every_factor_feature_stays_in_unit_range():
     """No live factor may report a value outside [0, 1]."""
     service = Service.model_validate(_service())
@@ -586,15 +570,11 @@ def test_every_factor_feature_stays_in_unit_range():
             assert 0.0 <= factor.value <= 1.0, factor.key
 
 
-
-
 def test_canonical_weights_is_pure_and_keeps_unknown_keys_out_of_the_sum():
     assert canonical_weights({"failed_renewals": 9.0, "expiry_proximity": 3.0}) == {
         "failed_renewals": 0.0,
         "expiry_proximity": 3.0,
     }
-
-
 
 
 def test_bundled_seed_defaults_match_code_defaults():
@@ -611,6 +591,6 @@ def test_bundled_seed_defaults_match_code_defaults():
     assert payload["weights"] == pytest.approx(DEFAULT_WEIGHTS)
     assert payload["lowMax"] == RiskSettings().low_max
     assert payload["mediumMax"] == RiskSettings().medium_max
-    # Omitting this field would deserialise as null ("whole snapshot") and make
-    # the seeded baseline differ from a reset model.
+
+
     assert payload["failedRenewalWindowDays"] == RiskSettings().failed_renewal_window_days

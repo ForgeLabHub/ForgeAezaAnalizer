@@ -18,10 +18,10 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_HALF_UP
 
-#: Number of source units that make up one euro (eurocents convention).
+
 CENTS_PER_EURO = Decimal(100)
 
-#: Display precision for euro amounts.
+
 EURO_QUANT = Decimal("0.01")
 
 

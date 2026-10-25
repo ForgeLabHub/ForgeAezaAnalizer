@@ -153,7 +153,7 @@ def import_snapshot(session: Session, snapshot: Snapshot) -> ImportResult:
         run.finished_at = dt.datetime.now(dt.timezone.utc)
         run.message = "snapshot applied"
         session.flush()
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:
         run.status = "failed"
         run.finished_at = dt.datetime.now(dt.timezone.utc)
         run.message = f"import failed: {exc}"

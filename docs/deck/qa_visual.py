@@ -84,8 +84,8 @@ def main() -> int:
         cx0, cx1 = int(w * 0.03), int(w * 0.97)
         step = max(1, w // 700)
         step_y = max(1, step // 2)
-        # modal luminance in the content area = the page background, whatever
-        # colour it is; "content" is anything far enough away from it
+
+
         from collections import Counter
         hist: Counter = Counter()
         for y in range(cy0, cy1, step_y):
@@ -128,8 +128,8 @@ def main() -> int:
             issues.append(f"{f.name} ink {ink:.1f}% (overloaded)")
 
     print("\n-- contrast (>= 4.5 body, >= 3.0 large) --")
-    # Read the real palette from the deck kit, so this check can never drift
-    # away from the colours actually used on the slides.
+
+
     from deckkit import (CORAL, CORAL_DEEP, DIM, INK, INK_2, LINE, MINT,
                          MUTED, PAPER, TEXT, WHITE)
 

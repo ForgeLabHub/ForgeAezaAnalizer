@@ -28,14 +28,13 @@ from datetime import datetime, timedelta, timezone
 
 from .money import cents_to_eur
 
-#: Service states that are still open, i.e. a future churn event is possible.
+
 ELIGIBLE_STATUSES: frozenset[str] = frozenset({"active", "suspended", "prolong_wait"})
 
-#: Service states that describe an already-concluded outcome.
+
 CONCLUDED_STATUSES: frozenset[str] = frozenset({"deleted", "blocked"})
 
-#: Trailing window (days) used when counting failed renewals.  ``None`` means
-#: "every event present in the snapshot".
+
 FAILED_RENEWAL_WINDOW_DAYS: int | None = 90
 
 
@@ -50,9 +49,8 @@ class FactorDefinition:
     normalization: str
     default_weight: float
     missing_data_behaviour: str = "фактор исключён, веса перенормированы"
-    #: ``True`` for factors kept in the API for compatibility but excluded from
-    #: the weighted sum (weight is 0).  The signal they describe is already
-    #: carried by another factor, so counting them again would double-weight it.
+
+
     deprecated: bool = False
 
 
@@ -121,7 +119,7 @@ FACTOR_BY_KEY: dict[str, FactorDefinition] = {f.key: f for f in FACTORS}
 
 DEFAULT_WEIGHTS: dict[str, float] = {f.key: f.default_weight for f in FACTORS}
 
-#: Factors that are reported for compatibility but never enter the rating.
+
 DEPRECATED_KEYS: frozenset[str] = frozenset(f.key for f in FACTORS if f.deprecated)
 
 
@@ -137,8 +135,6 @@ def canonical_weights(weights: dict[str, float]) -> dict[str, float]:
     return {key: (0.0 if key in DEPRECATED_KEYS else float(value)) for key, value in weights.items()}
 
 
-#: Risk bands, inclusive upper bounds.  Centralised so both the API and the UI
-#: agree on the same classification.
 DEFAULT_LOW_MAX = 34
 DEFAULT_MEDIUM_MAX = 64
 
@@ -155,7 +151,7 @@ class RiskSettings:
     weights: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_WEIGHTS))
     low_max: int = DEFAULT_LOW_MAX
     medium_max: int = DEFAULT_MEDIUM_MAX
-    #: Trailing window for failed renewals.  ``None`` = whole snapshot.
+
     failed_renewal_window_days: int | None = FAILED_RENEWAL_WINDOW_DAYS
 
     def __post_init__(self) -> None:
@@ -193,10 +189,8 @@ def validate_settings(settings: RiskSettings) -> None:
             raise RiskConfigError(f"weight for {key} must be finite")
         if weight < 0:
             raise RiskConfigError(f"weight for {key} cannot be negative")
-        # A deprecated factor duplicates a signal already carried by a live one
-        # (failed_renewals vs renewal_failure_rate). Allowing it a non-zero
-        # weight restores the double counting the methodology removed, so the
-        # only accepted value is 0 — the field stays for API compatibility.
+
+
         if FACTOR_BY_KEY[key].deprecated and weight != 0:
             raise RiskConfigError(
                 f"weight for {key} must be 0: the factor is deprecated and its "
@@ -225,8 +219,8 @@ class FactorResult:
     contribution: float
     reason: str
     available: bool
-    #: Mirrors :class:`FactorDefinition.deprecated`.  Reported to the client so
-    #: a consumer can tell a live rating factor from a diagnostic one.
+
+
     deprecated: bool = False
 
 
@@ -294,7 +288,7 @@ def compute_service_risk(
 
     horizon = float(settings.horizon_days)
 
-    # --- expiry proximity -------------------------------------------------
+
     if days_left <= 0:
         raw["expiry_proximity"] = 1.0
         reasons["expiry_proximity"] = (
@@ -311,7 +305,7 @@ def compute_service_risk(
             f"До окончания {days_left:.1f} дн. — внутри горизонта {int(horizon)} дн."
         )
 
-    # --- auto prolong -----------------------------------------------------
+
     raw["auto_prolong_disabled"] = 0.0 if service.auto_prolong else 1.0
     reasons["auto_prolong_disabled"] = (
         "Автопродление включено."
@@ -319,15 +313,7 @@ def compute_service_risk(
         else "Автопродление отключено — продление зависит от ручного решения."
     )
 
-    # --- balance vs price -------------------------------------------------
-    # Only funds that can actually pay for the renewal count.  The bonus
-    # balance is spendable only when the snapshot marks it unlocked; an
-    # unknown bonusState is treated as *not* available, so missing data can
-    # never inflate the customer's capacity.  withdrawBalance is referral money
-    # meant for withdrawal and is deliberately excluded.
-    #
-    # A missing balance is unknown, not zero: scoring it as "no funds" would
-    # invent a risk signal out of absent data.
+
     balance = getattr(account, "balance", None)
     bonus_available = (
         getattr(account, "bonus_balance", None) or 0
@@ -366,7 +352,7 @@ def compute_service_risk(
                 f"{_format_eur(service.price)} — покрытие {ratio * 100:.0f}%."
             )
 
-    # --- status factors ---------------------------------------------------
+
     raw["prolong_wait_status"] = 1.0 if status == "prolong_wait" else 0.0
     reasons["prolong_wait_status"] = (
         "Услуга ожидает продления (prolong_wait)."
@@ -381,9 +367,7 @@ def compute_service_risk(
         else "Услуга не приостановлена."
     )
 
-    # --- transaction history ---------------------------------------------
-    # Only events at or before the evaluation instant may be used: a renewal
-    # recorded after ``now`` would leak the future into the score.
+
     window = settings.failed_renewal_window_days
     if window is None:
         window_start = None
@@ -410,7 +394,7 @@ def compute_service_risk(
     )
 
     if not in_window:
-        # No observable attempts inside the window: the rate is unknown, not 0.
+
         raw["renewal_failure_rate"] = None
         missing.append("renewal_failure_rate")
         reasons["renewal_failure_rate"] = (
@@ -423,9 +407,7 @@ def compute_service_risk(
             f"({len(failed) / len(in_window) * 100:.0f}%)."
         )
 
-    # Diagnostics only: never enters the weighted sum (its weight is 0).
-    # Kept so the analyst can still see how many failures exist historically
-    # and how many the window excluded.
+
     raw["failed_renewals"] = float(len(failed_all)) if prolongs_all else None
     if not prolongs_all:
         reasons["failed_renewals"] = "История продлений отсутствует в снимке."
@@ -441,17 +423,14 @@ def compute_service_risk(
             f"{len(prolongs_all)} всего.{tail} В рейтинг не входит."
         )
 
-    # --- weighted aggregation --------------------------------------------
+
     results: list[FactorResult] = []
     total_weight = 0.0
     weighted_sum = 0.0
     for definition in FACTORS:
         value = raw.get(definition.key)
-        # The published formula is 100 * sum(w_i * f_i) / sum(w_i) over
-        # features in [0, 1].  A diagnostic factor must never enter the sum,
-        # and a value outside [0, 1] would let the score exceed 100.  Clamping
-        # keeps the documented range true even if an operator re-enables a
-        # deprecated weight or a future feature is mis-normalised.
+
+
         weight = 0.0 if definition.deprecated else settings.weight(definition.key)
         available = value is not None and weight > 0
         if available:
@@ -478,7 +457,7 @@ def compute_service_risk(
         score = None
         category = "insufficient_data"
     else:
-        # risk_score = 100 * sum(w_i * f_i) / sum(w_i)
+
         score = round(100.0 * weighted_sum / total_weight, 1)
         category = classify(score, settings)
 
@@ -515,12 +494,10 @@ class CustomerRisk:
     missing_data: list[str]
     concluded_states: dict[str, int]
     state_note: str = ""
-    #: Share of *scored* services that sit in the high band (0..1).
-    #: Reported alongside ``score`` rather than folded into it: ``score`` stays
-    #: the maximum service risk, so a wider portfolio never raises the rating
-    #: by itself.  Concentration is a separate decision input.
+
+
     high_risk_share: float = 0.0
-    #: Services in an open state whose ``expiresAt`` is already in the past.
+
     overdue_service_count: int = 0
 
 
@@ -555,8 +532,8 @@ def compute_customer_risk(
         top = max(scored, key=lambda r: r.score or 0.0)
         score = top.score
         category = top.category
-        # Reasons are drawn from every service at or near the top score so the
-        # analyst sees the full picture, not just one service's wording.
+
+
         threshold = (score or 0.0) - 10.0
         reasons: list[str] = []
         for risk in sorted(scored, key=lambda r: r.score or 0.0, reverse=True):
@@ -589,9 +566,8 @@ def compute_customer_risk(
             state_note = "У клиента нет услуг в снимке."
 
     high_risk_count = sum(1 for r in scored if r.category == "high")
-    # Denominator is the *scored* services: services with no computable score
-    # carry no information, so including them would understate concentration.
-    # An empty denominator yields 0.0 rather than a division error.
+
+
     high_risk_share = (high_risk_count / len(scored)) if scored else 0.0
     overdue_count = sum(
         1 for r in eligible if r.days_to_expiry is not None and r.days_to_expiry < 0

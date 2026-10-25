@@ -20,8 +20,7 @@ import copy
 from dataclasses import dataclass, field
 from datetime import datetime
 
-#: Parameters a scenario is allowed to override.  Anything else is rejected so
-#: a scenario can never reach balances, prices, statuses or raw transactions.
+
 SCENARIO_PARAMETERS = ("weights", "horizonDays", "lowMax", "mediumMax", "failedRenewalWindowDays")
 
 
@@ -181,10 +180,6 @@ def factor_availability(baseline: list[dict], scenario: list[dict]) -> dict:
     return result
 
 
-# --------------------------------------------------------------------- quality
-
-#: Severity levels and what they mean.  Kept next to the checks so the
-#: documentation cannot drift from the code.
 QUALITY_LEVELS = {
     "critical": "Расчёт по записи может быть неверным; требуется проверка данных.",
     "warning": "Данные выглядят подозрительно; расчёт возможен, но интерпретируйте осторожно.",
@@ -301,10 +296,6 @@ def inspect_source(source: dict, *, as_of: datetime | None = None) -> dict:
     }
 
 
-# -------------------------------------------------------------------- priority
-
-#: Categorical work queues.  These organise attention; they are NOT risk classes
-#: and carry no probability.  A customer can belong to several.
 PRIORITY_CATEGORIES = {
     "operational_attention": "Подтверждённая операционная проблема: просроченное продление или противоречие регламенту.",
     "high_risk_with_exposure": "Высокий риск и ненулевая будущая экспозиция на выбранном горизонте.",

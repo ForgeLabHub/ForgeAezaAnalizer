@@ -84,7 +84,7 @@ def test_a_plain_tick_does_not_publish_a_new_generation(client, analytics):
 
     assert runtime.storage.load().generation == 1
 
-    # A real input change still publishes, so the guard is not over-broad.
+
     published = runtime.core.update(patch={"horizonDays": 7}, actor="analyst")
     assert published.generation == 2
 

@@ -26,9 +26,6 @@ def _source() -> dict:
     return json.loads(SNAPSHOT.read_text(encoding="utf-8"))
 
 
-# ------------------------------------------------------------------ scenarios
-
-
 def test_scenario_rejects_parameters_it_must_not_touch():
     """A scenario may only move model parameters, never data."""
     for forbidden in ("balance", "price", "status", "services", "source"):
@@ -97,9 +94,6 @@ def test_factor_availability_detects_a_lost_factor():
     assert result["renewal_failure_rate"]["becameUnknown"] == 1
 
 
-# -------------------------------------------------------------------- quality
-
-
 def test_quality_audit_is_read_only():
     source = _source()
     before = json.dumps(source, sort_keys=True)
@@ -144,9 +138,6 @@ def test_quality_does_not_claim_balance_ledger_reconciliation():
     assert "не выводятся" in report["note"]
 
 
-# ------------------------------------------------------------------- priority
-
-
 def test_priority_keeps_every_applicable_reason():
     customer = {
         "id": 1, "riskCategory": "high", "overdueServiceCount": 2,
@@ -177,9 +168,6 @@ def test_urgency_orders_lifecycle_above_overdue():
     worse = {"lifecycleInconsistentCount": 1, "overdueServiceCount": 1, "riskCategory": "high"}
     better = {"lifecycleInconsistentCount": 0, "overdueServiceCount": 1, "riskCategory": "high"}
     assert insights.urgency_rank(worse) < insights.urgency_rank(better)
-
-
-# --------------------------------------------------------------------- export
 
 
 def test_csv_escapes_formula_prefixes():
@@ -246,8 +234,8 @@ def test_export_row_count_is_the_filtered_selection(client, auth_headers):
     """``X-Export-Rows`` must describe the export, not the whole customer base."""
     listed = client.get("/api/v1/customers?pageSize=100", headers=auth_headers).json()
     total = listed["total"]
-    # The fixture gives categories in a repeating pattern, so a filter exists
-    # that is a strict, non-empty subset of the whole selection.
+
+
     for category in ("high", "low"):
         filtered = client.get(
             f"/api/v1/customers?pageSize=100&riskCategory={category}", headers=auth_headers
@@ -281,7 +269,7 @@ def test_export_is_a_stream_not_a_buffer(client, auth_headers):
     response = client.get("/api/v1/export/customers.csv?pageSize=1", headers=auth_headers)
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
-    # A streamed body has no reliable Content-Length up front.
+
     assert "content-length" not in {k.lower() for k in response.headers}
 
 

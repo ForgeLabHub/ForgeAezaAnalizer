@@ -52,7 +52,7 @@ from .db import ANALYTICS_TABLES
 
 logger = logging.getLogger("aeza.schema")
 
-#: The table every recorded migration is written to. Created on first use.
+
 MIGRATIONS_TABLE = "schema_migrations"
 
 
@@ -74,9 +74,8 @@ def _column_ddl(column, dialect) -> str:
 
     type_sql = column.type.compile(dialect=dialect)
     ddl = f"{_quote(column.name, dialect)} {type_sql}"
-    # A server default is only safe when it is a literal the database can evaluate
-    # on its own (a boolean/int default from the model). Python-side callables are
-    # deliberately not translated.
+
+
     default = column.default
     if default is not None and not default.is_callable and not default.is_sequence:
         value = default.arg
@@ -105,7 +104,7 @@ def reconcile(engine: Engine) -> list[str]:
         for table in ANALYTICS_TABLES:
             name = table.name
             if name not in existing_tables:
-                continue  # create_all made it in the correct shape
+                continue
             present = {column["name"] for column in inspector.get_columns(name)}
             for column in table.columns:
                 if column.name in present:
@@ -132,7 +131,7 @@ def _recorded(connection, dialect: str) -> set[str]:
 
 def _has_column(connection, dialect: str, table: str, column: str) -> bool:
     if dialect == "sqlite":
-        # SQLite has no information_schema; PRAGMA is the supported route.
+
         columns = connection.execute(text(f"PRAGMA table_info({table})")).fetchall()
         return any(row[1] == column for row in columns)
     row = connection.execute(
@@ -174,18 +173,15 @@ def _migration_telegram_link_legacy_shape(connection, dialect: str) -> None:
     if not _table_exists(connection, dialect, "analyzer_telegram_links"):
         return
     if not _has_column(connection, dialect, "analyzer_telegram_links", "chat_id"):
-        return  # not the legacy shape
+        return
 
-    # Backfill the identity from chat_id, only where it is still missing.
+
     connection.execute(text(
         "UPDATE analyzer_telegram_links SET telegram_user_id = chat_id "
         "WHERE telegram_user_id IS NULL AND chat_id IS NOT NULL"
     ))
 
-    # Backfill account_id from the analytics accounts table by email, when present
-    # and unambiguous. `analyzer_telegram_links.user_email` is the legacy column.
-    # A correlated subquery is used instead of ``UPDATE ... FROM`` so the statement
-    # is portable between PostgreSQL and SQLite.
+
     if _has_column(connection, dialect, "analyzer_telegram_links", "user_email") and _table_exists(
         connection, dialect, "accounts"
     ):
@@ -207,7 +203,6 @@ def _migration_telegram_link_legacy_shape(connection, dialect: str) -> None:
         )
 
 
-#: Ordered registry. Each entry runs at most once, recorded by version.
 MIGRATIONS: tuple[tuple[str, object], ...] = (
     ("2026_10_24_telegram_link_legacy_shape", _migration_telegram_link_legacy_shape),
 )

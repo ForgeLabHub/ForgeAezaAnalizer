@@ -25,14 +25,14 @@ from .schemas import AIAnswer
 _NUMBER = re.compile(r"-?\d+(?:[.,]\d+)?")
 _PERCENT_AFTER_NUMBER = re.compile(r"(-?\d+(?:[.,]\d+)?)\s*%")
 
-#: Words that turn a score into an unjustified probabilistic claim.
+
 _PROBABILITY_WORDS = ("вероятност", "probability", "шанс", "chance", "prognos", "прогноз вероятн")
 _NEGATIONS = ("не ", "не  ", "нельзя", "невозможн", "не является", "not ", "n't", "никогда")
 
-#: Phrases implying a guarantee the system cannot make.
+
 _GUARANTEE_WORDS = ("гарантир", "guarantee", "точно уйд", "обязательно уйд", "100% уйд")
 
-#: Instruction-like patterns in documents.  These are neutralised, never executed.
+
 _INJECTION_PATTERNS = (
     re.compile(r"ignore\s+(all\s+)?(previous|prior)\s+instructions", re.I),
     re.compile(r"disregard\s+(all\s+)?(previous|prior)", re.I),
@@ -157,8 +157,8 @@ def check_claims(answer: AIAnswer, *, risk_score: float | None) -> list[str]:
             negated = any(marker in lowered for marker in _NEGATIONS)
             if not negated and any(word in lowered for word in _PROBABILITY_WORDS):
                 violations.append(f"{name}: балл представлен как вероятность")
-            # A negated guarantee ("не гарантированный убыток") is a disclaimer,
-            # not a promise, so it is not a violation.
+
+
             if not negated and any(word in lowered for word in _GUARANTEE_WORDS):
                 violations.append(f"{name}: обещание гарантированного результата")
             for match in _PERCENT_AFTER_NUMBER.finditer(sentence):
@@ -240,9 +240,8 @@ def enforce(answer: AIAnswer, *, context_text: str, risk_score: float | None) ->
         cleaned.factor_explanation, allowed
     ):
         cleaned.factor_explanation = ""
-    # ``limitations`` is stripped exactly like the other fields. Leaving an
-    # invented figure here while appending a notice that claims it was removed
-    # would serve the fabrication *and* a false assurance that it was dropped.
+
+
     if _ungrounded_numbers(cleaned.limitations, allowed):
         cleaned.limitations = ""
 

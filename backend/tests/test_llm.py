@@ -58,10 +58,6 @@ def _context_for_customer(client: TestClient, headers: dict) -> dict:
     return llm.build_customer_context(detail, as_of="2026-10-19T15:00:00+00:00", horizon_days=30)
 
 
-# --------------------------------------------------------------------------- #
-# Grounding verifier (unit)
-# --------------------------------------------------------------------------- #
-
 def test_verifier_accepts_numbers_from_the_context():
     context = {"customer": {"riskScore": 71.4, "email": "user-0010@example.test"}}
     answer = "Балл 71.4, адрес user-0010@example.test, риск высокий."
@@ -90,10 +86,6 @@ def test_verifier_allows_small_ordinals():
     assert llm.verify_grounding("Шаги 1 и 2 — проверить и позвонить.", context) == []
 
 
-# --------------------------------------------------------------------------- #
-# Context builder
-# --------------------------------------------------------------------------- #
-
 def test_context_excludes_unrelated_customer_data():
     detail = {
         "id": 10, "email": "u@example.test", "riskScore": 71.4, "riskCategory": "high",
@@ -106,14 +98,10 @@ def test_context_excludes_unrelated_customer_data():
     }
     context = llm.build_customer_context(detail, as_of=None, horizon_days=30)
     blob = json.dumps(context, ensure_ascii=False)
-    assert "203.79" in blob          # balance kept as an explanatory euro string
-    assert "99.99" not in blob       # withdrawBalance is not part of the fact set
-    assert "cents" not in blob       # raw cent values are not sent
+    assert "203.79" in blob
+    assert "99.99" not in blob
+    assert "cents" not in blob
 
-
-# --------------------------------------------------------------------------- #
-# Client behaviour against the stub provider
-# --------------------------------------------------------------------------- #
 
 def test_client_returns_text_on_a_good_response():
     def handler(request: httpx.Request) -> httpx.Response:
@@ -176,17 +164,3 @@ def test_explain_refuses_when_disabled():
     with pytest.raises(llm.LlmUnavailable):
         llm.explain_customer(payload, settings=_settings(llm_enabled=False),
                              as_of=None, horizon_days=30)
-
-
-# --------------------------------------------------------------------------- #
-# HTTP surface
-# --------------------------------------------------------------------------- #
-#
-# The per-customer HTTP routes this file used to exercise
-# (``GET /api/v1/ai/status``, ``POST /api/v1/ai/customers/{id}/explain``) were
-# superseded by the AI Analyst subsystem in ``backend/app/ai``, which ships its
-# own router and its own tests (``backend/tests/test_ai.py``). Those HTTP tests
-# were removed here rather than kept against a contract that no longer exists.
-# The unit tests above still cover ``backend/app/domain/llm.py``, which serves
-# the aggregate endpoint ``POST /api/v1/insights/ai``
-# (tested in ``backend/tests/test_insights_ai.py``).

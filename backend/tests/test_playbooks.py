@@ -27,7 +27,7 @@ def test_recommendations_default_to_new(client, auth_headers):
     for item in payload["items"]:
         assert item["status"] == "new"
         assert item["statusUpdatedAt"] is None
-    # Codes are unique within a customer: the identity the status keys on.
+
     codes = [item["code"] for item in payload["items"]]
     assert len(codes) == len(set(codes))
 
@@ -43,7 +43,7 @@ def test_status_change_persists_across_reads(client, auth_headers):
     assert updated.json()["status"] == "in_progress"
     assert updated.json()["updatedBy"] == "analyst@aeza.test"
 
-    # A fresh read must reflect the stored value, not a default.
+
     again = _playbooks(client, auth_headers, 5)
     stored = next(i for i in again["items"] if i["code"] == code)
     assert stored["status"] == "in_progress"
@@ -94,7 +94,7 @@ def test_repeated_identical_update_is_idempotent(client, auth_headers):
     first = client.patch(url, json={"status": "in_progress"}, headers=auth_headers).json()
     second = client.patch(url, json={"status": "in_progress"}, headers=auth_headers).json()
     assert first["status"] == second["status"] == "in_progress"
-    # Still exactly one row for that playbook.
+
     stored = [i for i in _playbooks(client, auth_headers, 5)["items"] if i["code"] == code]
     assert len(stored) == 1
 
@@ -164,7 +164,7 @@ def test_status_does_not_change_the_analysis(client, auth_headers):
     assert after_summary["customers"] == before_summary["customers"]
     assert after_summary["revenue"] == before_summary["revenue"]
     assert after_settings["settings"] == before_settings["settings"]
-    # The generation is untouched too: a status is not a recalculation.
+
     assert after_summary["generation"] == before_summary["generation"]
 
 
@@ -182,7 +182,7 @@ def test_status_survives_a_recalculation(client, auth_headers):
     )
     before = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
 
-    # Change a model setting, which publishes a new generation.
+
     client.patch("/api/v1/model/settings", json={"horizonDays": 45}, headers=auth_headers)
     after = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
     assert after["generation"] != before["generation"], "recalculation must bump the generation"

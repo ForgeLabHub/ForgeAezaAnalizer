@@ -185,11 +185,8 @@ class AuthenticationTests(unittest.TestCase):
         with patch.object(self.auth.codes, "clock", return_value=time.monotonic() + 120):
             self.assertEqual(self.exchange(code).json()["error"], "invalid_grant")
         token = self.login().json()["access_token"]
-        # Sessions moved from an in-memory TTL cache to the SQLite store, which
-        # compares ``expires_at`` against ``time.time()``. Expiry is therefore
-        # driven by the wall clock, not a cache clock, so the test advances
-        # ``time.time`` in the auth module rather than patching ``sessions.clock``
-        # (which no longer exists).
+
+
         with patch("backend.auth.service.time.time",
                    return_value=time.time() + self.settings.session_ttl + 1):
             self.assertEqual(self.client.get("/auth/me", headers={"Authorization": f"Bearer {token}"}).status_code, 401)
@@ -280,11 +277,11 @@ class UserStorageTests(unittest.TestCase):
     def test_find_takes_an_id_and_credentials_takes_a_login(self):
         user = self.users.create("analyst@aeza.test", "a long enough password")
 
-        # find() is by id; passing a login is a category error, not missing data.
+
         self.assertIsNone(self.users.find("analyst@aeza.test"))
         self.assertEqual(self.users.find(user.id).login, "analyst@aeza.test")
 
-        # The lookup the login path actually uses resolves the same account.
+
         found, _hash = self.users.credentials("analyst@aeza.test")
         self.assertEqual(found.id, user.id)
 
@@ -294,7 +291,7 @@ class UserStorageTests(unittest.TestCase):
 
         logins = [user.login for user in self.users.all()]
         self.assertEqual(logins, ["first@example.test", "second@example.test"])
-        # all() returns User objects, which carry no password field at all.
+
         self.assertFalse(hasattr(self.users.all()[0], "password_hash"))
 
     def test_account_survives_a_new_repository_over_the_same_file(self):
@@ -302,7 +299,7 @@ class UserStorageTests(unittest.TestCase):
 
         created = self.users.create("persist@example.test", "a long enough password")
         reopened = UserRepository(self.path)
-        reopened.initialize()  # the API calls initialize() on every startup
+        reopened.initialize()
 
         found, _hash = reopened.credentials("persist@example.test")
         self.assertEqual(found.id, created.id)

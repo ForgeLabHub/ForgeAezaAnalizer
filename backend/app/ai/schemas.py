@@ -12,7 +12,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-#: Lifecycle of the AI subsystem, surfaced on ``GET /ai/status``.
+
 AIStatus = Literal["disabled", "ready", "unavailable"]
 
 AITask = Literal["chat", "customer_explain", "scenario_explain", "report_summary"]
@@ -22,7 +22,7 @@ class Citation(BaseModel):
     """A reference to the exact input an answer was grounded in."""
 
     model_config = ConfigDict(extra="forbid")
-    #: ``fact`` for backend values, ``document`` for RAG chunks.
+
     kind: Literal["fact", "document"]
     source: str
     detail: str = ""
@@ -55,7 +55,7 @@ class AIChatRequest(BaseModel):
 
 class AIExplainRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    #: Optional analyst question; when omitted the service uses a default prompt.
+
     question: Annotated[str | None, Field(max_length=2000)] = None
 
 
@@ -71,11 +71,11 @@ class AIResponse(BaseModel):
     model: str
     provider: str
     grounded: bool
-    #: Non-empty when the answer was repaired or a claim was dropped.
+
     warnings: list[str] = Field(default_factory=list)
     citations: list[Citation] = Field(default_factory=list)
     answer: AIAnswer
-    #: Backend facts that were placed in the prompt, so the UI can show them.
+
     context: dict = Field(default_factory=dict)
 
 
@@ -85,7 +85,7 @@ class AIStatusResponse(BaseModel):
     model: str
     enabled: bool
     reason: str = ""
-    #: True when the runtime was confirmed reachable during this request.
+
     reachable: bool = False
     rag_indexed: bool = False
     rag_chunks: int = 0

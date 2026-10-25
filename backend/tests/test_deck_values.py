@@ -67,9 +67,9 @@ def test_deprecated_factor_is_excluded_from_the_chart():
     facts = _load_values().facts()
     keys = {name for name, _, _ in facts["service"]["factors"]}
 
-    # The engine labels these two factors distinctly; only the live one scores.
+
     assert "Неуспешные продления" not in keys
-    assert "Доля неуспешных продлений" not in keys  # not applicable to this service
+    assert "Доля неуспешных продлений" not in keys
     assert "Ожидание продления" in keys
 
 
@@ -77,7 +77,7 @@ def test_generator_has_no_stale_literals():
     """Guard the raw source: none of the old figures may reappear as literals."""
 
     lines = (DECK / "build_deck.py").read_text(encoding="utf-8").splitlines()
-    # Comments may cite the old figures as history; only real code matters.
+
     code = [line for line in lines if not line.lstrip().startswith("#")]
     body = "\n".join(code)
     body = body.split('"""', 2)[2] if body.count('"""') >= 2 else body

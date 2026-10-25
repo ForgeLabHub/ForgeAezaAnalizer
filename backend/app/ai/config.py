@@ -52,25 +52,20 @@ class AISettings:
     provider: str = field(default_factory=lambda: os.getenv("AEZA_AI_PROVIDER", "mock").strip().lower())
     base_url: str = field(default_factory=lambda: os.getenv("AEZA_AI_BASE_URL", "http://127.0.0.1:11434").rstrip("/"))
     model: str = field(default_factory=lambda: os.getenv("AEZA_AI_MODEL", "qwen2.5:3b-instruct").strip())
-    #: Wall-clock budget for one provider call. Sized for CPU-only inference,
-    #: which is the realistic case when Ollama runs on a host without a GPU:
-    #: measured on a 4 vCPU box with qwen2.5:7b (q4_K_M) a *cold* explain call
-    #: takes ~197 s (~2 000 prompt tokens ingested at ~17 tokens/s, then ~470
-    #: generated at ~4 tokens/s). A shorter default rejects a healthy model with
-    #: 503 on the first request after a restart, so this must clear that with
-    #: margin. GPU hosts finish far sooner and never approach it.
+
+
     request_timeout_seconds: float = field(default_factory=lambda: _float("AEZA_AI_TIMEOUT_SECONDS", 420.0, low=1.0, high=900.0))
     max_concurrency: int = field(default_factory=lambda: _int("AEZA_AI_MAX_CONCURRENCY", 1, low=1, high=16))
     max_question_chars: int = field(default_factory=lambda: _int("AEZA_AI_MAX_QUESTION_CHARS", 2000, low=16, high=20000))
     num_ctx: int = field(default_factory=lambda: _int("AEZA_AI_NUM_CTX", 4096, low=512, high=32768))
     max_tokens: int = field(default_factory=lambda: _int("AEZA_AI_MAX_TOKENS", 1200, low=64, high=4096))
     temperature: float = field(default_factory=lambda: _float("AEZA_AI_TEMPERATURE", 0.1, low=0.0, high=1.0))
-    #: Total character budget for the retrieved documentation block.  Small by
-    #: default because CPU prompt evaluation dominates latency.
+
+
     max_context_chars: int = field(default_factory=lambda: _int("AEZA_AI_MAX_CONTEXT_CHARS", 1600, low=200, high=40000))
-    #: Number of local documentation chunks injected per question.
+
     rag_top_k: int = field(default_factory=lambda: _int("AEZA_AI_RAG_TOP_K", 2, low=0, high=20))
-    #: Extra generation attempts when the first answer fails grounding validation.
+
     max_retries: int = field(default_factory=lambda: _int("AEZA_AI_MAX_RETRIES", 1, low=0, high=3))
     rag_index_path: str = field(default_factory=lambda: os.getenv(
         "AEZA_AI_RAG_INDEX_PATH", str(ROOT / "backend" / "data" / "rag_index.json")))

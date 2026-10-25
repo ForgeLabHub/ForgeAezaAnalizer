@@ -1,16 +1,8 @@
-/* Aéza Churn Risk Analyzer — design system
-   Visual language borrowed from aeza.ru: Inter typeface, a light canvas with a
-   single vivid orange accent, generously rounded surfaces, pill-shaped
-   controls, heavy tight headings and soft orange glows used sparingly.
-   Data stays first: one neutral ramp, one brand accent, a three-step risk
-   scale. No emoji. */
-
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 :root {
   color-scheme: light;
 
-  /* Neutral ramp (slightly warm, like aeza.ru's off-white canvas) */
   --n-0: #ffffff;
   --n-25: #fafafa;
   --n-50: #f4f4f5;
@@ -24,7 +16,6 @@
   --n-800: #222228;
   --n-900: #121216;
 
-  /* Brand accent — Aéza orange */
   --brand-50: #fff4ec;
   --brand-100: #ffe3cf;
   --brand-300: #ffb27a;
@@ -34,7 +25,6 @@
   --brand-gradient: linear-gradient(135deg, #ff8a2b 0%, #ff6b00 55%, #f25200 100%);
   --brand-glow: 0 8px 24px -8px rgba(255, 107, 0, 0.55);
 
-  /* Risk scale (medium is amber, kept distinct from the brand orange) */
   --risk-low-bg: #e6f6ec;
   --risk-low-fg: #17663a;
   --risk-low-line: #22a55b;
@@ -49,7 +39,6 @@
   --risk-na-fg: var(--n-600);
   --risk-na-line: var(--n-400);
 
-  /* Surfaces */
   --canvas: var(--n-50);
   --surface: var(--n-0);
   --surface-muted: var(--n-25);
@@ -75,17 +64,12 @@
 
   --header-h: 64px;
 
-  /* Keycap logo palette (light) */
   --key-edge: #e1e1e1;
   --key-face: #ffffff;
   --key-glyph: #000000;
   --key-accent: #ff6b00;
 }
 
-/* Dark theme — the same design system with the neutral ramp inverted.
-   Components only reference tokens, so overriding them here is enough.
-   Orange stays the single accent; tinted backgrounds become deep translucent
-   tints instead of pastels so contrast holds on dark surfaces. */
 :root[data-theme='dark'] {
   color-scheme: dark;
 
@@ -144,7 +128,6 @@
   background: #8f1d15;
 }
 
-/* Smooth theme switch without animating on first paint. */
 html.theme-transition,
 html.theme-transition *,
 html.theme-transition *::before,
@@ -229,7 +212,6 @@ html.theme-transition *::after {
   z-index: 2;
 }
 
-/* Same metric override as aeza.ru, so the layout does not jump while Inter loads. */
 @font-face {
   font-family: 'Inter Fallback';
   src: local('Arial');
@@ -363,8 +345,6 @@ code {
   color: var(--n-800);
 }
 
-/* ---------------------------------------------------------------- layout */
-
 .app-shell {
   min-height: 100vh;
   display: flex;
@@ -385,8 +365,6 @@ code {
   top: 0;
   z-index: 20;
 }
-
-/* ---------------------------------------------------------------- aeza keycap logo */
 
 .aeza-logo {
   display: inline-flex;
@@ -433,7 +411,6 @@ code {
   display: block;
 }
 
-/* First "a" tile */
 .aeza-tile.t-a {
   opacity: 0;
   transform: translateX(5px);
@@ -452,7 +429,6 @@ code {
     transform 0.3s ease-out 0.15s;
 }
 
-/* Central "é" tile — always visible, pulses on hover enter & leave */
 .aeza-tile.t-e {
   z-index: 3;
 }
@@ -485,7 +461,6 @@ code {
   }
 }
 
-/* "z" tile */
 .aeza-tile.t-z {
   opacity: 0;
   transform: translateX(-5px);
@@ -504,7 +479,6 @@ code {
     transform 0.3s ease-out 0.15s;
 }
 
-/* Second "a" tile */
 .aeza-tile.t-last {
   opacity: 0;
   transform: translateX(-5px);
@@ -544,10 +518,6 @@ code {
   padding: 8px 10px;
   margin: -8px 0 -8px -2px;
   flex: 1;
-  /* The links are nowrap, so without min-width:0 the flex item cannot shrink
-     below their total width and the header pushes the page into horizontal
-     scroll between 920px and 1180px. Letting it shrink and scroll internally
-     keeps the layout intact at every width. */
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -629,7 +599,6 @@ code {
 }
 
 .page-head h1::after {
-  /* aeza.ru-style orange underline accent under the page title */
   content: '';
   display: block;
   width: 40px;
@@ -667,8 +636,6 @@ code {
   max-width: 720px;
 }
 
-/* ---------------------------------------------------------------- cards */
-
 .card {
   background: var(--surface);
   border: 1px solid var(--n-200);
@@ -702,8 +669,6 @@ code {
   background: var(--surface-muted);
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
-
-/* ---------------------------------------------------------------- metrics */
 
 .metric-grid {
   display: grid;
@@ -768,7 +733,6 @@ code {
   color: var(--n-500);
 }
 
-/* Highlighted metric = aeza.ru "featured tariff" card: solid orange with glow. */
 .metric.is-accent {
   border-color: transparent;
   background: var(--brand-gradient);
@@ -801,13 +765,8 @@ code {
   color: #fff;
 }
 
-/* ---------------------------------------------------------------- grid */
-
 .grid-2 {
   display: grid;
-  /* minmax(0, 1fr) rather than 1fr: a bare 1fr cannot shrink below its content,
-     so a wide table inside the grid forced the whole page to scroll sideways on
-     narrow viewports. */
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 20px;
 }
@@ -859,13 +818,9 @@ code {
 @media (max-width: 1100px) {
   .grid-main,
   .grid-2 {
-    /* Same reason as .grid-2 above: the single column must be allowed to shrink
-       so an inner .table-wrap scrolls instead of the whole page. */
     grid-template-columns: minmax(0, 1fr);
   }
 }
-
-/* ---------------------------------------------------------------- table */
 
 .table-wrap {
   overflow-x: auto;
@@ -949,8 +904,6 @@ th.sortable:hover {
   font-size: 12.5px;
 }
 
-/* ---------------------------------------------------------------- badges */
-
 .badge {
   display: inline-flex;
   align-items: center;
@@ -1027,8 +980,6 @@ th.sortable:hover {
   color: var(--n-600);
 }
 
-/* ---------------------------------------------------------------- risk score */
-
 .score {
   display: inline-flex;
   align-items: baseline;
@@ -1073,8 +1024,6 @@ th.sortable:hover {
 .score-bar.na span {
   background: var(--n-300);
 }
-
-/* ---------------------------------------------------------------- controls */
 
 .toolbar {
   display: flex;
@@ -1189,8 +1138,6 @@ th.sortable:hover {
   font-weight: 600;
   color: var(--n-600);
 }
-
-/* ---------------------------------------------------------------- misc */
 
 .pager {
   display: flex;
@@ -1325,7 +1272,6 @@ th.sortable:hover {
   line-height: 1.5;
 }
 
-/* factor bars */
 .factor {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -1377,7 +1323,6 @@ th.sortable:hover {
   border-radius: 100px;
 }
 
-/* bar chart */
 .chart {
   display: flex;
   flex-direction: column;
@@ -1431,7 +1376,6 @@ th.sortable:hover {
   margin-top: 2px;
 }
 
-/* login */
 .login-wrap {
   position: relative;
   overflow: hidden;
@@ -1444,7 +1388,6 @@ th.sortable:hover {
 
 .login-wrap::before,
 .login-wrap::after {
-  /* Soft orange glow orbs, as on the aeza.ru hero */
   content: '';
   position: absolute;
   border-radius: 50%;
@@ -1504,7 +1447,6 @@ th.sortable:hover {
   font-size: 15px;
 }
 
-/* settings */
 .settings-equal-card {
   display: flex;
   flex-direction: column;
@@ -1654,7 +1596,6 @@ th.sortable:hover {
 }
 
 .tabs {
-  /* aeza.ru-style segmented pill switcher */
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -1801,8 +1742,6 @@ th.sortable:hover {
   border: 0;
 }
 
-/* ---------------------------------------------------------------- generation & live SSE */
-
 .gen-wrap {
   position: relative;
 }
@@ -1902,8 +1841,6 @@ th.sortable:hover {
   gap: 12px;
   flex-wrap: wrap;
 }
-
-/* ---------------------------------------------------------------- priority, quality & import */
 
 .badge-stack {
   display: flex;
@@ -2014,8 +1951,6 @@ th.sortable:hover {
 
 @media (max-width: 920px) {
   .app-header {
-    /* Wrap the nav onto its own row so five nav links, live pill and controls
-       never cause page-level horizontal overflow. */
     flex-wrap: wrap;
     height: auto;
     min-height: var(--header-h);
@@ -2062,10 +1997,6 @@ th.sortable:hover {
     padding-left: 120px;
   }
 }
-
-/* ---------------------------------------------------------------- AI Analyst Widget
-   Support-chat-style floating button in the bottom-right corner and overlay
-   chat window above the active page. */
 
 .ai-widget-root {
   position: fixed;
@@ -2863,7 +2794,6 @@ th.sortable:hover {
   }
 }
 
-/* ---------------------------------------------------------- retention actions */
 .btn-sm {
   height: 32px;
   padding: 0 14px;
@@ -2967,7 +2897,6 @@ th.sortable:hover {
   color: var(--n-500);
 }
 
-/* ------------------------------------------------- AI answer -> data links */
 .ai-links {
   display: flex;
   align-items: center;
@@ -2997,9 +2926,6 @@ th.sortable:hover {
   background: var(--n-50);
   border-color: var(--n-300);
 }
-
-
-/* ------------------------------------------- sliding pills & page motion */
 
 :root {
   --ease-out-fluid: cubic-bezier(0.22, 1, 0.36, 1);
@@ -3112,7 +3038,6 @@ th.sortable:hover {
   animation: aeza-pill-glide 0.4s var(--ease-out-fluid);
 }
 
-/* Smooth collapsible disclosure */
 .collapsible {
   display: grid;
   grid-template-rows: 0fr;
@@ -3132,7 +3057,6 @@ th.sortable:hover {
   overflow: hidden;
 }
 
-/* Page stage & theme-switch-inspired ambient wash */
 .page-stage {
   position: relative;
 }
@@ -3166,7 +3090,6 @@ th.sortable:hover {
   animation: aeza-page-wash 0.7s var(--ease-out-fluid) backwards;
 }
 
-/* Core entrance keyframes (backwards fill preserves hover & fixed positioning) */
 @keyframes aeza-header-enter {
   from {
     opacity: 0;
@@ -3284,7 +3207,6 @@ th.sortable:hover {
   }
 }
 
-/* Shell & login choreography */
 .app-header {
   animation: aeza-header-enter 0.4s var(--ease-out-fluid) backwards;
 }
@@ -3316,7 +3238,6 @@ th.sortable:hover {
 .login-card > :nth-child(6) { animation-delay: 0.24s; }
 .login-card > :nth-child(7) { animation-delay: 0.28s; }
 
-/* Page heading & accent bar */
 .page-head > :first-child {
   animation: aeza-enter-block 0.42s var(--ease-out-fluid) backwards;
 }
@@ -3335,7 +3256,6 @@ th.sortable:hover {
   animation: aeza-enter-subtle 0.42s var(--ease-out-fluid) 0.08s backwards;
 }
 
-/* KPI metric cards cascade */
 .metric-grid > .metric {
   animation: aeza-enter-card 0.46s var(--ease-out-fluid) backwards;
 }
@@ -3350,7 +3270,6 @@ th.sortable:hover {
   animation: aeza-enter-subtle 0.44s var(--ease-out-fluid) 0.1s backwards;
 }
 
-/* Cards, grids & section blocks cascade */
 .page-stage .stack > .card,
 .page-stage .stack > .notice,
 .page-stage .stack > .row:not(.page-head) {
@@ -3382,7 +3301,6 @@ th.sortable:hover {
 .page-stage .grid-main > .stack > .card:nth-child(4) { animation-delay: 0.29s; }
 .page-stage .grid-main > .stack > .card:nth-child(n + 5) { animation-delay: 0.33s; }
 
-/* Charts & progress bars */
 .chart-row {
   animation: aeza-enter-subtle 0.38s var(--ease-out-fluid) backwards;
 }
@@ -3399,7 +3317,6 @@ th.sortable:hover {
   animation: aeza-bar-grow 0.58s var(--ease-out-fluid) 0.12s backwards;
 }
 
-/* Table rows staggered cascade (capped so large tables stay snappy) */
 table.data tbody tr {
   animation: aeza-enter-row 0.34s var(--ease-out-fluid) backwards;
 }
@@ -3417,7 +3334,6 @@ table.data tbody tr:nth-child(11) { animation-delay: 0.24s; }
 table.data tbody tr:nth-child(12) { animation-delay: 0.262s; }
 table.data tbody tr:nth-child(n + 13) { animation-delay: 0.28s; }
 
-/* Inner text, recommendations, actions & weight rows */
 .rec-list > .rec,
 .action-list > .action-item,
 .weight-row,
@@ -3441,7 +3357,6 @@ table.data tbody tr:nth-child(n + 13) { animation-delay: 0.28s; }
 .weight-row:nth-child(n + 4),
 .reasons > li:nth-child(n + 4) { animation-delay: 0.17s; }
 
-/* Popovers, toasts, loading & chat turns */
 .gen-popover {
   transform-origin: top right;
   animation: aeza-popover-in 0.22s var(--ease-out-fluid) backwards;
@@ -3511,14 +3426,6 @@ table.data tbody tr:nth-child(n + 13) { animation-delay: 0.28s; }
   }
 }
 
-/* ---------------------------------------------------------------------------
-   Telegram Mini App (`/mini-app`)
-
-   Mobile-first: Telegram opens the app in a WebView on a phone. `--tg-viewport-height`
-   is set by the WebApp SDK so the layout tracks Telegram's real visible height
-   (which shrinks when its header/keyboard appears) instead of `100vh`, which
-   overflows and clips the bottom of the page inside the WebView.
-   --------------------------------------------------------------------------- */
 .mini-app {
   --mini-app-pad: 16px;
   padding: var(--mini-app-pad);

@@ -22,9 +22,7 @@ from . import tools
 from .rag import Retriever
 from .safety import sanitize_document
 
-#: Per-task caps on how much of a list is described, to bound the prompt.
-#: CPU inference cost scales with prompt tokens, so these are deliberately
-#: small; the full detail remains available through the REST API.
+
 _MAX_SERVICES = 5
 _MAX_FACTORS = 8
 _MAX_RENEWALS = 4
@@ -274,8 +272,7 @@ def build_scenario_context(storage, calculation, *, overrides: dict, question: s
     scenario_settings = preview["scenarioSettings"]
     categories = comparison.get("categories", {})
 
-    # Show only the weights the scenario actually moved, so the model's
-    # explanation matches what changed rather than the whole weight table.
+
     changed = []
     for key, new_value in (preview["appliedOverrides"].get("weights") or {}).items():
         old_value = baseline_settings.get("weights", {}).get(key)
@@ -286,7 +283,7 @@ def build_scenario_context(storage, calculation, *, overrides: dict, question: s
     high_customers = comparison.get("highRiskCustomers", {})
     medium_customers = comparison.get("mediumRiskCustomers", {})
     high_services = comparison.get("highRiskServices", {})
-    # Prefer the backend's own EUR strings; only the delta has no EUR form.
+
     base_revenue_eur = preview["baseline"]["revenue"]["revenueAtRiskEur"]
     scen_revenue_eur = preview["scenario"]["revenue"]["revenueAtRiskEur"]
     base_renewals_eur = preview["baseline"]["revenue"]["upcomingRenewalsEur"]

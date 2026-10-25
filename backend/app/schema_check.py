@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
 
     url = arguments.url or Settings().database_url
-    # Do not print the URL: it carries the database password.
+
     print("Checking schema drift against the configured database ...")
     result = drift(Database(url).engine)
     if not result["missingTables"] and not result["missingColumns"]:

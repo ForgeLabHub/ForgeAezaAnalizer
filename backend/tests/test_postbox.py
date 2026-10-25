@@ -105,8 +105,8 @@ class _Server:
 
     def __init__(self, handler: _Recorder, *, mode: str, require_auth: bool):
         self.handler = handler
-        # aiosmtpd's readiness probe connects back to ``port``, so a fixed free
-        # port is chosen up front (port 0 would leave the probe with no target).
+
+
         probe = socket.socket()
         probe.bind(("127.0.0.1", 0))
         self._port = probe.getsockname()[1]
@@ -114,9 +114,9 @@ class _Server:
         tls_context, _ = _self_signed_context()
         kwargs: dict = {}
         if mode == "tls":
-            kwargs["ssl_context"] = tls_context  # implicit TLS server
+            kwargs["ssl_context"] = tls_context
         elif mode == "starttls":
-            kwargs["tls_context"] = tls_context  # STARTTLS on the plain port
+            kwargs["tls_context"] = tls_context
         if require_auth:
             def authenticator(server, session, envelope, mechanism, auth_data):
                 if auth_data.login == KEY_ID.encode() and auth_data.password == KEY_SECRET.encode():
@@ -161,10 +161,6 @@ def _client_context():
     return context
 
 
-# --------------------------------------------------------------------------- #
-# Provider selection
-# --------------------------------------------------------------------------- #
-
 def test_postbox_is_preferred_when_both_are_configured():
     settings = _settings(smtp_bz_api_key="k", smtp_bz_from_email="a@b.co")
     assert settings.active_email_provider == "postbox"
@@ -176,8 +172,8 @@ def test_smtp_bz_is_the_fallback_when_only_it_is_configured():
 
 
 def test_an_explicit_choice_disables_mail_when_that_provider_lacks_credentials():
-    # AEZA_EMAIL_PROVIDER=smtp.bz with only Postbox configured must NOT silently
-    # fall back: the operator asked for a provider that has no key.
+
+
     settings = _settings(email_provider="smtp.bz")
     assert settings.active_email_provider == ""
     assert settings.email_configured is False
@@ -197,10 +193,6 @@ def test_postbox_port_must_be_465_or_587():
     with pytest.raises(ValueError, match="POSTBOX_SMTP_PORT"):
         _settings(postbox_port=25)
 
-
-# --------------------------------------------------------------------------- #
-# Transport behaviour (real loopback SMTP server)
-# --------------------------------------------------------------------------- #
 
 def test_send_via_postbox_delivers_the_message():
     handler = _Recorder()
@@ -230,7 +222,7 @@ def test_send_via_postbox_never_leaks_the_key_in_the_result():
 
 
 def test_send_via_postbox_reports_a_rejected_sender_domain():
-    # The unverified-domain case: the server refuses MAIL FROM with 550.
+
     handler = _Recorder(refuse_sender=True)
     with _Server(handler, mode="tls", require_auth=True) as server:
         settings = _settings(postbox_host="localhost", postbox_port=465)
@@ -257,8 +249,8 @@ def test_send_via_postbox_reports_a_refused_authentication():
 
 
 def test_send_via_postbox_reports_an_unreachable_server_as_unavailable():
-    # Point at a closed loopback port: the transport must report "unavailable",
-    # never a false success.
+
+
     closed = socket.socket()
     closed.bind(("127.0.0.1", 0))
     port = closed.getsockname()[1]
@@ -282,8 +274,8 @@ def test_send_via_postbox_uses_starttls_on_port_587():
 
 
 def test_send_via_postbox_fails_honestly_when_starttls_is_refused():
-    # A server that offers no STARTTLS on 587: the transport must report an
-    # honest "unavailable", never a fabricated success.
+
+
     handler = _Recorder()
     with _Server(handler, mode="plain", require_auth=False) as server:
         settings = _settings(postbox_host="localhost", postbox_port=587)
@@ -293,10 +285,6 @@ def test_send_via_postbox_fails_honestly_when_starttls_is_refused():
                 smtp_factory=_factory_for(server, use_tls=False), ssl_context=_client_context())
     assert handler.messages == []
 
-
-# --------------------------------------------------------------------------- #
-# Status surface
-# --------------------------------------------------------------------------- #
 
 def test_describe_reports_postbox_without_the_key():
     settings = _settings()
@@ -309,10 +297,6 @@ def test_describe_reports_postbox_without_the_key():
     assert KEY_SECRET not in str(described)
     assert KEY_ID not in str(described)
 
-
-# --------------------------------------------------------------------------- #
-# HTTP route (Postbox selected through the app)
-# --------------------------------------------------------------------------- #
 
 def _postbox_app(tmp_path):
     from pathlib import Path

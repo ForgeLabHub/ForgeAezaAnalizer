@@ -18,7 +18,7 @@ import urllib.request
 
 from .base import Generation, ProviderError, ProviderUnavailable
 
-#: Hosts that count as "on this machine".
+
 _LOOPBACK_NAMES = {"localhost", "127.0.0.1", "::1", "0.0.0.0", "host.docker.internal"}
 
 
@@ -28,7 +28,7 @@ def _is_private_host(host: str) -> bool:
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
-        # A Docker service name such as ``ollama`` resolves inside the network.
+
         return "." not in host
     return address.is_loopback or address.is_private
 
@@ -56,9 +56,9 @@ class OllamaProvider:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - fixed local URL
+            with urllib.request.urlopen(request, timeout=timeout) as response:
                 return json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:  # pragma: no cover - depends on runtime
+        except urllib.error.HTTPError as exc:
             raise ProviderError(f"модель вернула HTTP {exc.code}") from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise ProviderUnavailable("локальная модель недоступна") from exc
@@ -112,7 +112,7 @@ class OllamaProvider:
 
     def health(self, *, timeout: float) -> bool:
         try:
-            with urllib.request.urlopen(f"{self.base_url}/api/tags", timeout=timeout):  # noqa: S310 - fixed local URL
+            with urllib.request.urlopen(f"{self.base_url}/api/tags", timeout=timeout):
                 return True
-        except Exception:  # noqa: BLE001 - any failure means "not reachable"
+        except Exception:
             return False

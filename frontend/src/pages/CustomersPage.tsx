@@ -73,7 +73,6 @@ export default function CustomersPage() {
   const [obsLoading, setObsLoading] = useState(false)
   const [obsError, setObsError] = useState<string | null>(null)
 
-  // Keep the local search box in sync when the URL changes (e.g. back button).
   useEffect(() => {
     setSearch(searchParam)
   }, [searchParam])

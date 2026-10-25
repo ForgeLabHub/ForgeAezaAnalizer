@@ -22,7 +22,7 @@ from PIL import Image
 
 HERE = Path(__file__).resolve().parent
 
-#: Aéza Sentinel brand: near-black tile, brand orange accent, light glyph.
+
 BG = "#0b0d10"
 ACCENT = "#ff6b00"
 GLYPH = "#f5f6f7"

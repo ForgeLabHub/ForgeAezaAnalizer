@@ -38,7 +38,6 @@ let refreshRequest: Promise<string | null> | null = null
 try {
   localStorage.removeItem(TOKEN_KEY)
 } catch {
-  // Storage may be unavailable in restricted browser contexts.
 }
 
 export function getToken(): string | null {
@@ -134,13 +133,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload as T
 }
 
-/**
- * A request authenticated with a Telegram *client* token.
- *
- * Kept apart from ``request`` on purpose: a Mini App client token must never be
- * swapped for, or refreshed with, the analyst session token. The token is passed
- * explicitly per call and never stored in the module-level analyst slot.
- */
 async function clientRequest<T>(path: string, init: RequestInit, token: string): Promise<T> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
@@ -339,9 +331,6 @@ export const api = {
 
   aiStatus: () => request<AIStatus>('/api/v1/ai/status'),
 
-  // ---- Telegram client (Mini App) — separate from the analyst session --------
-  // These carry a client token obtained by exchanging signed initData; the
-  // server derives the account from that token, never from a client-supplied id.
   clientSession: (initData: string) =>
     request<ClientSession>('/api/v1/client/session', {
       method: 'POST',
@@ -483,10 +472,6 @@ export const api = {
       }),
     ),
 
-  /**
-   * Connects to `/api/v1/analytics/events` via fetch stream so Bearer auth and
-   * `Last-Event-ID` headers are transmitted without exposing tokens in URLs.
-   */
   streamEvents: async (options: {
     lastEventId?: number | null
     signal: AbortSignal
@@ -553,7 +538,6 @@ export const api = {
                 options.onUpdate(id, version)
               }
             } catch {
-              // Ignore malformed frames without tearing down the stream.
             }
           }
         }
@@ -562,7 +546,6 @@ export const api = {
       try {
         await reader.cancel()
       } catch {
-        // Stream already closed.
       }
     }
   },

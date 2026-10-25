@@ -23,17 +23,15 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-#: Documents the analyst may need explained.  Ordering is irrelevant (paths are
-#: sorted before indexing) but the allow-list keeps generated artefacts out.
+
 DOC_GLOBS = ("*.md",)
 
-#: Characters kept when tokenising: Latin, Cyrillic, digits and underscore.
+
 _TOKEN = re.compile(r"[0-9A-Za-zА-Яа-яЁё_]{2,}")
 
 _HEADING = re.compile(r"^(#{1,4})\s+(.*)$")
 
-#: Russian is heavily inflected; truncating long tokens to this length is a
-#: crude but effective stemmer for retrieval (``клиента``/``клиентов`` → ``клиен``).
+
 _STEM_LENGTH = 6
 
 MAX_CHUNK_CHARS = 1400
@@ -202,7 +200,7 @@ class Retriever:
         return results
 
 
-def main() -> int:  # pragma: no cover - CLI entrypoint
+def main() -> int:
     import argparse
 
     from ..config import ai_settings
@@ -221,5 +219,5 @@ def main() -> int:  # pragma: no cover - CLI entrypoint
     return 0
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     raise SystemExit(main())

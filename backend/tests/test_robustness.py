@@ -63,8 +63,8 @@ def engine(tmp_path_factory):
     tmp = tmp_path_factory.mktemp("robustness")
     previous = os.environ.get("AEZA_ANALYTICS_FACTORY")
     os.environ["AEZA_ANALYTICS_FACTORY"] = "backend.app.domain.module:create"
-    # Authentication lives in the standalone module, so the app is built with
-    # its own auth settings and the shared test credential.
+
+
     settings = Settings(
         database_url=f"sqlite:///{(tmp / 'rob.db').as_posix()}",
         seed_demo_data=True, snapshot_path=str(SNAPSHOT), as_of=AS_OF,

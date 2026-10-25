@@ -66,8 +66,6 @@ def task_instruction(task: str, *, question: str | None = None) -> str:
     )
 
 
-#: JSON schema handed to the provider's structured-output mode.  Kept next to
-#: the prompt so the contract and the instruction cannot drift apart.
 ANSWER_JSON_SCHEMA: dict = {
     "type": "object",
     "properties": {

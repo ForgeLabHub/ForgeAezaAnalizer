@@ -34,8 +34,7 @@ from .schemas import AIAnswer, AIResponse, AIStatusResponse
 
 logger = logging.getLogger("aeza.ai")
 
-#: Distinct from ``NotReadyError``: the analytics product is healthy, only the
-#: optional AI subsystem is not, so the API can say so precisely.
+
 class AIUnavailable(Exception):
     pass
 
@@ -61,7 +60,7 @@ class AIService:
         self._retriever: Retriever | None = None
         self._semaphore = threading.BoundedSemaphore(self.settings.max_concurrency)
 
-    # ---------------------------------------------------------------- runtime
+
     @property
     def provider(self) -> Provider:
         if self._provider is None:
@@ -89,7 +88,7 @@ class AIService:
         if probe:
             try:
                 reachable = self.provider.health(timeout=min(5.0, settings.request_timeout_seconds))
-            except Exception:  # noqa: BLE001 - health must never raise
+            except Exception:
                 reachable = False
             if not reachable:
                 reason = "локальная модель недоступна"
@@ -97,7 +96,7 @@ class AIService:
             model=settings.model, enabled=True, reason=reason, reachable=reachable,
             rag_indexed=indexed, rag_chunks=chunks)
 
-    # ------------------------------------------------------------ generation
+
     def _prepare_customer(self, customer_id: int, question: str | None, task: str) -> _Prepared:
         try:
             self.storage.customer(customer_id)
@@ -166,8 +165,8 @@ class AIService:
                     timeout=settings.request_timeout_seconds,
                 )
             except ProviderError as exc:
-                # The runtime is down or returned something unusable: surface it
-                # as a clear 503 instead of a 500 traceback.
+
+
                 raise AIUnavailable(f"локальная модель недоступна: {exc}") from exc
             finally:
                 self._semaphore.release()
@@ -178,9 +177,7 @@ class AIService:
                 warnings.append(f"Попытка {attempt + 1}: ответ модели не прошёл разбор схемы")
                 continue
 
-            # A reply that consumed the whole output budget was cut off mid-answer.
-            # The JSON repair hides that from the schema check, so surface it here
-            # rather than letting a partial answer look complete.
+
             truncated = (
                 generation.completion_tokens is not None
                 and generation.completion_tokens >= settings.max_tokens
@@ -224,7 +221,7 @@ class AIService:
             },
         )
 
-    # ------------------------------------------------------------------ tasks
+
     def _guard(self) -> None:
         if not self.settings.enabled:
             raise AIDisabled("AI Analyst выключен (AEZA_AI_ENABLED=0)")

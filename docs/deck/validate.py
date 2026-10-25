@@ -18,7 +18,7 @@ from pptx import Presentation
 from pptx.util import Emu, Inches, Pt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from deckkit import line_height_in, text_width_pt, weight_from_run  # noqa: E402
+from deckkit import line_height_in, text_width_pt, weight_from_run
 
 EMU = 914400.0
 DEFAULT_DECK = Path(__file__).resolve().parent / "aeza_umirhack_defense.pptx"
@@ -53,7 +53,7 @@ def tf_height(shape) -> float:
         sb = p.space_before.pt if p.space_before else 0
         sa = p.space_after.pt if p.space_after else 0
         total += (sb + sa) / 72.0
-        # count wrapped lines at the frame width
+
         w_in = inch(shape.width) - ml
         max_pt = max(w_in * 72.0, 12)
         n = 0
@@ -93,11 +93,11 @@ def main() -> int:
     for idx, slide in enumerate(prs.slides, start=1):
         boxes = []
         for shape in slide.shapes:
-            if shape.shape_type == 13 or shape.shape_type == 6:  # picture / group
+            if shape.shape_type == 13 or shape.shape_type == 6:
                 continue
             x, y, w, h = text_bbox(shape)
             if not is_texty(shape):
-                # plain rectangles: still must be inside the canvas
+
                 x, y = inch(shape.left), inch(shape.top)
                 w, h = inch(shape.width), inch(shape.height)
             if x < -0.001 or y < -0.001 or x + w > sw + 0.001 or y + h > sh + 0.001:
@@ -110,7 +110,7 @@ def main() -> int:
             if is_texty(shape):
                 boxes.append((x, y, w, h, shape.text_frame.text[:40]))
 
-        # text overflow beyond its own shape box
+
         for shape in slide.shapes:
             if not is_texty(shape):
                 continue
@@ -121,8 +121,7 @@ def main() -> int:
                     f"s{idx:02d} TEXT-TALLER-THAN-BOX need={need:.2f} avail={avail:.2f} "
                     f"txt={shape.text_frame.text[:44]!r}")
 
-        # text-vs-text overlaps. Boxes come from distinct shapes, so any real
-        # intersection is a collision; the tolerance only absorbs bbox rounding.
+
         for i in range(len(boxes)):
             for j in range(i + 1, len(boxes)):
                 ax, ay, aw, ah, at = boxes[i]

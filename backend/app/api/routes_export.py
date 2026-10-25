@@ -20,7 +20,7 @@ from backend.app.api.deps import RuntimeDep, UserDep
 
 router = APIRouter(tags=["export"])
 
-#: Characters that make a spreadsheet treat a cell as a formula.
+
 _FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 COLUMNS = (
@@ -123,15 +123,12 @@ def export_customers(
             sort_by=sort_by, sort_dir=sort_dir, page=number, page_size=page_size,
         )
 
-    # Fetch one page up front so the row count reflects the *filtered* selection
-    # the analyst is looking at, not the whole customer base. Its generation is
-    # pinned for the remaining pages, so a recalculation that publishes a new
-    # generation mid-export cannot splice two snapshots into one file.
+
     first = page(1)
     generation = first["generation"]
     total = first["total"]
-    # Read the summary of the same generation the rows come from, so the file's
-    # metadata cannot describe a different snapshot than its body.
+
+
     summary = runtime.storage.summary(generation)
 
     def rows():

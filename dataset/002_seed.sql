@@ -1,5 +1,3 @@
--- Generated from data.json. Run only on empty fixture tables.
-
 BEGIN;
 
 LOCK TABLE public.accounts, public.services, public.transactions IN EXCLUSIVE MODE;

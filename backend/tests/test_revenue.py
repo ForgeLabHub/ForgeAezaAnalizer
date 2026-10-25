@@ -39,7 +39,7 @@ def _service(**overrides) -> Service:
         "paymentTerm": "month",
         "autoProlong": False,
         "createdAt": "2026-01-01T00:00:00.000Z",
-        "expiresAt": "2026-10-25T15:00:00.000Z",  # 6 days ahead, inside 30d horizon
+        "expiresAt": "2026-10-25T15:00:00.000Z",
         "status": "active",
         "price": 1000,
     }
@@ -76,8 +76,8 @@ def test_renewal_outside_horizon_is_excluded():
 
 
 def test_already_expired_open_service_is_excluded():
-    # The snapshot gives no evidence this will be renewed, so it must not be
-    # counted as projected revenue.
+
+
     service = _service(expiresAt="2026-10-01T00:00:00.000Z")
     risk = _risk(service, _account())
     assert compute_service_exposure(service=service, risk=risk, horizon_days=30, now=NOW) is None
@@ -96,7 +96,7 @@ def test_concluded_service_is_excluded():
 
 
 def test_horizon_edge_is_inclusive():
-    # Exactly 30 days ahead must be inside a 30-day horizon.
+
     service = _service(expiresAt="2026-11-18T15:00:00.000Z")
     risk = _risk(service, _account())
     exposure = compute_service_exposure(service=service, risk=risk, horizon_days=30, now=NOW)
@@ -131,7 +131,7 @@ def test_revenue_at_risk_is_not_the_balance():
     risk = _risk(service, account)
     exposure = compute_service_exposure(service=service, risk=risk, horizon_days=30, now=NOW)
     assert exposure is not None
-    # Balance must never leak into the projected revenue figure.
+
     assert exposure.revenue_at_risk_cents <= service.price
 
 
@@ -148,7 +148,7 @@ def test_recommendations_trace_to_real_signals():
 
 
 def test_overdue_service_gets_overdue_recommendation_not_notify():
-    # A service that expired long ago must not be described as "expiring soon".
+
     service = _service(expiresAt="2026-09-01T00:00:00.000Z", autoProlong=False)
     account = _account(balance=0)
     risk = _risk(service, account)

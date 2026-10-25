@@ -19,8 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PUBLIC = ROOT / "frontend" / "public"
 INDEX = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
 
-#: The é path from the official brand SVG (docs/deck/brand/icon_light.svg), which
-#: is also the path the header logo uses. Reusing it keeps one source of truth.
+
 BRAND_GLYPH_PREFIX = "M17.281 28.092"
 
 
@@ -66,7 +65,7 @@ def test_favicon_ico_contains_the_sizes_browsers_ask_for():
     sizes = _ico_sizes(PUBLIC / "favicon.ico")
     for needed in (16, 32, 48):
         assert (needed, needed) in sizes, f"favicon.ico is missing {needed}x{needed}"
-    # A corrupt container (a zeroed bitmap header) is a real failure mode here.
+
     assert len(sizes) > 1, "favicon.ico collapsed to a single frame"
 
 
@@ -88,7 +87,7 @@ def test_icon_is_drawn_on_an_opaque_tile():
     width, height, depth, colour_type, _, _, _ = struct.unpack(">IIBBBBB", data[16:29])
     assert colour_type == 6 and depth == 8, "expected an 8-bit RGBA PNG"
 
-    # Walk the IDAT chunks and inflate the raw scanlines.
+
     offset, chunks = 8, b""
     while offset < len(data):
         (length,) = struct.unpack(">I", data[offset:offset + 4])
@@ -106,7 +105,7 @@ def test_icon_is_drawn_on_an_opaque_tile():
         filter_type = raw[position]
         line = bytearray(raw[position + 1:position + 1 + stride])
         position += 1 + stride
-        # Undo the per-scanline filter (RFC 2083 section 6).
+
         for index in range(stride):
             left = line[index - 4] if index >= 4 else 0
             up = previous[index]
@@ -132,7 +131,7 @@ def test_icon_is_drawn_on_an_opaque_tile():
     def luminance(p):
         return 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
 
-    # Mid-edge samples: the tile is rounded, so literal corners are transparent.
+
     edges = [pixel(width // 2, 4), pixel(width // 2, height - 5),
              pixel(4, height // 2), pixel(width - 5, height // 2)]
     assert all(p[3] > 200 for p in edges), "the icon has no opaque tile; it will vanish on some chrome"
@@ -140,7 +139,7 @@ def test_icon_is_drawn_on_an_opaque_tile():
         "the tile is not light, so a dark glyph would not read on it"
     )
 
-    # And the glyph itself must be dark against that light tile.
+
     centre = pixel(width // 2, int(height * 0.72))
     assert centre[3] > 200, "the glyph pixel is transparent"
     assert luminance(centre) < 100, "the glyph is not dark against the light tile"

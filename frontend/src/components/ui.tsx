@@ -144,7 +144,6 @@ export function EmptyState({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>
 }
 
-/** Marks a record that cannot belong to a real customer. */
 export function SyntheticTag({ title }: { title?: string | null }) {
   return (
     <span className="synthetic-tag" title={title ?? 'Синтетическая запись, не клиент Aéza'}>
@@ -153,23 +152,12 @@ export function SyntheticTag({ title }: { title?: string | null }) {
   )
 }
 
-/** Whole days between an ISO instant and now, or null when unparseable. */
 export function daysSince(iso: string): number | null {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return null
   return Math.floor((Date.now() - d.getTime()) / 86_400_000)
 }
 
-/**
- * Timestamp strip that keeps three different times apart, because collapsing
- * them is exactly how a frozen snapshot comes to look freshly calculated:
- *
- * * `asOf` — the analysis reference date. Every "days left" and the horizon are
- *   measured from here, so a past `asOf` means the whole risk picture is frozen
- *   at that moment, not at the moment of viewing.
- * * `calculatedAt` — when the backend last recomputed the published generation.
- * * `capturedAt` — when the source snapshot itself was captured.
- */
 export function FreshnessBanner({
   asOf,
   calculatedAt,
@@ -251,7 +239,6 @@ export function ErrorBox({
   )
 }
 
-/** Horizontal bar chart with explicit axis labels and a zero-safe scale. */
 export function BarChart({
   rows,
   unit,

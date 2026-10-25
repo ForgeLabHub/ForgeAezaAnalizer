@@ -62,14 +62,6 @@ export default function DashboardPage() {
         <div>
           <h1>Дашборд риска оттока</h1>
         </div>
-        <div className="row">
-          <Link className="btn" to="/priority">
-            Очередь приоритетов
-          </Link>
-          <Link className="btn primary" to="/customers?riskCategory=high">
-            Клиенты высокого риска
-          </Link>
-        </div>
       </div>
 
       <div className="metric-grid">

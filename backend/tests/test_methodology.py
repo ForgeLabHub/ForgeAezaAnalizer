@@ -68,9 +68,6 @@ def _risk(service=None, account=None, transactions=None, settings=None):
     )
 
 
-# --------------------------------------------------------------- 90-day window
-
-
 def test_window_excludes_old_failures():
     """At 90 days a 200-day-old failure must not count; at null it must."""
     service = _Service()
@@ -86,7 +83,7 @@ def test_window_excludes_old_failures():
     rate_w = next(f for f in with_window.factors if f.key == "renewal_failure_rate")
     rate_n = next(f for f in no_window.factors if f.key == "renewal_failure_rate")
 
-    # Outside the window there are no attempts at all -> unknown, not zero.
+
     assert rate_w.value is None
     assert rate_w.available is False
     assert rate_n.value == pytest.approx(1.0)
@@ -132,13 +129,10 @@ def test_diagnostic_count_reports_excluded_failures():
     ]
     risk = _risk(service=service, transactions=txs)
     diag = next(f for f in risk.factors if f.key == "failed_renewals")
-    assert diag.value == pytest.approx(2.0)  # both, historically
+    assert diag.value == pytest.approx(2.0)
     assert diag.weight == 0.0
     assert diag.available is False
     assert "Вне окна" in diag.reason
-
-
-# ------------------------------------------------------------ bonus balance
 
 
 def test_unlocked_bonus_counts_toward_capacity():
@@ -149,7 +143,7 @@ def test_unlocked_bonus_counts_toward_capacity():
                                                       bonus_state="unlocked"))
     locked_f = next(f for f in locked.factors if f.key == "insufficient_balance")
     unlocked_f = next(f for f in unlocked.factors if f.key == "insufficient_balance")
-    # 600/1000 -> 0.4 shortfall; 1100/1000 -> covered.
+
     assert locked_f.value == pytest.approx(0.4)
     assert unlocked_f.value == pytest.approx(0.0)
     assert unlocked_f.value < locked_f.value
@@ -172,9 +166,6 @@ def test_withdraw_balance_is_not_renewal_funds():
     assert f.value == pytest.approx(1.0)
 
 
-# ------------------------------------------------------- customer aggregation
-
-
 def _high_risk_service(sid: int):
     """A service that actually lands in the high band (score >= 65)."""
     return _risk(
@@ -195,11 +186,11 @@ def test_high_risk_share_distinguishes_concentration():
     c_one = compute_customer_risk(customer_id=1, service_risks=one, settings=RiskSettings())
     c_three = compute_customer_risk(customer_id=2, service_risks=three, settings=RiskSettings())
 
-    # The fixture must genuinely be high risk, or the assertion below is vacuous.
+
     assert c_one.category == "high"
-    # Same worst service -> same rating (no hidden escalation).
+
     assert c_one.score == pytest.approx(c_three.score)
-    # ...but concentration differs and is visible.
+
     assert c_one.high_risk_share == pytest.approx(1 / 3)
     assert c_three.high_risk_share == pytest.approx(1.0)
     assert c_one.high_risk_share < c_three.high_risk_share
@@ -222,26 +213,23 @@ def test_empty_portfolio_has_no_division_error():
     assert customer.category == "insufficient_data"
 
 
-# ------------------------------------------------------------- horizons
-
-
 def test_horizons_are_inclusive_and_nested():
     services = [
-        _Service(id=1, expires_at=NOW),                                  # boundary low
-        _Service(id=2, expires_at=NOW + dt.timedelta(days=7)),           # boundary 7
-        _Service(id=3, expires_at=NOW + dt.timedelta(days=30)),          # boundary 30
-        _Service(id=4, expires_at=NOW + dt.timedelta(days=90)),          # boundary 90
-        _Service(id=5, expires_at=NOW + dt.timedelta(days=91)),          # outside all
+        _Service(id=1, expires_at=NOW),
+        _Service(id=2, expires_at=NOW + dt.timedelta(days=7)),
+        _Service(id=3, expires_at=NOW + dt.timedelta(days=30)),
+        _Service(id=4, expires_at=NOW + dt.timedelta(days=90)),
+        _Service(id=5, expires_at=NOW + dt.timedelta(days=91)),
     ]
     risks = {s.id: _risk(service=s) for s in services}
     h = compute_horizons(services=services, risks_by_service=risks, now=NOW)
 
     assert set(h) == set(HORIZONS)
-    # Inclusive bounds: the service expiring exactly at the edge counts.
-    assert h[7].renewal_count == 2   # now and now+7
-    assert h[30].renewal_count == 3  # + now+30
-    assert h[90].renewal_count == 4  # + now+90
-    # Nested and monotonic: a wider horizon never contains less.
+
+    assert h[7].renewal_count == 2
+    assert h[30].renewal_count == 3
+    assert h[90].renewal_count == 4
+
     assert h[7].upcoming_renewals_cents <= h[30].upcoming_renewals_cents
     assert h[30].upcoming_renewals_cents <= h[90].upcoming_renewals_cents
 
@@ -272,9 +260,6 @@ def test_deleted_service_is_not_counted_in_horizons():
         assert h[days].upcoming_renewals_cents == 0
 
 
-# ------------------------------------------------------- overdue operational
-
-
 def test_overdue_is_reported_separately_from_future():
     services = [_Service(id=1, expires_at=NOW - dt.timedelta(days=3))]
     risks = {1: _risk(service=services[0])}
@@ -282,7 +267,7 @@ def test_overdue_is_reported_separately_from_future():
     assert len(overdue) == 1
     assert overdue[0].amount_cents == 1000
     assert overdue[0].days_overdue == pytest.approx(3.0, abs=0.01)
-    # ...and it is absent from every forward horizon.
+
     h = compute_horizons(services=services, risks_by_service=risks, now=NOW)
     assert all(h[d].renewal_count == 0 for d in HORIZONS)
 
@@ -319,21 +304,15 @@ def test_customer_exposure_aggregates_overdue_once():
     assert exposure.upcoming_renewals_cents == 0
 
 
-# ---------------------------------------------------------------- rounding
-
-
 def test_revenue_uses_half_up():
     """A half-cent result must round up, consistently with money.py."""
     service = _Service(id=1, price=125, expires_at=NOW + dt.timedelta(days=5))
     risk = _risk(service=service)
-    # Force a known score by using the weighted result of this fixture.
+
     expected = scaled_cents(125, risk.score / 100.0)
     risks = {1: risk}
     h = compute_horizons(services=[service], risks_by_service=risks, now=NOW)
     assert h[30].revenue_at_risk_cents == expected
-
-
-# ------------------------------------------------------------ determinism
 
 
 def test_scoring_is_deterministic():
@@ -352,5 +331,5 @@ def test_settings_validation_rejects_bad_window():
         RiskSettings(failed_renewal_window_days=0)
     with pytest.raises(RiskConfigError):
         RiskSettings(failed_renewal_window_days=99999)
-    # null is valid: whole snapshot.
+
     assert RiskSettings(failed_renewal_window_days=None).failed_renewal_window_days is None

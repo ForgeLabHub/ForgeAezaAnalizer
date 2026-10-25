@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from backend.app.storage import Storage
 
-#: Statuses that mean the work is still live.
+
 _ACTIVE = ("open", "in_progress")
 
 
