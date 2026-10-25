@@ -79,6 +79,27 @@ def test_snapshot_file_changes_are_imported_and_invalid_files_are_ignored(
         assert state.generation == before.generation + 1
 
 
+def test_api_import_survives_restart_when_snapshot_file_is_unchanged(
+    tmp_path, settings, analytics, auth_settings, snapshot_payload
+):
+    path = tmp_path / "data.json"
+    path.write_text(json.dumps(snapshot_payload), encoding="utf-8")
+    live = replace(settings, snapshot_path=str(path), snapshot_poll_seconds=0.1,
+        source_ingest_token="source-integration-test-token")
+    updated = copy.deepcopy(snapshot_payload)
+    updated["accounts"][0]["balance"] += 1
+
+    with TestClient(create_app(live, analytics, auth_settings)) as client:
+        response = client.put("/api/v1/source/snapshot", json=updated,
+            headers={"X-Source-Token": live.source_ingest_token})
+        assert response.status_code == 200, response.text
+
+    with TestClient(create_app(live, analytics, auth_settings)) as client:
+        sleep(0.3)
+        state = client.app.state.runtime.storage.load()
+        assert state.source["accounts"][0]["balance"] == updated["accounts"][0]["balance"]
+
+
 def test_failed_calculation_retains_inputs_and_published_result(client, auth_headers, snapshot_payload, analytics):
     before = client.get("/api/v1/analytics/summary", headers=auth_headers).json()
     analytics.error = RuntimeError("fixture failure")

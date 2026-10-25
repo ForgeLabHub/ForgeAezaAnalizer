@@ -50,7 +50,7 @@ def read_snapshot_file(path: Path):
 
 async def snapshot_file_worker(runtime: Runtime, stop: asyncio.Event):
     path = Path(runtime.settings.snapshot_path)
-    signature = None
+    signature = snapshot_file_signature(path)
     while True:
         try:
             await asyncio.wait_for(stop.wait(), timeout=runtime.settings.snapshot_poll_seconds)
