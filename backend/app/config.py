@@ -25,6 +25,8 @@ class Settings:
         "AEZA_DATABASE_URL", "postgresql+psycopg://aeza:aeza@localhost:5432/aeza"))
     seed_demo_data: bool = field(default_factory=lambda: flag("AEZA_SEED_DEMO_DATA", False))
     snapshot_path: str = field(default_factory=lambda: os.getenv("AEZA_SNAPSHOT_PATH", str(ROOT / "dataset/data.json")))
+    snapshot_poll_seconds: float = field(default_factory=lambda: float(os.getenv("AEZA_SNAPSHOT_POLL_SECONDS", "2")))
+    source_ingest_token: str = field(default_factory=lambda: os.getenv("AEZA_SOURCE_INGEST_TOKEN", ""))
     as_of: str = field(default_factory=lambda: os.getenv("AEZA_AS_OF", DEFAULT_AS_OF))
     recalculate_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_RECALCULATE_SECONDS", "60")))
     metrics_token: str = field(default_factory=lambda: os.getenv("AEZA_METRICS_TOKEN", ""))
@@ -118,6 +120,8 @@ class Settings:
         return bool(self.active_email_provider)
 
     def __post_init__(self):
+        if not 0.1 <= self.snapshot_poll_seconds <= 300:
+            raise ValueError("AEZA_SNAPSHOT_POLL_SECONDS must be between 0.1 and 300")
         if not 1 <= self.recalculate_seconds <= 3600:
             raise ValueError("AEZA_RECALCULATE_SECONDS must be between 1 and 3600")
         for name, value, maximum in (

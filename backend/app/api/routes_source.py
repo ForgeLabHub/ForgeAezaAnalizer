@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Response
 
-from backend.app.api.deps import RuntimeDep, UserDep, version_headers
+from backend.app.api.deps import RuntimeDep, SourceIngestActorDep, UserDep, version_headers
 from backend.app.api.schemas import SourceAccepted, SourceInfo
 from backend.app.source import Snapshot
 
@@ -16,11 +16,11 @@ def source(runtime: RuntimeDep, user: UserDep, response: Response,
 
 
 @router.put("/snapshot", response_model=SourceAccepted)
-def import_source(payload: Snapshot, runtime: RuntimeDep, user: UserDep, response: Response,
+def import_source(payload: Snapshot, runtime: RuntimeDep, actor: SourceIngestActorDep, response: Response,
                   expected_generation: Annotated[int | None, Query(alias="expectedGeneration", ge=0)] = None):
     before = runtime.storage.load()
     state = runtime.core.update(source=payload.model_dump(mode="json", by_alias=True),
-        expected_generation=expected_generation, actor=user.email)
+        expected_generation=expected_generation, actor=actor)
     counts = {key: len(rows) for key, rows in state.source.items()}
     if state.source_version == before.source_version:
         previous = counts

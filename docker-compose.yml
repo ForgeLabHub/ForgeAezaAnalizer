@@ -27,6 +27,8 @@ services:
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       AEZA_SEED_DEMO_DATA: "1"
       AEZA_SNAPSHOT_PATH: ${AEZA_SNAPSHOT_PATH:-/app/dataset/data.json}
+      AEZA_SNAPSHOT_POLL_SECONDS: ${AEZA_SNAPSHOT_POLL_SECONDS:-2}
+      AEZA_SOURCE_INGEST_TOKEN: ${AEZA_SOURCE_INGEST_TOKEN:-}
       AEZA_AS_OF: ${AEZA_AS_OF:-2026-10-19T15:00:00+00:00}
       AEZA_ANALYTICS_FACTORY: ${AEZA_ANALYTICS_FACTORY:-backend.app.domain.module:create}
       AEZA_RECALCULATE_SECONDS: ${AEZA_RECALCULATE_SECONDS:-60}
@@ -76,6 +78,7 @@ services:
       - "8000:8000"
     volumes:
       - auth_data:/app/db
+      - ${AEZA_SNAPSHOT_DIR:-./dataset}:/app/dataset:ro
     restart: unless-stopped
 
   web:

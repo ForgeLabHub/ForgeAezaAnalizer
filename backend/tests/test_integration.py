@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from threading import Barrier, Lock
+from time import monotonic, sleep
 
 from fastapi.testclient import TestClient
 import pytest
@@ -30,6 +32,51 @@ def test_import_idempotency_and_validation(client, auth_headers, snapshot_payloa
     broken["accounts"][0]["balance"] = True
     assert client.put("/api/v1/source/snapshot", json=broken, headers=auth_headers).status_code == 422
     assert client.get("/api/v1/source/snapshot", headers=auth_headers).json()["generation"] == 1
+
+
+def test_source_endpoint_accepts_integration_token(settings, analytics, auth_settings, snapshot_payload):
+    integration_token = "source-integration-test-token"
+    configured = replace(settings, source_ingest_token=integration_token)
+    source = copy.deepcopy(snapshot_payload)
+    source["accounts"][0]["balance"] += 1
+    with TestClient(create_app(configured, analytics, auth_settings)) as client:
+        url = "/api/v1/source/snapshot"
+        assert client.put(url, json=source, headers={"X-Source-Token": "wrong"}).status_code == 401
+        response = client.put(url, json=source, headers={"X-Source-Token": integration_token})
+        assert response.status_code == 200, response.text
+        assert response.json()["generation"] == 2
+        operation = client.get("/api/v1/openapi.json").json()["paths"][url]["put"]
+        assert {name for item in operation["security"] for name in item} == {"HTTPBearer", "APIKeyHeader"}
+        assert client.get(url, headers={"X-Source-Token": integration_token}).status_code == 401
+
+
+def test_snapshot_file_changes_are_imported_and_invalid_files_are_ignored(
+    tmp_path, settings, analytics, auth_settings, snapshot_payload
+):
+    path = tmp_path / "data.json"
+    path.write_text(json.dumps(snapshot_payload), encoding="utf-8")
+    live = replace(settings, snapshot_path=str(path), snapshot_poll_seconds=0.1)
+    with TestClient(create_app(live, analytics, auth_settings)) as client:
+        runtime = client.app.state.runtime
+        before = runtime.storage.load()
+        broken = copy.deepcopy(snapshot_payload)
+        broken["services"][0]["ownerId"] = 999999
+        path.write_text(json.dumps(broken), encoding="utf-8")
+        sleep(0.3)
+        assert runtime.storage.load() == before
+
+        updated = copy.deepcopy(snapshot_payload)
+        updated["accounts"][0]["balance"] += 1
+        path.write_text(json.dumps(updated), encoding="utf-8")
+        deadline = monotonic() + 3
+        while monotonic() < deadline:
+            state = runtime.storage.load()
+            if state.source["accounts"][0]["balance"] == updated["accounts"][0]["balance"]:
+                break
+            sleep(0.05)
+        state = runtime.storage.load()
+        assert state.source["accounts"][0]["balance"] == updated["accounts"][0]["balance"]
+        assert state.generation == before.generation + 1
 
 
 def test_failed_calculation_retains_inputs_and_published_result(client, auth_headers, snapshot_payload, analytics):
