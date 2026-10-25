@@ -122,13 +122,23 @@ async def telegram_polling_worker(runtime: Runtime, stop: asyncio.Event):
     while not stop.is_set():
         try:
             updates = await run_in_threadpool(provider.get_updates, offset)
+            if updates:
+                logger.info("Telegram polling received %d update(s)", len(updates))
             for update in updates:
                 if stop.is_set():
                     return
                 update_id = update.get("update_id") if isinstance(update, dict) else None
                 try:
                     if isinstance(update_id, int) and runtime.telegram.claim_update(update_id):
-                        await run_in_threadpool(runtime.telegram.handle_update, update)
+                        result = await run_in_threadpool(runtime.telegram.handle_update, update)
+                        logger.info(
+                            "Telegram update %s handled: %s",
+                            update_id,
+                            result.get("action", result.get("reason", "ok"))
+                            if isinstance(result, dict) else "ok",
+                        )
+                    elif isinstance(update_id, int):
+                        logger.warning("Telegram update %s skipped: duplicate", update_id)
                 except Exception:
                     logger.exception("Telegram polled update handling failed")
                 finally:

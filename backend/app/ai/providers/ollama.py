@@ -76,13 +76,7 @@ class OllamaProvider:
         temperature: float,
         timeout: float,
     ) -> Generation:
-        MAX_USER_CHARS = 2500
-        if len(user) > MAX_USER_CHARS:
-            import logging
-            logging.getLogger("ai.prompt").warning(
-                "PROMPT_TRUNCATED user %d -> %d chars", len(user), MAX_USER_CHARS
-            )
-            user = user[:MAX_USER_CHARS] + "\n[…контекст сокращён…]"
+        # Do not truncate the prompt tail: it contains the actual question and task instructions.
         payload: dict = {
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
