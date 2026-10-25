@@ -33,7 +33,7 @@ const URGENCY_LABELS: Record<number, { text: string; cls: string }> = {
 }
 
 export default function PriorityPage() {
-  const { pinnedGeneration, setPinnedGeneration, refreshKey } = useAnalysis()
+  const { refreshKey } = useAnalysis()
   const [params, setParams] = useSearchParams()
   const [data, setData] = useState<PriorityResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -123,18 +123,6 @@ export default function PriorityPage() {
           onChange={(val) => update({ horizonDays: val })}
         />
       </div>
-
-      {pinnedGeneration !== null ? (
-        <div className="notice info row" style={{ justifyContent: 'space-between' }}>
-          <span>
-            Очередь приоритетов рассчитывается по актуальному опубликованному поколению (в шапке
-            сейчас выбран архивный просмотр #{pinnedGeneration}).
-          </span>
-          <button type="button" className="btn sm" onClick={() => setPinnedGeneration(null)}>
-            К актуальному поколению
-          </button>
-        </div>
-      ) : null}
 
       {data ? (
         <div className="metric-grid">

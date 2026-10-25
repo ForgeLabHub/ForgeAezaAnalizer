@@ -23,7 +23,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 }
 
 export default function DashboardPage() {
-  const { activeGeneration, refreshKey } = useAnalysis()
+  const { refreshKey } = useAnalysis()
   const [summary, setSummary] = useState<Summary | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -34,7 +34,7 @@ export default function DashboardPage() {
       setLoading(true)
       setError(null)
       try {
-        const data = await api.summary(activeGeneration)
+        const data = await api.summary()
         if (!cancelled) setSummary(data)
       } catch (err) {
         if (!cancelled) {
@@ -48,7 +48,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true
     }
-  }, [activeGeneration, refreshKey])
+  }, [refreshKey])
 
   if (loading) return <Loading label="Расчёт аналитики…" />
   if (error) return <ErrorBox>{error}</ErrorBox>

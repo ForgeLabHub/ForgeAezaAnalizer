@@ -165,7 +165,7 @@ function ServiceCard({ service }: { service: ServiceItem }) {
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const { activeGeneration, refreshKey } = useAnalysis()
+  const { refreshKey } = useAnalysis()
   const [customer, setCustomer] = useState<CustomerDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -176,7 +176,7 @@ export default function CustomerDetailPage() {
       setLoading(true)
       setError(null)
       try {
-        const data = await api.customer(Number(id), activeGeneration)
+        const data = await api.customer(Number(id))
         if (!cancelled) setCustomer(data)
       } catch (err) {
         if (!cancelled) {
@@ -190,7 +190,7 @@ export default function CustomerDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [id, activeGeneration, refreshKey])
+  }, [id, refreshKey])
 
   const overdueItems: OverdueDetailItem[] = useMemo(() => {
     if (!customer) return []

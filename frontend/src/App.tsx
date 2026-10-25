@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { useAuth } from './lib/auth'
-import { AnalysisProvider, GenerationControl, useAnalysis } from './lib/realtime'
+import { AnalysisProvider, GenerationControl } from './lib/realtime'
 import { Loading } from './components/ui'
 import { PageStage, SlidingNav, type SlidingNavItem } from './components/motion'
 import { ThemeToggle } from './lib/theme'
@@ -24,7 +24,6 @@ const NAV_ITEMS: SlidingNavItem[] = [
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { email, logout } = useAuth()
-  const { pinnedGeneration, maxGeneration, setPinnedGeneration } = useAnalysis()
   const navigate = useNavigate()
   const headerRef = useRef<HTMLElement | null>(null)
   const [headerHeight, setHeaderHeight] = useState(64)
@@ -65,23 +64,6 @@ function Shell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </header>
-      {pinnedGeneration !== null ? (
-        <div className="archive-bar" role="status">
-          <span>
-            Просмотр архивного расчёта: <strong>поколение #{pinnedGeneration}</strong>
-            {maxGeneration && maxGeneration !== pinnedGeneration
-              ? ` (актуальное — #${maxGeneration})`
-              : ''}
-          </span>
-          <button
-            type="button"
-            className="btn sm"
-            onClick={() => setPinnedGeneration(null)}
-          >
-            Вернуться к Live
-          </button>
-        </div>
-      ) : null}
       <div className="app-body">
         <div className="presswall-bg" aria-hidden="true" />
         <PageStage>{children}</PageStage>

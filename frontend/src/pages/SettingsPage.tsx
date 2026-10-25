@@ -50,8 +50,7 @@ const PRESET_TABS: ReadonlyArray<{ value: PresetKey; label: string }> = [
 ]
 
 export default function SettingsPage() {
-  const { activeGeneration, pinnedGeneration, setPinnedGeneration, refreshKey, notifyMutation } =
-    useAnalysis()
+  const { refreshKey, notifyMutation } = useAnalysis()
   const [model, setModel] = useState<ModelSettings | null>(null)
   const [summary, setSummary] = useState<Summary | null>(null)
   const [weights, setWeights] = useState<Record<string, number>>({})
@@ -101,8 +100,8 @@ export default function SettingsPage() {
     setErrorIssues(undefined)
     try {
       const [settings, summaryData] = await Promise.all([
-        api.modelSettings(activeGeneration),
-        api.summary(activeGeneration),
+        api.modelSettings(),
+        api.summary(),
       ])
       applyModel(settings)
       setSummary(summaryData)
@@ -116,7 +115,7 @@ export default function SettingsPage() {
     } finally {
       setLoading(false)
     }
-  }, [activeGeneration, applyModel])
+  }, [applyModel])
 
   useEffect(() => {
     void loadAll()
@@ -153,7 +152,7 @@ export default function SettingsPage() {
   }
 
   async function save() {
-    if (!model || pinnedGeneration !== null) return
+    if (!model) return
     setSaving(true)
     setError(null)
     setErrorIssues(undefined)
@@ -184,7 +183,7 @@ export default function SettingsPage() {
   }
 
   async function reset() {
-    if (!model || pinnedGeneration !== null) return
+    if (!model) return
     setSaving(true)
     setError(null)
     setErrorIssues(undefined)
@@ -337,7 +336,7 @@ export default function SettingsPage() {
             type="button"
             className="btn"
             onClick={reset}
-            disabled={saving || model.isDefault || pinnedGeneration !== null}
+            disabled={saving || model.isDefault}
           >
             Значения по умолчанию
           </button>
@@ -345,24 +344,12 @@ export default function SettingsPage() {
             type="button"
             className="btn primary"
             onClick={save}
-            disabled={saving || !dirty || pinnedGeneration !== null}
+            disabled={saving || !dirty}
           >
             {saving ? 'Сохранение…' : dirty ? 'Опубликовать в модель' : 'Сохранено'}
           </button>
         </div>
       </div>
-
-      {pinnedGeneration !== null ? (
-        <div className="notice warn row" style={{ justifyContent: 'space-between' }}>
-          <span>
-            Вы просматриваете архивное поколение #{pinnedGeneration}. Сравнение сценариев What-If
-            доступно, но публикация изменений возможна только из актуального поколения.
-          </span>
-          <button type="button" className="btn sm" onClick={() => setPinnedGeneration(null)}>
-            К актуальному поколению
-          </button>
-        </div>
-      ) : null}
 
       {conflictDetected ? (
         <div className="notice warn row" style={{ justifyContent: 'space-between' }}>

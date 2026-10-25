@@ -1770,12 +1770,6 @@ th.sortable:hover {
   color: var(--n-900);
 }
 
-.gen-pill.is-pinned {
-  border-color: var(--risk-med-border);
-  background: var(--risk-med-bg);
-  color: var(--risk-med-fg);
-}
-
 .gen-dot {
   width: 7px;
   height: 7px;
@@ -1787,10 +1781,6 @@ th.sortable:hover {
 .gen-dot.live {
   background: var(--risk-low-line);
   box-shadow: 0 0 0 3px var(--risk-low-bg);
-}
-
-.gen-dot.pinned {
-  background: var(--risk-med-line);
 }
 
 .gen-popover {
@@ -1823,23 +1813,6 @@ th.sortable:hover {
   border-radius: var(--radius);
   background: var(--surface-muted);
   border: 1px solid var(--n-100);
-}
-
-.archive-bar {
-  position: relative;
-  z-index: 2;
-  background: var(--risk-med-bg);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--risk-med-border);
-  color: var(--risk-med-fg);
-  padding: 8px 28px;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
 }
 
 .badge-stack {
@@ -1970,9 +1943,6 @@ th.sortable:hover {
   }
   .header-user {
     margin-left: auto;
-  }
-  .archive-bar {
-    padding: 8px 14px;
   }
 }
 
@@ -3211,10 +3181,6 @@ th.sortable:hover {
   animation: aeza-header-enter 0.4s var(--ease-out-fluid) backwards;
 }
 
-.archive-bar {
-  animation: aeza-header-enter 0.32s var(--ease-out-fluid) backwards;
-}
-
 .login-wrap::before {
   animation: aeza-orb-float 12s ease-in-out infinite alternate;
 }
@@ -3388,7 +3354,6 @@ table.data tbody tr:nth-child(n + 13) { animation-delay: 0.28s; }
   .presswall-bg,
   .page-wash,
   .app-header,
-  .archive-bar,
   .login-wrap::before,
   .login-wrap::after,
   .login-card,

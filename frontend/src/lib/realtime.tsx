@@ -17,10 +17,7 @@ interface AnalysisContextValue {
   liveVersion: VersionInfo | null
   maxGeneration: number | null
   sseConnected: boolean
-  pinnedGeneration: number | null
-  activeGeneration: number | undefined
   refreshKey: number
-  setPinnedGeneration: (generation: number | null) => void
   notifyMutation: (next?: Partial<VersionInfo>) => void
 }
 
@@ -31,7 +28,6 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
   const [liveVersion, setLiveVersion] = useState<VersionInfo | null>(null)
   const [maxGeneration, setMaxGeneration] = useState<number | null>(null)
   const [sseConnected, setSseConnected] = useState(false)
-  const [pinnedGeneration, setPinnedGeneration] = useState<number | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
   const knownGenRef = useRef<number | null>(null)
@@ -42,7 +38,6 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
       setLiveVersion(null)
       setMaxGeneration(null)
       setSseConnected(false)
-      setPinnedGeneration(null)
       knownGenRef.current = null
       lastEventIdRef.current = null
       return
@@ -145,28 +140,15 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     setRefreshKey((k) => k + 1)
   }, [])
 
-  const activeGeneration = pinnedGeneration ?? undefined
-
   const value = useMemo<AnalysisContextValue>(
     () => ({
       liveVersion,
       maxGeneration,
       sseConnected,
-      pinnedGeneration,
-      activeGeneration,
       refreshKey,
-      setPinnedGeneration,
       notifyMutation,
     }),
-    [
-      liveVersion,
-      maxGeneration,
-      sseConnected,
-      pinnedGeneration,
-      activeGeneration,
-      refreshKey,
-      notifyMutation,
-    ],
+    [liveVersion, maxGeneration, sseConnected, refreshKey, notifyMutation],
   )
 
   return <AnalysisContext.Provider value={value}>{children}</AnalysisContext.Provider>
@@ -179,8 +161,7 @@ export function useAnalysis(): AnalysisContextValue {
 }
 
 export function GenerationControl() {
-  const { liveVersion, maxGeneration, sseConnected, pinnedGeneration, setPinnedGeneration } =
-    useAnalysis()
+  const { liveVersion, maxGeneration, sseConnected } = useAnalysis()
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
 
@@ -203,41 +184,23 @@ export function GenerationControl() {
   }, [open])
 
   const latest = liveVersion?.generation ?? maxGeneration
-  const generations: number[] = []
-  if (latest && latest >= 1) {
-    const start = Math.max(1, latest - 19)
-    for (let g = latest; g >= start; g -= 1) {
-      generations.push(g)
-    }
-  }
-
   return (
     <div className="gen-wrap" ref={wrapRef}>
       <button
         type="button"
-        className={`gen-pill${pinnedGeneration !== null ? ' is-pinned' : ''}`}
+        className="gen-pill"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         title={
-          pinnedGeneration !== null
-            ? `Зафиксировано поколение #${pinnedGeneration}`
-            : sseConnected
-              ? 'Подключён поток обновлений SSE'
-              : 'Ожидание потока обновлений SSE'
+          sseConnected ? 'Подключён поток обновлений SSE' : 'Ожидание потока обновлений SSE'
         }
       >
         <span
-          className={`gen-dot ${
-            pinnedGeneration !== null ? 'pinned' : sseConnected ? 'live' : 'idle'
-          }`}
+          className={`gen-dot ${sseConnected ? 'live' : 'idle'}`}
           aria-hidden="true"
         />
         <span>
-          {pinnedGeneration !== null
-            ? `#${pinnedGeneration} · Архив`
-            : latest
-              ? `#${latest} · Live`
-              : 'Live'}
+          {latest ? `#${latest} · Live` : 'Live'}
         </span>
       </button>
 
@@ -272,32 +235,6 @@ export function GenerationControl() {
               ) : null}
             </dl>
           ) : null}
-
-          <div className="field" style={{ marginTop: 10 }}>
-            <label htmlFor="gen-select">Режим просмотра</label>
-            <select
-              id="gen-select"
-              className="select"
-              value={pinnedGeneration === null ? 'live' : String(pinnedGeneration)}
-              onChange={(e) => {
-                const val = e.target.value
-                setPinnedGeneration(val === 'live' ? null : Number(val))
-                setOpen(false)
-              }}
-            >
-              <option value="live">
-                Актуальное поколение{latest ? ` (#${latest}, автообновление)` : ''}
-              </option>
-              {generations.map((g) => (
-                <option key={g} value={String(g)}>
-                  Поколение #{g} {g === latest ? '(текущее, фикс.)' : '(история)'}
-                </option>
-              ))}
-            </select>
-            <span className="hint">
-              Позволяет просматривать предыдущие опубликованные поколения расчёта (?generation=N).
-            </span>
-          </div>
         </div>
       ) : null}
     </div>

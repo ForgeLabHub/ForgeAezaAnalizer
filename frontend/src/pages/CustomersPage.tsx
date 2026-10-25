@@ -39,7 +39,7 @@ const COLUMNS: Array<{
 const PAGE_SIZE = 25
 
 export default function CustomersPage() {
-  const { activeGeneration, refreshKey } = useAnalysis()
+  const { refreshKey } = useAnalysis()
   const [params, setParams] = useSearchParams()
   const [data, setData] = useState<CustomerPage | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -92,7 +92,6 @@ export default function CustomersPage() {
     setError(null)
     try {
       const result = await api.customers({
-        generation: activeGeneration,
         search: searchParam || undefined,
         riskCategory: riskCategory || undefined,
         serviceStatus: serviceStatus || undefined,
@@ -107,7 +106,7 @@ export default function CustomersPage() {
     } finally {
       setLoading(false)
     }
-  }, [activeGeneration, searchParam, riskCategory, serviceStatus, sortBy, sortDir, page])
+  }, [searchParam, riskCategory, serviceStatus, sortBy, sortDir, page])
 
   const loadObservations = useCallback(async () => {
     setObsLoading(true)
@@ -178,7 +177,6 @@ export default function CustomersPage() {
     setExporting(true)
     try {
       const result = await api.exportCustomersCsv({
-        generation: activeGeneration,
         search: searchParam || undefined,
         riskCategory: riskCategory || undefined,
         serviceStatus: serviceStatus || undefined,
