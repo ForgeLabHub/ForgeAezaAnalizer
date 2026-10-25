@@ -103,6 +103,44 @@ async def telegram_worker(runtime: Runtime, stop: asyncio.Event):
             pass
 
 
+async def telegram_polling_worker(runtime: Runtime, stop: asyncio.Event):
+    """Telegram fallback for servers where inbound webhook delivery times out."""
+    if not runtime.settings.telegram_bot_enabled or not runtime.settings.telegram_polling_enabled:
+        return
+    provider = runtime.telegram.telegram_provider
+    if not hasattr(provider, "get_updates") or not hasattr(provider, "delete_webhook"):
+        logger.error("Telegram polling unavailable: provider lacks required methods")
+        return
+    try:
+        # Preserve Telegram pending updates; never drop the queue.
+        await run_in_threadpool(provider.delete_webhook)
+        logger.warning("Telegram webhook removed; long polling enabled")
+    except Exception:
+        logger.exception("Cannot switch Telegram from webhook to polling; worker stopped")
+        return
+    offset = None
+    while not stop.is_set():
+        try:
+            updates = await run_in_threadpool(provider.get_updates, offset)
+            for update in updates:
+                if stop.is_set():
+                    return
+                update_id = update.get("update_id") if isinstance(update, dict) else None
+                try:
+                    if isinstance(update_id, int) and runtime.telegram.claim_update(update_id):
+                        await run_in_threadpool(runtime.telegram.handle_update, update)
+                except Exception:
+                    logger.exception("Telegram polled update handling failed")
+                finally:
+                    if isinstance(update_id, int):
+                        offset = max(offset or 0, update_id + 1)
+        except Exception:
+            logger.exception("Telegram polling failed; retrying shortly")
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                pass
+
 def build_ai(storage: Storage, calculation: CalculationAdapter) -> AIService | None:
     """Construct the AI Analyst, or ``None`` if it cannot be built.
 
@@ -166,6 +204,8 @@ def create_app(settings: Settings | None = None, analytics: AnalyticsModule | No
             if not isinstance(module, UnavailableAnalytics):
                 tasks.append(asyncio.create_task(snapshot_file_worker(runtime, stop)))
             tasks.append(asyncio.create_task(telegram_worker(runtime, stop)))
+            if settings.telegram_polling_enabled:
+                tasks.append(asyncio.create_task(telegram_polling_worker(runtime, stop)))
             yield
         finally:
             stop.set()

@@ -296,7 +296,9 @@ def _send_via_postbox(
                              checked_subject, html, text)
 
     context = ssl_context if ssl_context is not None else ssl.create_default_context()
-    connect = smtp_factory or smtplib.SMTP_SSL
+    connect = smtp_factory or (
+        smtplib.SMTP_SSL if settings.postbox_port == 465 else smtplib.SMTP
+    )
     try:
         if settings.postbox_port == 465:
             client = connect(settings.postbox_host, settings.postbox_port,
