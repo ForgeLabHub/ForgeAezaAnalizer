@@ -96,7 +96,7 @@ class TelegramBotApi:
         self._opener = opener or urlopen
         self._sleep = sleep
 
-    def _call(self, method: str, payload: dict | None = None) -> dict:
+    def _call(self, method: str, payload: dict | None = None, *, timeout_seconds: float | None = None) -> dict:
         """Call one Bot API method, retrying only transient failures.
 
         A 429 honours ``Retry-After``; 5xx and network errors use exponential
@@ -111,7 +111,7 @@ class TelegramBotApi:
         for attempt in range(1, self._max_attempts + 1):
             request = Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
             try:
-                with self._opener(request, timeout=self._timeout) as response:
+                with self._opener(request, timeout=timeout_seconds or self._timeout) as response:
                     raw = response.read()
                 try:
                     result = json.loads(raw)
@@ -174,6 +174,14 @@ class TelegramBotApi:
 
     def delete_webhook(self) -> dict:
         return self._call("deleteWebhook", {"drop_pending_updates": False})
+
+    def get_updates(self, offset: int | None = None) -> list[dict]:
+        """Long-poll Telegram without requiring inbound connections."""
+        payload = {"timeout": 20, "allowed_updates": ["message", "callback_query"]}
+        if offset is not None:
+            payload["offset"] = offset
+        result = self._call("getUpdates", payload, timeout_seconds=30)
+        return result if isinstance(result, list) else []
 
     def get_webhook_info(self) -> dict:
         return self._call("getWebhookInfo")

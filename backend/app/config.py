@@ -29,6 +29,7 @@ class Settings:
     recalculate_seconds: int = field(default_factory=lambda: int(os.getenv("AEZA_RECALCULATE_SECONDS", "60")))
     metrics_token: str = field(default_factory=lambda: os.getenv("AEZA_METRICS_TOKEN", ""))
     telegram_bot_enabled: bool = field(default_factory=lambda: flag("AEZA_TELEGRAM_BOT_ENABLED", False))
+    telegram_polling_enabled: bool = field(default_factory=lambda: flag("AEZA_TELEGRAM_POLLING_ENABLED", False))
     telegram_bot_token: str = field(default_factory=lambda: os.getenv("AEZA_TELEGRAM_BOT_TOKEN", ""))
     telegram_webhook_secret: str = field(default_factory=lambda: os.getenv("AEZA_TELEGRAM_WEBHOOK_SECRET", ""))
     telegram_mini_app_url: str = field(default_factory=lambda: os.getenv("AEZA_TELEGRAM_MINI_APP_URL", ""))

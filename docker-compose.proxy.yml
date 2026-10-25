@@ -1,0 +1,7 @@
+services:
+  api:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      HTTPS_PROXY: "http://host.docker.internal:2080"
+      https_proxy: "http://host.docker.internal:2080"
