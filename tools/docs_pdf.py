@@ -128,6 +128,10 @@ def doc_id(path: Path, lang: str) -> str:
     """Относительный путь без учёта языковой папки — ключ для сверки пар."""
     if path.parent == ROOT:
         return path.stem
+    if path == DOCS / "README.md":
+        # docs/README.md и корневой README.md иначе получили бы один и тот же
+        # ключ (и один PDF): у точки входа в docs/ свой адрес.
+        return "docs-README"
     rel = path.relative_to(DOCS)
     parts = [p for p in rel.parts if p not in ("en", "ru")]
     return str(Path(*parts).with_suffix(""))
@@ -140,6 +144,9 @@ def counterpart(path: Path, lang: str) -> Path | None:
     так у перевода один адрес независимо от того, что лежит в корне.
     """
     other = DOCS / ("en" if lang == "ru" else "ru")
+    if path == DOCS / "README.md":
+        cand = other / "docs-README.md"
+        return cand if cand.exists() else None
     if path.parent == ROOT:
         cand = other / f"{path.stem}.md"
         return cand if cand.exists() else None
@@ -152,6 +159,8 @@ def counterpart(path: Path, lang: str) -> Path | None:
 def pdf_path(path: Path, lang: str) -> Path:
     if path.parent == ROOT:
         return PDF_DIR / lang / f"{path.stem}.pdf"
+    if path == DOCS / "README.md":
+        return PDF_DIR / lang / "docs-README.pdf"
     rel = path.relative_to(DOCS)
     parts = [p for p in rel.parts if p not in ("en", "ru")]
     return PDF_DIR / lang / str(Path(*parts).with_suffix(".pdf"))
