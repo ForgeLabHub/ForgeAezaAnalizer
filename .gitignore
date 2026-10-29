@@ -81,3 +81,6 @@ docker-compose.override.yml
 /db/auth.sqlite3
 /db/auth.sqlite3-wal
 /db/auth.sqlite3-shm
+
+# Состояние forge.sh/forge.bat: PID-файлы и логи запусков
+.run/
