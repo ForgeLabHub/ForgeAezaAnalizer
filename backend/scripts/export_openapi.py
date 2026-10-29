@@ -12,8 +12,10 @@ from backend.app.modules import UnavailableAnalytics
 
 
 def render() -> str:
+    # sort_keys=True: спецификация не зависит от порядка регистрации роутов,
+    # поэтому `--check` не даёт ложных расхождений.
     specification = create_app(analytics=UnavailableAnalytics()).openapi()
-    return json.dumps(specification, ensure_ascii=False, indent=2) + "\n"
+    return json.dumps(specification, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
 
 def main():
@@ -31,7 +33,20 @@ def main():
         if not target.exists():
             print(f"{target}: файла нет; запустите `make openapi`", sys.stderr)
             return 1
-        if target.read_text(encoding="utf-8") != rendered:
+        # Сравниваем разобранный JSON, а не текст: порядок ключей зависит от
+        # версии pydantic/fastapi и контрактом не является. Так проверка ловит
+        # реальные расхождения (роут, схема, поле), но не шумит из-за
+        # переупорядочивания и не вынуждает перезаписывать файл целиком.
+        try:
+            current = json.loads(target.read_text(encoding="utf-8"))
+            expected = json.loads(rendered)
+        except json.JSONDecodeError as error:
+            print(
+                f"{target}: файл не разбирается как JSON ({error}); запустите `make openapi`",
+                file=sys.stderr,
+            )
+            return 1
+        if current != expected:
             print(
                 f"{target}: расходится с приложением; запустите `make openapi` и закоммитьте",
                 file=sys.stderr,

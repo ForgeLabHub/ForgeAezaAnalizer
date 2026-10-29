@@ -7,17 +7,17 @@
 | Python | 3.12 | `backend/Dockerfile`, `scripts/doctor.sh` |
 | Node.js | 22.x | `ci.yml` |
 | PostgreSQL | 16-alpine | `docker-compose.yml` |
-| Python-зависимости | диапазоны в `backend/requirements.txt` | `pip install -r` |
+| Python-зависимости | точные пины в `backend/requirements.lock.txt` | `make lock` пересобирает lock из `backend/requirements.txt` |
 | npm-зависимости | lockfile | `frontend/package-lock.json` (`npm ci`) |
 
 ## Уровень A — исходный код
 
 ```bash
 make doctor          # инструменты, .env, порты; ничего не меняет
-make install         # зависимости backend + frontend
+make install         # зависимости backend (по lock-файлу) + frontend
 make test            # pytest: backend + модуль аутентификации
 make test-frontend   # tsc -b + vite build
-make openapi-check   # спецификация совпадает с приложением
+make openapi-check   # спецификация совпадает с приложением (сравнение по смыслу)
 make docs-check      # документация, ссылки, спецификации модулей
 ```
 
@@ -85,3 +85,14 @@ make restore FILE=<путь> && make smoke-test API_URL=http://localhost:8000
 
 Не «у меня работает», а зелёные `ci.yml` (уровни A–B) и `portability.yml` (уровни
 C–E). Матрица утверждений — [docs/verification/matrix.md](docs/verification/matrix.md).
+
+## Что делает сборку воспроизводимой
+
+| Механизм | Где | Что гарантирует |
+| --- | --- | --- |
+| Lock-файл Python-зависимостей | `backend/requirements.lock.txt`, `make lock` | одинаковые версии у всех и в CI |
+| Lock-файл npm | `frontend/package-lock.json`, `npm ci` | одинаковое дерево фронтенда |
+| Фиксированные образы | `postgres:16-alpine`, `node:22-alpine`, `python:3.12-slim` | нет «тихого» обновления базы |
+| Детерминированная спецификация | `export_openapi.py` (`sort_keys=True`) + сравнение разобранного JSON | `openapi.json` не зависит от версии pydantic; повторная генерация ничего не меняет |
+| Явные обязательные секреты | `POSTGRES_PASSWORD` без значения по умолчанию в `.env.example` | стек не поднимется с демо-паролем |
+| Ожидание готовности по HTTP | `scripts/wait-for-http.sh` | шаги CI не гоняются с приложением наперегонки |
