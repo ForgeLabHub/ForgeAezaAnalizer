@@ -1,0 +1,167 @@
+name: Portability
+
+# Дополняет ci.yml: проверяет не корректность отдельного модуля, а то, что
+# проект можно поднять с нуля, обновить на существующей базе, проверить
+# смоук-тестом и восстановить из резервной копии.
+#
+# Каждая job — воспроизводимая процедура из docs/verification/matrix.md.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  schedule:
+    - cron: "0 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: OpenAPI matches the application
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          if [ -f backend/requirements.lock.txt ]; then
+            python -m pip install -r backend/requirements.lock.txt
+          else
+            python -m pip install -r backend/requirements.txt
+          fi
+      - name: Check the specification
+        run: python backend/scripts/export_openapi.py --check
+      - name: Regenerating the specification is idempotent
+        run: |
+          cp backend/openapi.json /tmp/before.json
+          python backend/scripts/export_openapi.py
+          cmp -s /tmp/before.json backend/openapi.json || {
+            echo "генерация спецификации не идемпотентна" >&2; exit 1; }
+
+  docs:
+    name: Documentation is complete and linked
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Structural checks
+        run: ./scripts/docs-check.sh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Consistency checks against the code
+        run: python backend/scripts/check_docs.py
+
+  compose-smoke:
+    name: Full stack smoke test
+    runs-on: ubuntu-latest
+    env:
+      # Пароль явно «тестовый»: это значение живёт только внутри job'а.
+      POSTGRES_PASSWORD: ci-only-password-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start
+        run: |
+          cp .env.example .env
+          printf 'POSTGRES_PASSWORD=%s\n' "$POSTGRES_PASSWORD" >> .env
+          docker compose up -d --build
+      - name: Wait for the API and the web tier
+        run: |
+          ./scripts/wait-for-http.sh http://localhost:8000/health 180
+          ./scripts/wait-for-http.sh http://localhost:8080/ 180
+      - name: Smoke test the API and the web tier
+        run: ./scripts/smoke-test.sh http://localhost:8000 http://localhost:8080
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=300
+
+  backup-restore:
+    name: Backup, restore and smoke test
+    runs-on: ubuntu-latest
+    env:
+      # Пароль явно «тестовый»: это значение живёт только внутри job'а.
+      POSTGRES_PASSWORD: ci-only-password-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the stack and load data
+        run: |
+          cp .env.example .env
+          printf 'POSTGRES_PASSWORD=%s\n' "$POSTGRES_PASSWORD" >> .env
+          docker compose up -d --build
+          ./scripts/wait-for-http.sh http://localhost:8000/health 180
+      - name: Back up
+        run: |
+          ./scripts/backup.sh
+          ls -R backups
+      - name: Restore the backup and verify the service
+        run: |
+          latest="$(ls -dt backups/*/ | head -1)"
+          echo "восстанавливаем из $latest"
+          ./scripts/restore.sh "$latest" --yes
+          docker compose up -d
+          ./scripts/wait-for-http.sh http://localhost:8000/health 180
+          ./scripts/smoke-test.sh http://localhost:8000
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=300
+
+  upgrade-path:
+    name: Restart on an existing database
+    runs-on: ubuntu-latest
+    env:
+      # Пароль явно «тестовый»: это значение живёт только внутри job'а.
+      POSTGRES_PASSWORD: ci-only-password-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: First start applies the schema
+        run: |
+          cp .env.example .env
+          printf 'POSTGRES_PASSWORD=%s\n' "$POSTGRES_PASSWORD" >> .env
+          docker compose up -d --build
+          ./scripts/wait-for-http.sh http://localhost:8000/health 180
+          ./scripts/smoke-test.sh http://localhost:8000
+      - name: Second start must be a no-op
+        run: |
+          docker compose restart api
+          ./scripts/wait-for-http.sh http://localhost:8000/health 180
+          ./scripts/smoke-test.sh http://localhost:8000
+      - name: The schema is applied exactly once
+        run: |
+          count="$(docker compose exec -T db psql -U aeza -d aeza -tAc \
+            "select count(*) from information_schema.tables where table_schema='public'")"
+          echo "таблиц в public: $count"
+          [ "$count" -gt 0 ] || { echo "схема не создана" >&2; exit 1; }
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=300
+
+  config-without-secrets:
+    name: Runs without optional integrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compose must refuse to start without a database password
+        run: |
+          # В .env.example пароль намеренно пуст: compose обязан отказаться.
+          grep -v '^POSTGRES_PASSWORD=' .env.example > .env
+          if docker compose up -d 2>/dev/null; then
+            docker compose down -v
+            echo "compose стартовал без обязательного секрета" >&2; exit 1
+          fi
+          echo "compose отказался стартовать без пароля — как и задумано"
+      - name: Core must work with AI, Telegram and mail disabled
+        run: |
+          printf 'POSTGRES_PASSWORD=ci-only-password\n' >> .env
+          printf 'AEZA_AI_ENABLED=0\nAEZA_TELEGRAM_BOT_ENABLED=0\nAEZA_LLM_ENABLED=0\n' >> .env
+          docker compose up -d --build
+          ./scripts/wait-for-http.sh http://localhost:8000/health 180
+          ./scripts/smoke-test.sh http://localhost:8000
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=300
