@@ -23,14 +23,25 @@ docker compose exec api python -m backend.users create analyst@example.com
 
 ## Проверка
 
-~~~powershell
-python -m pytest backend/tests/ -q
-python -m pytest tests/test_auth.py -q
-cd frontend
-npm ci
-npm run build
+~~~bash
+make doctor          # окружение: инструменты, .env, порты (ничего не меняет)
+make test            # backend + модуль аутентификации
+make openapi-check   # спецификация API совпадает с приложением
+make docs-check      # документация, ссылки, спецификации модулей
+make verify          # всё перечисленное сразу
 ~~~
+
+Без make: `python -m pytest backend/tests -q`, `python -m pytest tests/test_auth.py -q`,
+`cd frontend && npm ci && npm run build`.
+
+Полная матрица «утверждение → команда → CI»: `docs/verification/matrix.md`.
 
 ## Документация
 
-[Запуск и обновление](docs/DEPLOYMENT_PART_B.md) · [Устройство и расчёты](docs/PROJECT_GUIDE.md) · [Все инструкции](docs/README.md)
+Точка входа — **[docs/index.md](docs/index.md)** (карта всех документов).
+
+- [Сборка с чистой машины](BUILD.md) — закреплённые версии, уровни A–E
+- [Запуск и обновление](docs/DEPLOYMENT_PART_B.md) · [Устройство и расчёты](docs/PROJECT_GUIDE.md)
+- [Схема и миграции](docs/database/schema.md) · [API](docs/api/conventions.md)
+- [Спецификации модулей](docs/modules/) · [Эксплуатация](docs/operations/monitoring.md)
+- [Матрица проверок](docs/verification/matrix.md) · [Аудит переносимости](docs/audit/portability-audit-2026-10-29.md)

@@ -1,0 +1,156 @@
+name: Portability
+
+# Дополняет ci.yml: проверяет то, что относится к переносимости и обновлению,
+# а не к корректности отдельного модуля.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  schedule:
+    - cron: "0 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: OpenAPI matches the application
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -r backend/requirements.txt
+      - name: Check the specification
+        run: python backend/scripts/export_openapi.py --check
+
+  docs:
+    name: Documentation is complete and linked
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Structural checks
+        run: ./scripts/docs-check.sh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Consistency checks against the code
+        run: python backend/scripts/check_docs.py
+
+  compose-smoke:
+    name: Full stack smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare the environment
+        run: |
+          cp .env.example .env
+          printf 'POSTGRES_PASSWORD=%s\n' "ci-only-password-$(openssl rand -hex 8)" >> .env
+          printf 'AUTH_PRIVATE_KEY=/app/db/private_key.pem\n' >> .env
+      - name: Build and start
+        run: docker compose up -d --build
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 60); do
+            if docker compose exec -T api python -c \
+              "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).status==200 else 1)"; then
+              echo "api здоров"; exit 0
+            fi
+            sleep 2
+          done
+          echo "api не поднялся" >&2; docker compose logs --tail=200 api; exit 1
+      - name: Smoke test through the web tier
+        run: ./scripts/smoke-test.sh http://localhost:8000
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=300
+
+  backup-restore:
+    name: Backup, restore and smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare the environment
+        run: |
+          cp .env.example .env
+          printf 'POSTGRES_PASSWORD=%s\n' "ci-only-password-$(openssl rand -hex 8)" >> .env
+      - name: Start the stack and load data
+        run: |
+          docker compose up -d --build
+          for i in $(seq 1 60); do
+            docker compose exec -T db pg_isready -U aeza >/dev/null 2>&1 && break
+            sleep 2
+          done
+      - name: Back up
+        run: |
+          ./scripts/backup.sh
+          ls -R backups
+      - name: Restore the backup and verify the service
+        run: |
+          latest="$(ls -dt backups/*/ | head -1)"
+          echo "восстанавливаем из $latest"
+          ./scripts/restore.sh "$latest" --yes
+          ./scripts/smoke-test.sh http://localhost:8000
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=300
+
+  upgrade-path:
+    name: Restart on an existing database
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare the environment
+        run: |
+          cp .env.example .env
+          printf 'POSTGRES_PASSWORD=%s\n' "ci-only-password-$(openssl rand -hex 8)" >> .env
+      - name: First start applies the schema
+        run: |
+          docker compose up -d --build
+          for i in $(seq 1 60); do
+            docker compose exec -T api python -c \
+              "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).status==200 else 1)" && break
+            sleep 2
+          done
+          ./scripts/smoke-test.sh http://localhost:8000
+      - name: Second start must be a no-op
+        run: |
+          docker compose restart api
+          sleep 5
+          for i in $(seq 1 30); do
+            docker compose exec -T api python -c \
+              "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).status==200 else 1)" && exit 0
+            sleep 2
+          done
+          echo "api не пережил повторный старт" >&2; docker compose logs --tail=200 api; exit 1
+
+  config-without-secrets:
+    name: Runs without optional integrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compose must refuse to start without POSTGRES_PASSWORD
+        run: |
+          cp .env.example .env
+          if docker compose up -d 2>/dev/null; then
+            echo "compose стартовал без обязательного секрета" >&2; exit 1
+          fi
+      - name: Core must work with AI, Telegram and mail disabled
+        run: |
+          printf 'POSTGRES_PASSWORD=ci-only-password\n' >> .env
+          printf 'AEZA_AI_ENABLED=0\nAEZA_TELEGRAM_BOT_ENABLED=0\n' >> .env
+          docker compose up -d --build
+          for i in $(seq 1 60); do
+            docker compose exec -T api python -c \
+              "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).status==200 else 1)" && exit 0
+            sleep 2
+          done
+          echo "сервис не работает без опциональных интеграций" >&2
+          docker compose logs --tail=200 api; exit 1
