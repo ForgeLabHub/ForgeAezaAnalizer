@@ -94,5 +94,6 @@ C–E). Матрица утверждений — [docs/verification/matrix.md](
 | Lock-файл npm | `frontend/package-lock.json`, `npm ci` | одинаковое дерево фронтенда |
 | Фиксированные образы | `postgres:16-alpine`, `node:22-alpine`, `python:3.12-slim` | нет «тихого» обновления базы |
 | Детерминированная спецификация | `export_openapi.py` (`sort_keys=True`) + сравнение разобранного JSON | `openapi.json` не зависит от версии pydantic; повторная генерация ничего не меняет |
+| Два снимка данных | `dataset/data.json` (официальный) и `dataset/data.demo.json` (демо) | приёмка не зависит от демо-данных |
 | Явные обязательные секреты | `POSTGRES_PASSWORD` без значения по умолчанию в `.env.example` | стек не поднимется с демо-паролем |
 | Ожидание готовности по HTTP | `scripts/wait-for-http.sh` | шаги CI не гоняются с приложением наперегонки |
