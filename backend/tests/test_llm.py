@@ -12,12 +12,16 @@ The aggregate HTTP endpoint that uses this module is tested separately in
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
 import httpx
 import pytest
 
 from backend.app.config import Settings
 from backend.app.domain import llm
+
+if TYPE_CHECKING:  # только для аннотаций: сам клиент в тесте не создаётся
+    from fastapi.testclient import TestClient
 
 from backend.tests.conftest import ROOT
 

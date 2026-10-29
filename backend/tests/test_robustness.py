@@ -15,7 +15,6 @@ fail if the weights, the normalisation or the factor set drift.
 from __future__ import annotations
 
 import itertools
-import json
 import os
 from pathlib import Path
 

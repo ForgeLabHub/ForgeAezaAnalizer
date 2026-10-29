@@ -65,9 +65,16 @@ openapi: ## Перегенерировать backend/openapi.json
 openapi-check: ## Проверить, что спецификация совпадает с приложением
 	@$(PYTHON) backend/scripts/export_openapi.py --check
 
-docs-check: ## Проверить документацию, ссылки и спецификации модулей
+lint: ## Статический анализ (ruff)
+	$(PYTHON) -m ruff check .
+
+docs-pdf: ## Собрать PDF документации (оба языка)
+	@$(PYTHON) tools/docs_pdf.py
+
+docs-check: ## Проверить документацию, ссылки, переводы и PDF
 	@$(PYTHON) backend/scripts/check_docs.py
 	@./scripts/docs-check.sh
+	@$(PYTHON) tools/docs_pdf.py --check
 
 ## --- Интеграционная среда -------------------------------------------------
 
@@ -95,7 +102,7 @@ backup: ## Резервная копия БД и данных
 restore: ## Восстановление: make restore FILE=...
 	@./scripts/restore.sh $(FILE)
 
-verify: docs-check test openapi-check ## Полная локальная матрица
+verify: lint docs-check test openapi-check ## Полная локальная матрица
 	@echo "verify: ok (compose-уровни проверяются в CI)"
 
 clean: ## Удалить артефакты

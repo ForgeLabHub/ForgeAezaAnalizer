@@ -23,7 +23,6 @@ from backend.app.ai import context_builder, parsing, prompts, safety
 from backend.app.ai.providers.mock import MockProvider
 from backend.app.ai.rag import Retriever, build_index
 from backend.app.ai.schemas import AIAnswer
-from backend.app.ai.service import AIDisabled, AIService, AIUnavailable
 from backend.app.config import Settings
 from backend.app.main import create_app
 from backend.tests.conftest import TEST_LOGIN, TEST_PASSWORD, make_test_auth_settings

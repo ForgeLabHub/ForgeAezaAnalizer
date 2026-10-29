@@ -24,7 +24,7 @@ Three concepts are kept strictly apart:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from .money import cents_to_eur
 

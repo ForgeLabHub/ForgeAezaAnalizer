@@ -14,7 +14,6 @@ from __future__ import annotations
 import datetime
 import socket
 import ssl
-import threading
 
 import pytest
 from cryptography import x509
@@ -23,7 +22,6 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 from aiosmtpd.controller import Controller
-from aiosmtpd.smtp import SMTP as SmtpProtocol
 
 from backend.app.config import Settings
 from backend.app.integrations import email as email_integration
@@ -251,9 +249,10 @@ def test_send_via_postbox_reports_a_refused_authentication():
 def test_send_via_postbox_reports_an_unreachable_server_as_unavailable():
 
 
+    # Порт 465 на 127.0.0.1 не слушается: проверяем именно недоступность сервера.
+    # Найденный свободный порт здесь не нужен — раньше он вычислялся и не использовался.
     closed = socket.socket()
     closed.bind(("127.0.0.1", 0))
-    port = closed.getsockname()[1]
     closed.close()
     settings = _settings(postbox_host="127.0.0.1", postbox_port=465)
     with pytest.raises(email_integration.EmailUnavailable):

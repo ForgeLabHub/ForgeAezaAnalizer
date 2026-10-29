@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.app.modules import CalculationAdapter, ModuleContractError, load_module
+from backend.app.modules import CalculationAdapter, load_module
 from backend.app.api.schemas import CustomerDetail, SettingsPayload, Summary
 from core import InvalidInput, State
 

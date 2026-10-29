@@ -58,7 +58,6 @@ def compare_scenario(payload: ScenarioRequest, runtime: RuntimeDep, user: UserDe
     """
 
     state = runtime.storage.load()
-    definition = runtime.calculation.definition()
     baseline_settings = state.settings
 
     try:

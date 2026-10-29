@@ -7,7 +7,6 @@ state, and it never leaks into the model or into another customer's data.
 
 from __future__ import annotations
 
-import pytest
 
 
 def _playbooks(client, headers, customer_id: int) -> dict:

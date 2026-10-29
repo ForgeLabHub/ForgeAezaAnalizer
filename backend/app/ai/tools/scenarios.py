@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from core import InvalidInput
 from backend.app.domain import insights
-from backend.app.storage import Storage
 
 
 def scenario_preview(storage, calculation, *, overrides: dict, name: str = "AI scenario") -> dict:

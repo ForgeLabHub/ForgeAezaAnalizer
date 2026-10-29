@@ -6,7 +6,7 @@ from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from backend.auth.service import AuthError
-from backend.app.api.deps import Runtime, RuntimeDep
+from backend.app.api.deps import RuntimeDep
 
 client_bearer = HTTPBearer(auto_error=False)
 

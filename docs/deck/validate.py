@@ -13,9 +13,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PIL import Image
 from pptx import Presentation
-from pptx.util import Emu, Inches, Pt
+from pptx.util import Inches
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from deckkit import line_height_in, text_width_pt, weight_from_run

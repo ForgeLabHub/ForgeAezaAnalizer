@@ -15,7 +15,6 @@ import hmac
 import json
 import time
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient

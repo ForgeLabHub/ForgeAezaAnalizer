@@ -19,7 +19,6 @@ PostgreSQL in production (the SQL used is portable: ``ALTER TABLE ADD COLUMN``,
 
 from __future__ import annotations
 
-import datetime
 
 import pytest
 from sqlalchemy import inspect, text

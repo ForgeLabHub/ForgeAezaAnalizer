@@ -13,7 +13,6 @@ import pytest
 from app.domain.money import MoneyError, cents_to_eur, eur_to_cents, validate_non_negative_cents
 from app.domain.risk import (
     DEFAULT_WEIGHTS,
-    DEPRECATED_KEYS,
     FACTOR_BY_KEY,
     RiskConfigError,
     RiskSettings,

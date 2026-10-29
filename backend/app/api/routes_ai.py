@@ -14,7 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.app.ai.service import AIDisabled, AIService, AIUnavailable
+from backend.app.ai.service import AIService, AIUnavailable
 from backend.app.api.deps import RuntimeDep, UserDep
 
 router = APIRouter(prefix="/ai", tags=["ai"])

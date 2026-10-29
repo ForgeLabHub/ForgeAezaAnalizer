@@ -8,10 +8,10 @@ no clipped headlines.
 
 from __future__ import annotations
 
-from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
-from pptx.util import Emu, Inches, Pt
+from pptx.enum.text import PP_ALIGN
+from pptx.util import Emu, Inches
 
-from deckkit import FONT, textbox, para, _set_weight, wrap, line_height_in
+from deckkit import textbox, para, wrap, line_height_in
 
 
 OVERFLOW: list[str] = []

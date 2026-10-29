@@ -28,7 +28,6 @@ Design notes
 from __future__ import annotations
 
 import datetime as dt
-from decimal import Decimal
 
 from core import Analysis, InvalidInput, State
 
@@ -93,7 +92,6 @@ def money(cents: int | None) -> dict:
 
     if cents is None:
         return {"cents": None, "eur": None}
-    value = cents_to_eur(cents)
     sign = "-" if cents < 0 else ""
     absolute = abs(int(cents))
     return {"cents": int(cents), "eur": f"{sign}{absolute // 100}.{absolute % 100:02d}"}
@@ -211,7 +209,6 @@ class AézaAnalyticsModule:
         settings = _settings_from_payload(state.settings)
         now = state.as_of or state.calculated_at or dt.datetime.now(dt.timezone.utc)
 
-        accounts = {account.id: account for account in snapshot.accounts}
         services_by_owner: dict[int, list] = {}
         for service in snapshot.services:
             services_by_owner.setdefault(service.owner_id, []).append(service)

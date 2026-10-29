@@ -10,14 +10,16 @@
 | Почему такие границы модулей | [architecture/system-context.md](architecture/system-context.md) |
 | Как устроены данные и применение схемы | [database/schema.md](database/schema.md), [database/migrations.md](database/migrations.md) |
 | API: соглашения, ошибки | [api/conventions.md](api/conventions.md), `../backend/openapi.json` |
-| Что делает конкретная функция | [modules/](modules/) |
+| Что делает конкретная функция / что заимствовать | [modules/](modules/), [modules/module-map.md](modules/module-map.md) |
 | Эксплуатация, метрики, обновления | [operations/deployment.md](operations/deployment.md), [operations/monitoring.md](operations/monitoring.md) |
 | Учётные записи и вход | [AUTH_MODULE.md](AUTH_MODULE.md) |
 | Telegram Mini App | [TELEGRAM_BOT.md](TELEGRAM_BOT.md) |
 | Почта | [EMAIL.md](EMAIL.md) |
 | AI Analyst и ассистент | [AI_ANALYST.md](AI_ANALYST.md), [AI_ASSISTANT.md](AI_ASSISTANT.md) |
 | Данные и снимок | [../dataset/README.md](../dataset/README.md) |
+| Стиль кода и линт | [development/code-style.md](development/code-style.md) |
 | Чем доказано, что всё работает | [verification/matrix.md](verification/matrix.md), CI |
+| Английская версия документации | [en/index.md](en/index.md) · PDF в [pdf/](pdf/) |
 | Найденные разрывы и что исправлено | [audit/portability-audit-2026-10-29.md](audit/portability-audit-2026-10-29.md) |
 
 ## Правила

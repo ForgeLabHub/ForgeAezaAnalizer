@@ -23,7 +23,8 @@ shopt -s nullglob
 headings=("Назначение" "Сценарии" "Контракт" "Данные" "Права" "Зависимости" "Конфигурация" "Сборка" "Тесты" "Наблюдаемость" "Ограничения")
 module_ok=1
 for m in docs/modules/*.md; do
-  case "$m" in *module-template.md) continue ;; esac
+  # карта модулей и шаблон — не спецификации: 11 разделов от них не требуется
+  case "$m" in *module-template.md|*-map.md) continue ;; esac
   for h in "${headings[@]}"; do
     if ! grep -qi "$h" "$m"; then bad "$m: нет раздела «$h»"; module_ok=0; fi
   done
