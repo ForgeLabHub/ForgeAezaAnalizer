@@ -20,9 +20,6 @@ concurrency:
   group: portability-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  CI_POSTGRES_PASSWORD: ci-only-password-${{ github.run_id }}
-
 jobs:
   contract:
     name: OpenAPI matches the application
@@ -65,7 +62,8 @@ jobs:
     name: Full stack smoke test
     runs-on: ubuntu-latest
     env:
-      POSTGRES_PASSWORD: ${{ env.CI_POSTGRES_PASSWORD }}
+      # Пароль явно «тестовый»: это значение живёт только внутри job'а.
+      POSTGRES_PASSWORD: ci-only-password-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
       - name: Build and start
@@ -87,7 +85,8 @@ jobs:
     name: Backup, restore and smoke test
     runs-on: ubuntu-latest
     env:
-      POSTGRES_PASSWORD: ${{ env.CI_POSTGRES_PASSWORD }}
+      # Пароль явно «тестовый»: это значение живёт только внутри job'а.
+      POSTGRES_PASSWORD: ci-only-password-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
       - name: Start the stack and load data
@@ -116,7 +115,8 @@ jobs:
     name: Restart on an existing database
     runs-on: ubuntu-latest
     env:
-      POSTGRES_PASSWORD: ${{ env.CI_POSTGRES_PASSWORD }}
+      # Пароль явно «тестовый»: это значение живёт только внутри job'а.
+      POSTGRES_PASSWORD: ci-only-password-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
       - name: First start applies the schema
