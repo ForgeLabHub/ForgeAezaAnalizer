@@ -12,10 +12,11 @@ PYTHON_VERSION  := 3.12
 NODE_VERSION    := 22
 COMPOSE         ?= docker compose
 API_URL         ?= http://localhost:8000
+WEB_URL         ?= http://localhost:8080
 
 .PHONY: help doctor venv install build build-frontend test test-backend test-auth \
         test-frontend lint openapi openapi-check docs-check compose-up compose-down \
-        compose-logs migrate smoke-test backup restore verify clean
+        compose-logs migrate smoke-test wait backup restore verify lock clean
 
 help: ## Список целей
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -27,6 +28,13 @@ doctor: ## Проверить инструменты, версии и серви
 install: ## Установить зависимости backend и frontend
 	$(PYTHON) -m pip install -r requirements-dev.txt
 	cd frontend && npm ci --no-audit --no-fund
+
+lock: ## Пересобрать backend/requirements.lock.txt из requirements.txt
+	@rm -rf /tmp/aeza-lock && $(PYTHON) -m venv /tmp/aeza-lock
+	@/tmp/aeza-lock/bin/pip install -q --upgrade pip
+	@/tmp/aeza-lock/bin/pip install -q -r backend/requirements.txt
+	@/tmp/aeza-lock/bin/pip freeze | sort > backend/requirements.lock.txt
+	@echo "backend/requirements.lock.txt: $(shell wc -l < backend/requirements.lock.txt) пакетов"
 
 ## --- Сборка ---------------------------------------------------------------
 
@@ -75,8 +83,11 @@ compose-logs: ## Логи
 create-user: ## Создать пользователя: make create-user EMAIL=... [PASSWORD=...]
 	$(COMPOSE) exec api $(PYTHON) -m backend.users create $(EMAIL)
 
-smoke-test: ## Проверить живой инстанс
-	@./scripts/smoke-test.sh $(API_URL)
+smoke-test: ## Проверить живой инстанс (API и, если поднят, витрину)
+	@./scripts/smoke-test.sh $(API_URL) $(WEB_URL)
+
+wait: ## Дождаться готовности стека по HTTP
+	@./scripts/wait-for-http.sh $(API_URL)/health 180
 
 backup: ## Резервная копия БД и данных
 	@./scripts/backup.sh
