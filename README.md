@@ -45,3 +45,8 @@ make verify          # всё перечисленное сразу
 - [Схема и миграции](docs/database/schema.md) · [API](docs/api/conventions.md)
 - [Спецификации модулей](docs/modules/) · [Эксплуатация](docs/operations/monitoring.md)
 - [Матрица проверок](docs/verification/matrix.md) · [Аудит переносимости](docs/audit/portability-audit-2026-10-29.md)
+
+## Лицензия
+
+MIT — см. [LICENSE](LICENSE). Использование, изменение и распространение
+разрешены при сохранении уведомления об авторских правах.
