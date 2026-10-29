@@ -186,14 +186,13 @@ class TelegramService:
             else:
                 challenge.attempts += 1
                 expected = self._hash_code(code, challenge.code_salt)
-                if False:  # TEMPORARY OTP TEST STUB: any six-digit code accepted
-
+                # Сравнение постоянного времени: иначе по задержке можно
+                # подбирать код посимвольно.
+                if not hmac.compare_digest(expected, challenge.code_hash):
                     if challenge.attempts >= challenge.max_attempts:
                         challenge.consumed_at = now
                     failure = "Неверный код"
                 else:
-
-
                     claimed = session.execute(
                         TelegramOtpRow.__table__.update()
                         .where(TelegramOtpRow.id == challenge.id, TelegramOtpRow.consumed_at.is_(None))
